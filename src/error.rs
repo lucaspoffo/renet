@@ -1,6 +1,6 @@
-use std::io;
+use std::{io, result};
 
-pub type Result<T> = Result<T, RenetError>;
+pub type Result<T> = result::Result<T, RenetError>;
 
 #[derive(Debug)]
 pub enum RenetError {
