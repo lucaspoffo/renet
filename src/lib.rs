@@ -1,5 +1,5 @@
-use std::io::{self, Write};
 use self::sequence_buffer::SequenceBuffer;
+use std::io::{self, Write};
 
 mod sequence_buffer;
 
@@ -156,11 +156,11 @@ impl SequenceBuffer<ReassemblyFragment> {
         reassembly_fragment.num_fragments_received += 1;
         reassembly_fragment.fragments_received[header.fragment_id as usize] = true;
         reassembly_fragment.buffer.write_all(&*payload)?;
-        
+
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
             drop(reassembly_fragment);
             if let Some(reassembly_fragment) = self.remove(header.sequence) {
-                return Ok(Some(reassembly_fragment.buffer.clone())); 
+                return Ok(Some(reassembly_fragment.buffer.clone()));
             } else {
                 return Err(RenetError::CouldNotFindFragment);
             }
@@ -178,26 +178,40 @@ mod tests {
     fn fragment() {
         let payload = [7u8; 3500];
         let fragments = build_fragments(&payload).unwrap();
-        let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> = SequenceBuffer::with_capacity(256);
+        let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
+            SequenceBuffer::with_capacity(256);
         let mut headers = vec![];
         for i in 0..fragments.len() {
             let header = FragmentHeader {
                 sequence: 0,
                 fragment_id: i as u8,
                 num_fragments: fragments.len() as u8,
-                packet_type: PacketType::Fragment
+                packet_type: PacketType::Fragment,
             };
             headers.push(header);
         }
         assert_eq!(4, fragments.len());
-        assert!(fragments_reassembly.handle_fragment(headers[0].clone(), fragments[0]).unwrap().is_none());
-        assert!(fragments_reassembly.handle_fragment(headers[1].clone(), fragments[1]).unwrap().is_none());
-        assert!(fragments_reassembly.handle_fragment(headers[2].clone(), fragments[2]).unwrap().is_none());
-        let reassembly_payload = fragments_reassembly.handle_fragment(headers[3].clone(), fragments[3]).unwrap().unwrap(); 
+        assert!(fragments_reassembly
+            .handle_fragment(headers[0].clone(), fragments[0])
+            .unwrap()
+            .is_none());
+        assert!(fragments_reassembly
+            .handle_fragment(headers[1].clone(), fragments[1])
+            .unwrap()
+            .is_none());
+        assert!(fragments_reassembly
+            .handle_fragment(headers[2].clone(), fragments[2])
+            .unwrap()
+            .is_none());
+        let reassembly_payload = fragments_reassembly
+            .handle_fragment(headers[3].clone(), fragments[3])
+            .unwrap()
+            .unwrap();
         assert_eq!(reassembly_payload.len(), payload.len());
-        
-        assert!(reassembly_payload.iter()
-       .zip(payload.iter())
-       .all(|(a,b)| a == b));
+
+        assert!(reassembly_payload
+            .iter()
+            .zip(payload.iter())
+            .all(|(a, b)| a == b));
     }
 }
