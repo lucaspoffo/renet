@@ -1,5 +1,6 @@
 use self::sequence_buffer::SequenceBuffer;
-use std::io::{self, Write};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use std::io::{self, Cursor, Write};
 
 mod sequence_buffer;
 
@@ -9,6 +10,7 @@ pub enum RenetError {
     CouldNotFindFragment,
     InvalidNumberFragment,
     FragmentAlreadyProcessed,
+    InvalidHeaderType,
     IOError(io::Error),
 }
 
@@ -18,7 +20,7 @@ impl From<io::Error> for RenetError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum PacketType {
     Packet = 0,
     Fragment = 1,
@@ -32,16 +34,66 @@ pub struct Packet<'a> {
 struct PacketHeader {
     // protocol_id: u16,
     // crc32: u32, // append protocol_id when calculating crc32
-    packet_type: PacketType,
+    sequence: u16,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct FragmentHeader {
     // crc32: u32,
     sequence: u16,
-    packet_type: PacketType,
     fragment_id: u8,
     num_fragments: u8,
+}
+
+trait HeaderReader {
+    type Header;
+
+    fn read(rdr: &mut Cursor<&[u8]>) -> Self::Header;
+    fn size() -> u8;
+}
+
+trait HeaderWriter {
+    type Output;
+
+    fn write(&self, buffer: &mut Vec<u8>) -> Self::Output;
+}
+
+impl HeaderWriter for FragmentHeader {
+    type Output = Result<(), RenetError>;
+
+    fn write(&self, buffer: &mut Vec<u8>) -> Self::Output {
+        buffer.write_u8(PacketType::Fragment as u8)?;
+        buffer.write_u16::<BigEndian>(self.sequence)?;
+        buffer.write_u8(self.fragment_id)?;
+        buffer.write_u8(self.num_fragments)?;
+        Ok(())
+    }
+}
+
+impl HeaderReader for FragmentHeader {
+    type Header = Result<FragmentHeader, RenetError>;
+
+    fn size() -> u8 {
+       5 
+    }
+
+    fn read(rdr: &mut Cursor<&[u8]>) -> Self::Header {
+        let packet_type = rdr.read_u8()?;
+        if packet_type != PacketType::Fragment as u8 {
+            return Err(RenetError::InvalidHeaderType);
+        }
+        let sequence = rdr.read_u16::<BigEndian>()?;
+        let fragment_id = rdr.read_u8()?;
+        let num_fragments = rdr.read_u8()?;
+
+        let header = FragmentHeader {
+            sequence,
+            fragment_id,
+            num_fragments,
+        };
+
+        Ok(header)
+    }
 }
 
 const FRAGMENT_MAX_COUNT: usize = 256;
@@ -173,6 +225,23 @@ impl SequenceBuffer<ReassemblyFragment> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn fragment_read_write() {
+        let fragment = FragmentHeader {
+            sequence: 42,
+            fragment_id: 3,
+            num_fragments: 5
+        };
+        
+        let mut buffer = vec![];
+        
+        fragment.write(&mut buffer).unwrap();
+        let mut cursor = Cursor::new(buffer.as_slice());
+        let parsed_fragment = FragmentHeader::read(&mut cursor).unwrap(); 
+        assert_eq!(fragment, parsed_fragment);
+    }
 
     #[test]
     fn fragment() {
@@ -186,7 +255,6 @@ mod tests {
                 sequence: 0,
                 fragment_id: i as u8,
                 num_fragments: fragments.len() as u8,
-                packet_type: PacketType::Fragment,
             };
             headers.push(header);
         }
