@@ -1,4 +1,3 @@
-
 pub struct SequenceBuffer<T: Clone + Default> {
     sequence: u16,
     entry_sequences: Box<[Option<u16>]>,
@@ -21,7 +20,8 @@ impl<T: Clone + Default> SequenceBuffer<T> {
         }
         None
     }
-
+    
+    #[inline]
     pub fn index(&self, sequence: u16) -> usize {
         sequence as usize % self.entries.len()
     }
