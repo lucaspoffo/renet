@@ -1,24 +1,10 @@
 use self::sequence_buffer::SequenceBuffer;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{self, Cursor, Write};
+use std::io::{Cursor, Write};
+use error::{Result, RenetError};
 
 mod sequence_buffer;
-
-#[derive(Debug)]
-pub enum RenetError {
-    MaximumFragmentsExceeded,
-    CouldNotFindFragment,
-    InvalidNumberFragment,
-    FragmentAlreadyProcessed,
-    InvalidHeaderType,
-    IOError(io::Error),
-}
-
-impl From<io::Error> for RenetError {
-    fn from(inner: io::Error) -> RenetError {
-        RenetError::IOError(inner)
-    }
-}
+mod error;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PacketType {
@@ -39,7 +25,7 @@ struct PacketHeader {
 }
 
 impl HeaderWriter for PacketHeader {
-    type Output = Result<(), RenetError>;
+    type Output = Result<()>;
 
     fn write(&self, buffer: &mut Vec<u8>) -> Self::Output {
         buffer.write_u8(PacketType::Packet as u8)?;
@@ -49,7 +35,7 @@ impl HeaderWriter for PacketHeader {
 }
 
 impl HeaderReader for PacketHeader {
-    type Header = Result<PacketHeader, RenetError>;
+    type Header = Result<PacketHeader>;
 
     fn size() -> u8 {
        3 
@@ -94,7 +80,7 @@ trait HeaderWriter {
 }
 
 impl HeaderWriter for FragmentHeader {
-    type Output = Result<(), RenetError>;
+    type Output = Result<()>;
 
     fn write(&self, buffer: &mut Vec<u8>) -> Self::Output {
         buffer.write_u8(PacketType::Fragment as u8)?;
@@ -106,7 +92,7 @@ impl HeaderWriter for FragmentHeader {
 }
 
 impl HeaderReader for FragmentHeader {
-    type Header = Result<FragmentHeader, RenetError>;
+    type Header = Result<FragmentHeader>;
 
     fn size() -> u8 {
        5 
@@ -187,7 +173,7 @@ impl Default for Config {
     }
 }
 
-pub fn build_fragments<'a>(payload: &'a [u8]) -> Result<Vec<&'a [u8]>, RenetError> {
+pub fn build_fragments<'a>(payload: &'a [u8]) -> Result<Vec<&'a [u8]>> {
     let config = Config::default();
     let packet_bytes = payload.len();
     let exact_division = ((packet_bytes % config.fragment_size) != 0) as usize;
@@ -216,7 +202,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         &mut self,
         header: FragmentHeader,
         payload: &[u8],
-    ) -> Result<Option<Vec<u8>>, RenetError> {
+    ) -> Result<Option<Vec<u8>>> {
         if !self.exists(header.sequence) {
             let reassembly_fragment =
                 ReassemblyFragment::new(header.sequence, header.num_fragments as usize);
