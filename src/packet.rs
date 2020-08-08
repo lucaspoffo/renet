@@ -1,6 +1,6 @@
-use super::error::{Result, RenetError};
-use std::io::Cursor;
+use super::error::{RenetError, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use std::io::Cursor;
 
 pub const FRAGMENT_MAX_COUNT: usize = 256;
 pub const FRAGMENT_MAX_SIZE: usize = 1024;
@@ -32,7 +32,7 @@ impl HeaderParser for PacketHeader {
     type Header = Self;
 
     fn size() -> usize {
-        3 
+        3
     }
 
     fn write(&self, buffer: &mut Cursor<&mut [u8]>) -> Result<()> {
@@ -48,9 +48,7 @@ impl HeaderParser for PacketHeader {
         }
         let sequence = reader.read_u16::<BigEndian>()?;
 
-        let header = PacketHeader {
-            sequence,
-        };
+        let header = PacketHeader { sequence };
 
         Ok(header)
     }
@@ -68,7 +66,7 @@ impl HeaderParser for FragmentHeader {
     type Header = Self;
 
     fn size() -> usize {
-        5 
+        5
     }
 
     fn write(&self, writer: &mut Cursor<&mut [u8]>) -> Result<()> {
@@ -76,7 +74,7 @@ impl HeaderParser for FragmentHeader {
         writer.write_u16::<BigEndian>(self.sequence)?;
         writer.write_u8(self.fragment_id)?;
         writer.write_u8(self.num_fragments)?;
-        Ok(() )
+        Ok(())
     }
 
     fn parse(reader: &mut Cursor<&[u8]>) -> Result<Self> {
@@ -100,39 +98,36 @@ impl HeaderParser for FragmentHeader {
 
 mod tests {
     use super::*;
-    use std::io::Cursor;
 
     #[test]
     fn fragment_header_read_write() {
         let fragment_header = FragmentHeader {
             sequence: 42,
             fragment_id: 3,
-            num_fragments: 5
+            num_fragments: 5,
         };
-        
-        let mut buffer = vec![0u8; FragmentHeader::size()]; 
-        
+
+        let mut buffer = vec![0u8; FragmentHeader::size()];
+
         let mut cursor = Cursor::new(buffer.as_mut_slice());
         fragment_header.write(&mut cursor).unwrap();
 
         let mut cursor = Cursor::new(buffer.as_slice());
-        let parsed_fragment_header = FragmentHeader::parse(&mut cursor).unwrap(); 
+        let parsed_fragment_header = FragmentHeader::parse(&mut cursor).unwrap();
         assert_eq!(fragment_header, parsed_fragment_header);
     }
-    
+
     #[test]
     fn packet_header_read_write() {
-        let header = PacketHeader {
-            sequence: 42,
-        };
-        
-        let mut buffer = vec![0u8; PacketHeader::size()]; 
-        
+        let header = PacketHeader { sequence: 42 };
+
+        let mut buffer = vec![0u8; PacketHeader::size()];
+
         let mut cursor = Cursor::new(buffer.as_mut_slice());
         header.write(&mut cursor).unwrap();
-        
+
         let mut cursor = Cursor::new(buffer.as_slice());
-        let parsed_header = PacketHeader::parse(&mut cursor).unwrap(); 
+        let parsed_header = PacketHeader::parse(&mut cursor).unwrap();
         assert_eq!(header, parsed_header);
     }
 }

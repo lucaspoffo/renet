@@ -5,6 +5,7 @@ pub type Result<T> = result::Result<T, RenetError>;
 #[derive(Debug)]
 pub enum RenetError {
     MaximumFragmentsExceeded,
+    MaximumPacketSizeExceeded,
     CouldNotFindFragment,
     InvalidNumberFragment,
     FragmentAlreadyProcessed,
