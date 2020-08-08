@@ -4,7 +4,6 @@ use async_std::task;
 use renet::{Endpoint, Config};
 use alto_logger::TermLogger;
 
-
 fn main() -> io::Result<()> {
     TermLogger::default().init().unwrap();
     task::block_on(async {
