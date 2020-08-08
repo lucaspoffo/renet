@@ -2,13 +2,16 @@ use async_std::io;
 use async_std::net::UdpSocket;
 use async_std::task;
 use renet::{Endpoint, Config};
+use alto_logger::TermLogger;
 
 fn main() -> io::Result<()> {
+    TermLogger::default().init().unwrap();
     task::block_on(async {
+        log::set_max_level(log::LevelFilter::max());
         let socket = UdpSocket::bind("127.0.0.1:8081").await?;
         println!("Listening on {}", socket.local_addr()?);
 
-        let mut buf = vec![7u8; 1500];
+        let mut buf = vec![7u8; 3500];
         let config = Config::default();
         let mut endpoint = Endpoint::new(config, 0.0, socket);
         
