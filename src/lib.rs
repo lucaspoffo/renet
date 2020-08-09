@@ -180,11 +180,9 @@ impl Endpoint {
     pub async fn receive(&mut self, buf: &mut [u8]) -> Result<Option<Vec<u8>>> {
         let (n, addrs) = self.socket.recv_from(buf).await?;
         trace!("Received {} bytes from {}.", n, addrs);
-        let payload = &buf[..n];
+        let mut payload = &buf[..n];
         if payload[0] == PacketType::Packet as u8 {
-            let header_payload = &payload[..PacketHeader::size()];
-            let mut cursor = Cursor::new(header_payload);
-            let header = PacketHeader::parse(&mut cursor)?;
+            let header = PacketHeader::parse(&mut payload)?;
             trace!("Received: {:?}", header);
 
             // Received packet to buffer
@@ -194,9 +192,7 @@ impl Endpoint {
             let payload = &payload[FragmentHeader::size()..];
             return Ok(Some(payload.into()));
         } else {
-            let header_payload = &payload[..FragmentHeader::size()];
-            let mut cursor = Cursor::new(header_payload);
-            let header = FragmentHeader::parse(&mut cursor)?;
+            let header = FragmentHeader::parse(&mut payload)?;
             
             if let Some(received_packet) = self.received_buffer.get_mut(header.sequence) {
                 // log::debug!("Changing Received packet: {:?}.", received_packet);
@@ -303,8 +299,7 @@ pub fn build_normal_packet(payload: &[u8], sequence: u16) -> Result<Vec<u8>> {
     let header = PacketHeader { sequence };
 
     let mut buffer = vec![0u8; PacketHeader::size()];
-    let mut cursor = Cursor::new(buffer.as_mut_slice());
-    header.write(&mut cursor)?;
+    header.write(&mut buffer)?;
     buffer.extend_from_slice(&payload);
 
     Ok(buffer)
@@ -332,8 +327,7 @@ pub fn build_fragments(payload: &[u8], sequence: u16, config: &Config) -> Result
             num_fragments: num_fragments as u8,
         };
         let mut buffer = vec![0u8; FragmentHeader::size()];
-        let mut cursor = Cursor::new(buffer.as_mut_slice());
-        fragment_header.write(&mut cursor).unwrap();
+        fragment_header.write(&mut buffer).unwrap();
         buffer.extend_from_slice(&payload[start..end]);
         fragments.push(buffer);
     }
@@ -398,26 +392,31 @@ mod tests {
 
     #[test]
     fn fragment() {
-        let payload = [0u8; 3500];
+        let payload = [0u8; 2500];
         let config = Config::default();
         let fragments = build_fragments(&payload, 0, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
             SequenceBuffer::with_capacity(256);
-        assert_eq!(4, fragments.len());
+        assert_eq!(3, fragments.len());
+        
+        let mut fragments: Vec<&[u8]> = fragments.iter().map(|x| &x[..]).collect();
+
+        let header = FragmentHeader::parse(&fragments[0]).unwrap();
+        fragments[0] = &fragments[0][FragmentHeader::size()..];
         assert!(fragments_reassembly
-            .handle_fragment(&fragments[0], &config)
+            .handle_fragment(header, &fragments[0], &config)
             .unwrap()
             .is_none());
+        let header = FragmentHeader::parse(&fragments[1]).unwrap();
+        fragments[1] = &fragments[1][FragmentHeader::size()..];
         assert!(fragments_reassembly
-            .handle_fragment(&fragments[1], &config)
+            .handle_fragment(header, &fragments[1], &config)
             .unwrap()
             .is_none());
-        assert!(fragments_reassembly
-            .handle_fragment(&fragments[2], &config)
-            .unwrap()
-            .is_none());
+        let header = FragmentHeader::parse(&fragments[2]).unwrap();
+        fragments[2] = &fragments[2][FragmentHeader::size()..];
         let reassembly_payload = fragments_reassembly
-            .handle_fragment(&fragments[3], &config)
+            .handle_fragment(header, &fragments[2], &config)
             .unwrap()
             .unwrap();
 

@@ -1,6 +1,5 @@
 use super::error::{RenetError, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::io::Cursor;
 
 pub const FRAGMENT_MAX_COUNT: usize = 256;
 pub const FRAGMENT_MAX_SIZE: usize = 1024;
@@ -14,8 +13,8 @@ pub enum PacketType {
 pub trait HeaderParser {
     type Header;
 
-    fn parse(reader: &mut Cursor<&[u8]>) -> Result<Self::Header>;
-    fn write(&self, writer: &mut Cursor<&mut [u8]>) -> Result<()>;
+    fn parse(reader: &[u8]) -> Result<Self::Header>;
+    fn write(&self, writer: &mut [u8]) -> Result<()>;
 
     /// Header size in bytes
     fn size() -> usize;
@@ -35,13 +34,13 @@ impl HeaderParser for PacketHeader {
         3
     }
 
-    fn write(&self, buffer: &mut Cursor<&mut [u8]>) -> Result<()> {
+    fn write(&self, mut buffer: &mut [u8]) -> Result<()> {
         buffer.write_u8(PacketType::Packet as u8)?;
         buffer.write_u16::<BigEndian>(self.sequence)?;
         Ok(())
     }
 
-    fn parse(reader: &mut Cursor<&[u8]>) -> Result<Self> {
+    fn parse(mut reader: &[u8]) -> Result<Self> {
         let packet_type = reader.read_u8()?;
         if packet_type != PacketType::Packet as u8 {
             return Err(RenetError::InvalidHeaderType);
@@ -69,7 +68,7 @@ impl HeaderParser for FragmentHeader {
         5
     }
 
-    fn write(&self, writer: &mut Cursor<&mut [u8]>) -> Result<()> {
+    fn write(&self, mut writer: &mut [u8]) -> Result<()> {
         writer.write_u8(PacketType::Fragment as u8)?;
         writer.write_u16::<BigEndian>(self.sequence)?;
         writer.write_u8(self.fragment_id)?;
@@ -77,7 +76,7 @@ impl HeaderParser for FragmentHeader {
         Ok(())
     }
 
-    fn parse(reader: &mut Cursor<&[u8]>) -> Result<Self> {
+    fn parse(mut reader: &[u8]) -> Result<Self> {
         let packet_type = reader.read_u8()?;
         if packet_type != PacketType::Fragment as u8 {
             return Err(RenetError::InvalidHeaderType);
@@ -109,11 +108,9 @@ mod tests {
 
         let mut buffer = vec![0u8; FragmentHeader::size()];
 
-        let mut cursor = Cursor::new(buffer.as_mut_slice());
-        fragment_header.write(&mut cursor).unwrap();
+        fragment_header.write(&mut buffer).unwrap();
 
-        let mut cursor = Cursor::new(buffer.as_slice());
-        let parsed_fragment_header = FragmentHeader::parse(&mut cursor).unwrap();
+        let parsed_fragment_header = FragmentHeader::parse(&mut buffer).unwrap();
         assert_eq!(fragment_header, parsed_fragment_header);
     }
 
@@ -123,11 +120,9 @@ mod tests {
 
         let mut buffer = vec![0u8; PacketHeader::size()];
 
-        let mut cursor = Cursor::new(buffer.as_mut_slice());
-        header.write(&mut cursor).unwrap();
+        header.write(&mut buffer).unwrap();
 
-        let mut cursor = Cursor::new(buffer.as_slice());
-        let parsed_header = PacketHeader::parse(&mut cursor).unwrap();
+        let parsed_header = PacketHeader::parse(&mut buffer).unwrap();
         assert_eq!(header, parsed_header);
     }
 }
