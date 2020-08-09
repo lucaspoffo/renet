@@ -1,14 +1,15 @@
 use self::packet::{
-    FragmentHeader, HeaderParser, PacketHeader, FRAGMENT_MAX_COUNT, FRAGMENT_MAX_SIZE, PacketType
+    FragmentHeader, HeaderParser, PacketHeader, PacketType, FRAGMENT_MAX_COUNT, FRAGMENT_MAX_SIZE,
 };
 use self::sequence_buffer::SequenceBuffer;
 use async_std::net::UdpSocket;
 use error::{RenetError, Result};
 use futures::future::try_join_all;
+use log::trace;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
-use log::trace;
+use std::time::{Duration, Instant};
 
 mod error;
 mod packet;
@@ -37,11 +38,15 @@ impl Default for ReassemblyFragment {
 
 impl ReassemblyFragment {
     pub fn new(sequence: u16, num_fragments_total: usize) -> Self {
+        let len = num_fragments_total * FRAGMENT_MAX_SIZE;
+        let mut buffer = Vec::with_capacity(len);
+        buffer.resize(len, 0u8);
+
         Self {
             sequence,
             num_fragments_received: 0,
             num_fragments_total,
-            buffer: Vec::with_capacity(num_fragments_total * FRAGMENT_MAX_SIZE),
+            buffer,
             fragments_received: [false; FRAGMENT_MAX_COUNT],
         }
     }
@@ -53,6 +58,8 @@ pub struct Config {
     fragment_above: usize,
     fragment_size: usize,
     fragment_reassembly_buffer_size: usize,
+    sent_packets_buffer_size: usize,
+    bandwidth_smoothing_factor: f64,
 }
 
 impl Default for Config {
@@ -63,7 +70,31 @@ impl Default for Config {
             fragment_above: 1024,
             fragment_size: 1024,
             fragment_reassembly_buffer_size: 256,
+            sent_packets_buffer_size: 256,
+            bandwidth_smoothing_factor: 0.1,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SentPacket {
+    time: Instant,
+    /// Packet size in bytes
+    size: usize,
+}
+
+impl Default for SentPacket {
+    fn default() -> Self {
+        Self {
+            size: 0,
+            time: Instant::now(),
+        }
+    }
+}
+
+impl SentPacket {
+    fn new(time: Instant, size: usize) -> Self {
+        Self { time, size }
     }
 }
 
@@ -73,7 +104,9 @@ pub struct Endpoint {
     config: Config,
     sequence: AtomicU16,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
+    sent_buffer: SequenceBuffer<SentPacket>,
     socket: UdpSocket,
+    sent_bandwidth_kbps: f64,
 }
 
 impl Endpoint {
@@ -85,17 +118,22 @@ impl Endpoint {
             reassembly_buffer: SequenceBuffer::with_capacity(
                 config.fragment_reassembly_buffer_size,
             ),
+            sent_buffer: SequenceBuffer::with_capacity(config.sent_packets_buffer_size),
             config,
             socket,
+            sent_bandwidth_kbps: 0.0,
         }
     }
 
-    pub async fn send_to(&self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
+    pub async fn send_to(&mut self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
         if payload.len() > self.config.max_packet_size {
             return Err(RenetError::MaximumPacketSizeExceeded);
         }
-
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+
+        // TODO: add header size
+        let sent_packet = SentPacket::new(Instant::now(), payload.len());
+        self.sent_buffer.insert(sequence, sent_packet);
         if payload.len() > self.config.fragment_above {
             // Fragment packet
             let fragments = build_fragments(payload, sequence, &self.config)?;
@@ -123,8 +161,50 @@ impl Endpoint {
             let payload = &payload[FragmentHeader::size()..];
             return Ok(Some(payload.into()));
         } else {
-            let payload = self.reassembly_buffer.handle_fragment(payload)?;
+            let payload = self.reassembly_buffer.handle_fragment(payload, &self.config)?;
             return Ok(payload);
+        }
+    }
+
+    pub fn sent_bandwidth_kbps(&self) -> f64 {
+        self.sent_bandwidth_kbps
+    }
+
+    pub fn update_sent_bandwidth(&mut self) {
+        let sample_size = self.config.sent_packets_buffer_size / 2;
+        let sequence = self.sequence.fetch_add(0, Ordering::SeqCst);
+        let base_sequence = sequence
+            .wrapping_sub(self.config.sent_packets_buffer_size as u16)
+            .wrapping_add(1);
+        let mut bytes_sent = 0;
+        let duration = Duration::from_secs(100);
+        let mut start_time = Instant::now();
+        let mut end_time = Instant::now() - duration;
+        for i in 0..sample_size {
+            if let Some(sent_packet) = self
+                .sent_buffer
+                .get_mut(base_sequence.wrapping_add(i as u16))
+            {
+                bytes_sent += sent_packet.size;
+                if sent_packet.time < start_time {
+                    start_time = sent_packet.time;
+                }
+                if sent_packet.time > end_time {
+                    end_time = sent_packet.time;
+                }
+            }
+        }
+        if end_time <= start_time {
+            return;
+        }
+        let sent_bandwidth_kbps =
+            bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
+        trace!("sent_bandwidth_kbps: {:?}", sent_bandwidth_kbps);
+        if f64::abs(self.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
+            self.sent_bandwidth_kbps += (sent_bandwidth_kbps - self.sent_bandwidth_kbps)
+                * self.config.bandwidth_smoothing_factor;
+        } else {
+            self.sent_bandwidth_kbps = sent_bandwidth_kbps;
         }
     }
 }
@@ -172,7 +252,7 @@ pub fn build_fragments(payload: &[u8], sequence: u16, config: &Config) -> Result
 }
 
 impl SequenceBuffer<ReassemblyFragment> {
-    pub fn handle_fragment(&mut self, payload: &[u8]) -> Result<Option<Vec<u8>>> {
+    pub fn handle_fragment(&mut self, payload: &[u8], config: &Config) -> Result<Option<Vec<u8>>> {
         let header_payload = &payload[..FragmentHeader::size()];
         let mut cursor = Cursor::new(header_payload);
         let header = FragmentHeader::parse(&mut cursor)?;
@@ -204,7 +284,16 @@ impl SequenceBuffer<ReassemblyFragment> {
 
         reassembly_fragment.num_fragments_received += 1;
         reassembly_fragment.fragments_received[header.fragment_id as usize] = true;
-        reassembly_fragment.buffer.write_all(&*payload)?;
+        
+        // Resize buffer to fit the last fragment size
+        if header.fragment_id == header.num_fragments - 1 {
+            let len = (reassembly_fragment.num_fragments_total - 1) * config.fragment_size + payload.len(); 
+            reassembly_fragment.buffer.resize(len, 0); 
+        }
+
+        let mut cursor = Cursor::new(reassembly_fragment.buffer.as_mut_slice());
+        cursor.set_position(header.fragment_id as u64 * config.fragment_size as u64);
+        cursor.write_all(payload)?;
 
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
             drop(reassembly_fragment);
@@ -225,26 +314,26 @@ mod tests {
 
     #[test]
     fn fragment() {
-        let payload = [7u8; 3500];
+        let payload = [0u8; 3500];
         let config = Config::default();
         let fragments = build_fragments(&payload, 0, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
             SequenceBuffer::with_capacity(256);
         assert_eq!(4, fragments.len());
         assert!(fragments_reassembly
-            .handle_fragment(&fragments[0])
+            .handle_fragment(&fragments[0], &config)
             .unwrap()
             .is_none());
         assert!(fragments_reassembly
-            .handle_fragment(&fragments[1])
+            .handle_fragment(&fragments[1], &config)
             .unwrap()
             .is_none());
         assert!(fragments_reassembly
-            .handle_fragment(&fragments[2])
+            .handle_fragment(&fragments[2], &config)
             .unwrap()
             .is_none());
         let reassembly_payload = fragments_reassembly
-            .handle_fragment(&fragments[3])
+            .handle_fragment(&fragments[3], &config)
             .unwrap()
             .unwrap();
 
