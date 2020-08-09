@@ -87,6 +87,11 @@ impl<T: Clone + Default> SequenceBuffer<T> {
     pub fn len(&mut self) -> usize {
         self.entries.len()
     }
+    
+    #[inline]
+    pub fn sequence(&self) -> u16 {
+        self.sequence
+    }
 }
 
 // Since sequences can wrap we need to check when this when checking greater

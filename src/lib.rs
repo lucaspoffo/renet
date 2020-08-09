@@ -59,6 +59,7 @@ pub struct Config {
     fragment_size: usize,
     fragment_reassembly_buffer_size: usize,
     sent_packets_buffer_size: usize,
+    received_packets_buffer_size: usize,
     bandwidth_smoothing_factor: f64,
 }
 
@@ -71,6 +72,7 @@ impl Default for Config {
             fragment_size: 1024,
             fragment_reassembly_buffer_size: 256,
             sent_packets_buffer_size: 256,
+            received_packets_buffer_size: 256,
             bandwidth_smoothing_factor: 0.1,
         }
     }
@@ -98,6 +100,29 @@ impl SentPacket {
     }
 }
 
+
+#[derive(Debug, Clone)]
+struct ReceivedPacket {
+    time: Instant,
+    /// Packet size in bytes
+    size: usize,
+}
+
+impl Default for ReceivedPacket {
+    fn default() -> Self {
+        Self {
+            size: 0,
+            time: Instant::now(),
+        }
+    }
+}
+
+impl ReceivedPacket {
+    fn new(time: Instant, size: usize) -> Self {
+        Self { time, size }
+    }
+}
+
 pub struct Endpoint {
     time: f64,
     rtt: f32,
@@ -105,8 +130,10 @@ pub struct Endpoint {
     sequence: AtomicU16,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
+    received_buffer: SequenceBuffer<ReceivedPacket>,
     socket: UdpSocket,
     sent_bandwidth_kbps: f64,
+    received_bandwidth_kbps: f64,
 }
 
 impl Endpoint {
@@ -119,9 +146,11 @@ impl Endpoint {
                 config.fragment_reassembly_buffer_size,
             ),
             sent_buffer: SequenceBuffer::with_capacity(config.sent_packets_buffer_size),
+            received_buffer: SequenceBuffer::with_capacity(config.received_packets_buffer_size),
             config,
             socket,
             sent_bandwidth_kbps: 0.0,
+            received_bandwidth_kbps: 0.0,
         }
     }
 
@@ -158,10 +187,30 @@ impl Endpoint {
             let header = PacketHeader::parse(&mut cursor)?;
             trace!("Received: {:?}", header);
 
+            // Received packet to buffer
+            let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
+            self.received_buffer.insert(header.sequence, received_packet);
+
             let payload = &payload[FragmentHeader::size()..];
             return Ok(Some(payload.into()));
         } else {
-            let payload = self.reassembly_buffer.handle_fragment(payload, &self.config)?;
+            let header_payload = &payload[..FragmentHeader::size()];
+            let mut cursor = Cursor::new(header_payload);
+            let header = FragmentHeader::parse(&mut cursor)?;
+            
+            if let Some(received_packet) = self.received_buffer.get_mut(header.sequence) {
+                // log::debug!("Changing Received packet: {:?}.", received_packet);
+                received_packet.size += payload.len();
+            } else {
+                let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
+                // log::debug!("Received packet: {:?}.", received_packet);
+                let a = self.received_buffer.insert(header.sequence, received_packet);
+                // log::debug!("Inserted: {:?}.", a);
+            }
+            
+            let payload = &payload[FragmentHeader::size()..];
+            
+            let payload = self.reassembly_buffer.handle_fragment(header, payload, &self.config)?;
             return Ok(payload);
         }
     }
@@ -170,16 +219,18 @@ impl Endpoint {
         self.sent_bandwidth_kbps
     }
 
+    pub fn received_bandwidth_kbps(&self) -> f64 {
+        self.received_bandwidth_kbps
+    }
+
     pub fn update_sent_bandwidth(&mut self) {
         let sample_size = self.config.sent_packets_buffer_size / 2;
-        let sequence = self.sequence.fetch_add(0, Ordering::SeqCst);
-        let base_sequence = sequence
+        let base_sequence = self.sent_buffer.sequence()
             .wrapping_sub(self.config.sent_packets_buffer_size as u16)
             .wrapping_add(1);
         let mut bytes_sent = 0;
-        let duration = Duration::from_secs(100);
         let mut start_time = Instant::now();
-        let mut end_time = Instant::now() - duration;
+        let mut end_time = Instant::now() - Duration::from_secs(100);
         for i in 0..sample_size {
             if let Some(sent_packet) = self
                 .sent_buffer
@@ -194,17 +245,56 @@ impl Endpoint {
                 }
             }
         }
+
         if end_time <= start_time {
             return;
         }
+
         let sent_bandwidth_kbps =
             bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
-        trace!("sent_bandwidth_kbps: {:?}", sent_bandwidth_kbps);
         if f64::abs(self.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
             self.sent_bandwidth_kbps += (sent_bandwidth_kbps - self.sent_bandwidth_kbps)
                 * self.config.bandwidth_smoothing_factor;
         } else {
             self.sent_bandwidth_kbps = sent_bandwidth_kbps;
+        }
+    }
+    
+    pub fn update_received_bandwidth(&mut self) {
+        let sample_size = self.config.received_packets_buffer_size / 2;
+        let base_sequence = self.received_buffer.sequence()
+            .wrapping_sub(self.config.received_packets_buffer_size as u16)
+            .wrapping_add(1);
+
+        let mut bytes_received = 0;
+        let mut start_time = Instant::now();
+        let mut end_time = Instant::now() - Duration::from_secs(100);
+        for i in 0..sample_size {
+            if let Some(received_packet) = self
+                .received_buffer
+                .get_mut(base_sequence.wrapping_add(i as u16))
+            {
+                bytes_received += received_packet.size;
+                if received_packet.time < start_time {
+                    start_time = received_packet.time;
+                }
+                if received_packet.time > end_time {
+                    end_time = received_packet.time;
+                }
+            }
+        }
+
+        if end_time <= start_time {
+            return;
+        }
+
+        let received_bandwidth_kbps =
+            bytes_received as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
+        if f64::abs(self.received_bandwidth_kbps - received_bandwidth_kbps) > 0.0001 {
+            self.received_bandwidth_kbps += (received_bandwidth_kbps - self.received_bandwidth_kbps)
+                * self.config.bandwidth_smoothing_factor;
+        } else {
+            self.received_bandwidth_kbps = received_bandwidth_kbps;
         }
     }
 }
@@ -252,13 +342,7 @@ pub fn build_fragments(payload: &[u8], sequence: u16, config: &Config) -> Result
 }
 
 impl SequenceBuffer<ReassemblyFragment> {
-    pub fn handle_fragment(&mut self, payload: &[u8], config: &Config) -> Result<Option<Vec<u8>>> {
-        let header_payload = &payload[..FragmentHeader::size()];
-        let mut cursor = Cursor::new(header_payload);
-        let header = FragmentHeader::parse(&mut cursor)?;
-
-        let payload = &payload[FragmentHeader::size()..];
-        trace!("Received: {:?}", header);
+    pub fn handle_fragment(&mut self, header: FragmentHeader, payload: &[u8], config: &Config) -> Result<Option<Vec<u8>>> {
         if !self.exists(header.sequence) {
             let reassembly_fragment =
                 ReassemblyFragment::new(header.sequence, header.num_fragments as usize);

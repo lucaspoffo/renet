@@ -1,3 +1,4 @@
+use log::trace;
 use async_std::io;
 use async_std::net::UdpSocket;
 use async_std::task;
@@ -14,11 +15,16 @@ fn main() -> io::Result<()> {
         let mut buf = vec![0u8; 1500];
         let config = Config::default();
         let mut endpoint = Endpoint::new(config, 0.0, socket);
-
+        let mut i: u32 = 0;
         loop {
             if let Ok(Some(packet)) = endpoint.receive(&mut buf).await {
                 log::trace!("Received packet with len {}:\n", packet.len());
             }
+            // i.wrapping_add(1);
+            // if i % 15 == 0 {
+                 endpoint.update_received_bandwidth();
+            // }
+            trace!("Received Bandwidth: {} kbps", endpoint.received_bandwidth_kbps()); 
             //let sent = socket.send_to(&buf[..n], &peer).await?;
             //println!("Sent {} out of {} bytes to {}", sent, n , peer);
         }
