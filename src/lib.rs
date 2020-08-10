@@ -62,6 +62,7 @@ pub struct Config {
     received_packets_buffer_size: usize,
     bandwidth_smoothing_factor: f64,
     rtt_smoothing_factor: f64,
+    packet_loss_smoothing_factor: f64,
 }
 
 impl Default for Config {
@@ -76,6 +77,7 @@ impl Default for Config {
             received_packets_buffer_size: 256,
             bandwidth_smoothing_factor: 0.1,
             rtt_smoothing_factor: 0.0025,
+            packet_loss_smoothing_factor: 0.1,
         }
     }
 }
@@ -140,6 +142,7 @@ pub struct Endpoint {
     socket: UdpSocket,
     sent_bandwidth_kbps: f64,
     received_bandwidth_kbps: f64,
+    packet_loss: f64,
 }
 
 impl Endpoint {
@@ -156,6 +159,7 @@ impl Endpoint {
             socket,
             sent_bandwidth_kbps: 0.0,
             received_bandwidth_kbps: 0.0,
+            packet_loss: 0.0,
         }
     }
 
@@ -169,6 +173,10 @@ impl Endpoint {
 
     pub fn rtt(&self) -> f64 {
         self.rtt
+    }
+
+    pub fn packet_loss(&self) -> f64 {
+        self.packet_loss
     }
 
     pub async fn send_to(&mut self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
@@ -241,6 +249,8 @@ impl Endpoint {
             .sequence()
             .wrapping_sub(self.config.sent_packets_buffer_size as u16)
             .wrapping_add(1);
+
+        let mut packets_dropped = 0;
         let mut bytes_sent = 0;
         let mut start_time = Instant::now();
         let mut end_time = Instant::now() - Duration::from_secs(100);
@@ -256,9 +266,21 @@ impl Endpoint {
                 if sent_packet.time > end_time {
                     end_time = sent_packet.time;
                 }
+                if !sent_packet.ack {
+                    packets_dropped += 1;
+                }
             }
         }
 
+        // Calculate packet loss
+        let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
+        if f64::abs(self.packet_loss - packet_loss) > 0.0001 {
+            self.packet_loss += (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
+        } else {
+            self.packet_loss = packet_loss;
+        }
+
+        // Calculate sent bandwidth
         if end_time <= start_time {
             return;
         }

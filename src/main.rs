@@ -18,18 +18,22 @@ fn main() -> io::Result<()> {
 
         loop {
             if let Ok(Some((packet, addrs))) = endpoint.recv_from(&mut buf).await {
-                log::trace!("Received packet with len {} from {}.\n", packet.len(), addrs);
+                log::trace!(
+                    "Received packet with len {} from {}.\n",
+                    packet.len(),
+                    addrs
+                );
                 endpoint.send_to(&packet, addrs).await;
             }
             i = i.wrapping_add(1);
             if i % 15 == 0 {
                 endpoint.update_received_bandwidth();
+                endpoint.update_sent_bandwidth();
             }
-            trace!(
-                "Received Bandwidth: {} kbps",
-                endpoint.received_bandwidth_kbps()
-            );
-            trace!("RTT: {}", endpoint.rtt()); 
+            trace!("Received Bandwidth: {}", endpoint.received_bandwidth_kbps());
+            trace!("Sent Bandwidth: {}", endpoint.sent_bandwidth_kbps());
+            trace!("RTT: {}", endpoint.rtt());
+            trace!("Packet Loss: {}%", endpoint.packet_loss()); 
             //let sent = socket.send_to(&buf[..n], &peer).await?;
             //println!("Sent {} out of {} bytes to {}", sent, n , peer);
         }

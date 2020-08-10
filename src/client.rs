@@ -23,9 +23,12 @@ fn main() -> io::Result<()> {
             i = i.wrapping_add(1);
             if i % 15 == 0 {
                 endpoint.update_sent_bandwidth();
+                endpoint.update_received_bandwidth();
             }
             trace!("Sent Bandwidth: {}", endpoint.sent_bandwidth_kbps());
+            trace!("Receive Bandwidth: {}", endpoint.received_bandwidth_kbps());
             trace!("RTT: {}", endpoint.rtt()); 
+            trace!("Packet Loss: {}%", endpoint.packet_loss()); 
             endpoint.send_to(&payload, "127.0.0.1:8080".parse().unwrap()).await.unwrap();
             if let Ok(Some((packet, addrs))) = endpoint.recv_from(&mut buf).await {
                 log::trace!("Received packet with len {}\n from {}", packet.len(), addrs);
