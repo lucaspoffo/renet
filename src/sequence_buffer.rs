@@ -43,7 +43,8 @@ impl<T: Clone + Default> SequenceBuffer<T> {
         ) {
             return None;
         }
-
+        
+        // TODO: investigate why adding 1 here, we subtracting 1 when generating ack because of this
         if sequence_greater_than(sequence.wrapping_add(1), self.sequence) {
             self.remove_entries(u32::from(sequence));
             self.sequence = sequence.wrapping_add(1);
@@ -91,6 +92,21 @@ impl<T: Clone + Default> SequenceBuffer<T> {
     #[inline]
     pub fn sequence(&self) -> u16 {
         self.sequence
+    }
+
+    pub fn ack_bits(&self) -> (u16, u32) {
+        let ack = self.sequence().wrapping_sub(1);
+        let mut ack_bits = 0;
+
+        for i in 1..=32 {
+            let sequence = ack.wrapping_sub(i);
+            if self.exists(sequence) {
+                ack_bits |= 1;
+            }
+            ack_bits <<= 1;
+        }
+
+        (ack, ack_bits)
     }
 }
 

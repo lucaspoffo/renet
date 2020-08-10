@@ -10,6 +10,7 @@ pub enum RenetError {
     InvalidNumberFragment,
     FragmentAlreadyProcessed,
     InvalidHeaderType,
+    FragmentMissingPacketHeader,
     IOError(io::Error),
 }
 
