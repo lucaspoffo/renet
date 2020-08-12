@@ -12,6 +12,7 @@ pub enum PacketType {
 
 // TODO: implement prefix byte to accomodate 4 bits for the packet type
 // and 4 bits for the ack_bits enconding optimization
+// TODO: we can delta encode the sequence with the ack, but should we? 
 pub trait HeaderParser {
     type Header;
 

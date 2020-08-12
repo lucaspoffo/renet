@@ -5,7 +5,7 @@ use self::sequence_buffer::SequenceBuffer;
 use async_std::net::UdpSocket;
 use error::{RenetError, Result};
 use futures::future::try_join_all;
-use log::trace;
+use log::{debug, error, trace};
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -53,6 +53,7 @@ impl ReassemblyFragment {
 }
 
 pub struct Config {
+    name: String,
     max_packet_size: usize,
     max_fragments: usize,
     fragment_above: usize,
@@ -68,6 +69,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            name: "Endpoint".into(),
             max_packet_size: 16 * 1024,
             max_fragments: 32,
             fragment_above: 1024,
@@ -146,7 +148,7 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-    pub fn new(config: Config, socket: UdpSocket) -> Self {
+    pub fn new(name: String, config: Config, socket: UdpSocket) -> Self {
         Self {
             rtt: 0.0,
             sequence: AtomicU16::new(0),
@@ -181,6 +183,12 @@ impl Endpoint {
 
     pub async fn send_to(&mut self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
         if payload.len() > self.config.max_packet_size {
+            error!(
+                "[{}] packet to large to send, maximum is {} got {}.",
+                self.config.name,
+                self.config.max_packet_size,
+                payload.len()
+            );
             return Err(RenetError::MaximumPacketSizeExceeded);
         }
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
@@ -190,11 +198,16 @@ impl Endpoint {
         self.sent_buffer.insert(sequence, sent_packet);
         if payload.len() > self.config.fragment_above {
             // Fragment packet
+            debug!(
+                "[{}] sending fragmented packet {}.",
+                self.config.name, sequence
+            );
             let fragments = build_fragments(payload, sequence, ack, ack_bits, &self.config)?;
             let futures = fragments.iter().map(|f| self.socket.send_to(&f, addrs));
             try_join_all(futures).await?;
         } else {
             // Normal packet
+            debug!("[{}] sending normal packet {}.", self.config.name, sequence);
             let packet = build_normal_packet(payload, sequence, ack, ack_bits)?;
             self.socket.send_to(&packet, addrs).await?;
         }
@@ -204,8 +217,16 @@ impl Endpoint {
 
     pub async fn recv_from(&mut self, buf: &mut [u8]) -> Result<Option<(Vec<u8>, SocketAddr)>> {
         let (n, addrs) = self.socket.recv_from(buf).await?;
-        trace!("Received {} bytes from {}.", n, addrs);
         let mut payload = &buf[..n];
+        if payload.len() > self.config.max_packet_size {
+            error!(
+                "[{}] packet to large to received, maximum is {}, got {}.",
+                self.config.name,
+                self.config.max_packet_size,
+                payload.len()
+            );
+            return Err(RenetError::MaximumPacketSizeExceeded);
+        }
         if payload[0] == PacketType::Packet as u8 {
             let header = PacketHeader::parse(&mut payload)?;
             // Received packet to buffer
@@ -214,6 +235,7 @@ impl Endpoint {
                 .insert(header.sequence, received_packet);
             self.update_acket_packets(header.ack, header.ack_bits);
             let payload = &payload[header.size()..];
+            debug!("[{}] successfuly processed packet {}.", self.config.name, header.sequence);
             return Ok(Some((payload.into(), addrs)));
         } else {
             let fragment_header = FragmentHeader::parse(&mut payload)?;
@@ -232,9 +254,9 @@ impl Endpoint {
 
             let payload = &payload[fragment_header.size()..];
 
-            let payload = self
-                .reassembly_buffer
-                .handle_fragment(fragment_header, payload, &self.config)?;
+            let payload =
+                self.reassembly_buffer
+                    .handle_fragment(fragment_header, payload, &self.config)?;
             if let Some(payload) = payload {
                 return Ok(Some((payload, addrs)));
             }
@@ -275,7 +297,8 @@ impl Endpoint {
         // Calculate packet loss
         let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
         if f64::abs(self.packet_loss - packet_loss) > 0.0001 {
-            self.packet_loss += (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
+            self.packet_loss +=
+                (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
         } else {
             self.packet_loss = packet_loss;
         }
@@ -335,7 +358,7 @@ impl Endpoint {
             self.received_bandwidth_kbps = received_bandwidth_kbps;
         }
     }
-    
+
     fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {
         let mut ack_bits = ack_bits;
         // TODO: should we put the now time inside the endpoint?
@@ -345,17 +368,18 @@ impl Endpoint {
                 let ack_sequence = ack.wrapping_sub(i);
                 if let Some(ref mut sent_packet) = self.sent_buffer.get_mut(ack_sequence) {
                     if !sent_packet.ack {
+                        debug!("Acked packet {}.", ack_sequence);
                         sent_packet.ack = true;
                         let rtt = (now - sent_packet.time).as_secs_f64();
                         if self.rtt == 0.0 && rtt > 0.0 || f64::abs(self.rtt - rtt) < 0.00001 {
                             self.rtt = rtt;
                         } else {
-                            self.rtt += (rtt - self.rtt) * self.config.rtt_smoothing_factor; 
+                            self.rtt += (rtt - self.rtt) * self.config.rtt_smoothing_factor;
                         }
                     }
                 }
             }
-           ack_bits >>= 1; 
+            ack_bits >>= 1;
         }
     }
 }
@@ -391,6 +415,10 @@ pub fn build_fragments(
     let num_fragments = packet_bytes / config.fragment_size + exact_division;
 
     if num_fragments > config.max_fragments {
+        error!(
+            "[{}] fragmentation exceeded maximum number of fragments, got {}, maximum is {}.",
+            config.name, num_fragments, config.max_fragments
+        );
         return Err(RenetError::MaximumFragmentsExceeded);
     }
 
@@ -439,23 +467,50 @@ impl SequenceBuffer<ReassemblyFragment> {
 
         let reassembly_fragment = match self.get_mut(header.sequence) {
             Some(x) => x,
-            None => return Err(RenetError::CouldNotFindFragment),
+            None => {
+                error!(
+                    "[{}] could not find reassembly fragment {}",
+                    config.name, header.sequence
+                );
+                return Err(RenetError::CouldNotFindFragment);
+            }
         };
 
         if reassembly_fragment.num_fragments_total != header.num_fragments as usize {
+            error!(
+                "[{}] ignoring packet with invalid number of fragments, expected {}, got {}.",
+                config.name, reassembly_fragment.num_fragments_total, header.num_fragments
+            );
             return Err(RenetError::InvalidNumberFragment);
         }
 
         if header.fragment_id as usize >= reassembly_fragment.num_fragments_total {
+            error!(
+                "[{}] ignoring fragment {} of packet {} with invalid fragment id",
+                config.name, header.fragment_id, header.sequence
+            );
             return Err(RenetError::MaximumFragmentsExceeded);
         }
 
         if reassembly_fragment.fragments_received[header.fragment_id as usize] {
+            error!(
+                "[{}] ignoring fragment {} of packet {}, fragment already processed.",
+                config.name, header.fragment_id, header.sequence
+            );
             return Err(RenetError::FragmentAlreadyProcessed);
         }
 
         reassembly_fragment.num_fragments_received += 1;
         reassembly_fragment.fragments_received[header.fragment_id as usize] = true;
+
+        debug!(
+            "[{}] received fragment {} of packet {} ({}/{})",
+            config.name,
+            header.fragment_id,
+            header.sequence,
+            reassembly_fragment.num_fragments_received,
+            reassembly_fragment.num_fragments_total
+        );
 
         // Resize buffer to fit the last fragment size
         if header.fragment_id == header.num_fragments - 1 {
@@ -471,8 +526,16 @@ impl SequenceBuffer<ReassemblyFragment> {
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
             drop(reassembly_fragment);
             if let Some(reassembly_fragment) = self.remove(header.sequence) {
+                debug!(
+                    "[{}] completed the reassembly of packet {}.",
+                    config.name, reassembly_fragment.sequence
+                );
                 return Ok(Some(reassembly_fragment.buffer.clone()));
             } else {
+                error!(
+                    "[{}] failed to find reassembly fragment {}.",
+                    config.name, header.sequence
+                );
                 return Err(RenetError::CouldNotFindFragment);
             }
         }
@@ -489,7 +552,7 @@ mod tests {
     fn fragment() {
         let payload = [0u8; 2500];
         let config = Config::default();
-            let fragments = build_fragments(&payload, 0, 0, 0, &config).unwrap();
+        let fragments = build_fragments(&payload, 0, 0, 0, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
             SequenceBuffer::with_capacity(256);
         assert_eq!(3, fragments.len());
