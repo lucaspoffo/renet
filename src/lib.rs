@@ -148,7 +148,7 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-    pub fn new(name: String, config: Config, socket: UdpSocket) -> Self {
+    pub fn new(config: Config, socket: UdpSocket) -> Self {
         Self {
             rtt: 0.0,
             sequence: AtomicU16::new(0),
