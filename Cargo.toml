@@ -8,11 +8,11 @@ edition = "2018"
 
 [[bin]]
 name = "client"
-path = "src/client.rs"
+path = "examples/client.rs"
 
 [[bin]]
 name = "server"
-path = "src/main.rs"
+path = "examples/server.rs"
 
 [dependencies]
 async-std = "1.6.2"

@@ -10,10 +10,12 @@ use std::io::{Cursor, Write};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
+use std::collections::HashMap;
 
 mod error;
 mod packet;
 mod sequence_buffer;
+mod connection;
 
 #[derive(Clone)]
 struct ReassemblyFragment {
@@ -24,6 +26,8 @@ struct ReassemblyFragment {
     fragments_received: [bool; FRAGMENT_MAX_COUNT],
 }
 
+// TODO: remove FRAGMENT_MAX_COUNT and FRAGMENT_MAX_SIZE
+// pass these values to config
 impl Default for ReassemblyFragment {
     fn default() -> Self {
         Self {
@@ -134,6 +138,8 @@ impl ReceivedPacket {
     }
 }
 
+// TODO: separate metrics (rtt, received/sent kbps, packet loss)
+// move to a NetworkInfo struct
 pub struct Endpoint {
     rtt: f64,
     config: Config,
