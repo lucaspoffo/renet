@@ -15,7 +15,7 @@ use std::collections::HashMap;
 mod error;
 mod packet;
 mod sequence_buffer;
-mod connection;
+pub mod connection;
 
 #[derive(Clone)]
 struct ReassemblyFragment {

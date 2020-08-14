@@ -14,6 +14,14 @@ path = "examples/client.rs"
 name = "server"
 path = "examples/server.rs"
 
+[[bin]]
+name = "connection_client"
+path = "examples/connection_client.rs"
+
+[[bin]]
+name = "connection_server"
+path = "examples/connection_server.rs"
+
 [dependencies]
 async-std = "1.6.2"
 serde = "1.0.114"
