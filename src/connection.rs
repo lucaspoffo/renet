@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
+use crate::{Endpoint, Config};
 // TODO: Setup Client / Server arquitecture
 // Add ClientState
 // Connecting/Connected/Disconnected/Denied/TimedOut/RequestTimeOut/ResponseTimeOut
@@ -56,6 +57,10 @@ use std::time::{Duration, Instant};
 // In the absence of payload packets the server send Keep-Alive packets at some rate like 10Hz
 //
 
+// TODO When successfuly connected an reliable endpoint should be created
+// When receiving a payload packet we should pass it to the correct endpoint,
+// in ther server to the matching client
+
 const PACKET_CONNECTION: u8 = 0;
 const PACKET_CONNECTION_DENIED: u8 = 1;
 const PACKET_CHALLENGE: u8 = 2;
@@ -64,6 +69,8 @@ const PACKET_HEARTBEAT: u8 = 4;
 const PACKET_PAYLOAD: u8 = 5;
 const PACKET_DISCONNECT: u8 = 6;
 
+// TODO Should we divide the packet types in 2 enum?
+// One for the client packets and another for the server packets
 #[derive(Debug)]
 enum Packet {
     ConnectionRequest(ClientId),
@@ -131,7 +138,9 @@ impl Packet {
     }
 }
 
-// TODO: separate connected state from connecting state
+// TODO separate connected state from connecting state
+// TODO investigate if we can separate the client state
+// in the server from the from the client itself
 #[derive(Debug, Eq, PartialEq)]
 pub enum ClientState {
     ConnectionTimedOut,
@@ -169,7 +178,7 @@ pub struct ServerConnection;
 
 impl RequestConnection {
     pub fn new(socket: UdpSocket, server_addr: SocketAddr) -> Result<Self, ConnectionError> {
-        socket.set_nonblocking(true);
+        socket.set_nonblocking(true)?;
         Ok(Self {
             socket,
             server_addr,
@@ -301,15 +310,17 @@ type ClientId = u64;
 
 struct Client {
     id: ClientId,
+    // endpoint: Endpoint, 
     state: ClientState,
     addr: SocketAddr,
 }
 
 impl Client {
-    fn new(id: ClientId, addr: SocketAddr) -> Self {
+    fn new(id: ClientId, addr: SocketAddr, /*endpoint: Endpoint*/) -> Self {
         Self {
             id,
             addr,
+            // endpoint,
             state: ClientState::Connected,
         }
     }
@@ -333,6 +344,8 @@ pub struct Server {
     buffer: Vec<u8>,
 }
 
+// TODO we should use a Sender / Receiver from something like crossbeam
+// to dispatch these events
 enum ServerEvent {
     ClientConnected(ClientId),
     ClientDisconnected(ClientId),
@@ -477,6 +490,7 @@ impl Server {
                 connection.client_id,
                 connection.addr,
             );
+            //let endpoint = Endpoint::new(self.config, &self.socket)
             let client = Client::new(connection.client_id, connection.addr);
             self.clients.insert(client.id, client);
         }

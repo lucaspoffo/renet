@@ -2,15 +2,12 @@ use self::packet::{
     FragmentHeader, HeaderParser, PacketHeader, PacketType, FRAGMENT_MAX_COUNT, FRAGMENT_MAX_SIZE,
 };
 use self::sequence_buffer::SequenceBuffer;
-use async_std::net::UdpSocket;
 use error::{RenetError, Result};
-use futures::future::try_join_all;
-use log::{debug, error, trace};
+use log::{debug, error};
 use std::io::{Cursor, Write};
-use std::net::SocketAddr;
+use std::net::{UdpSocket, SocketAddr};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
 
 mod error;
 mod packet;
@@ -139,7 +136,7 @@ impl ReceivedPacket {
 }
 
 // TODO: separate metrics (rtt, received/sent kbps, packet loss)
-// move to a NetworkInfo struct
+// Move to a NetworkInfo struct
 pub struct Endpoint {
     rtt: f64,
     config: Config,
@@ -187,7 +184,7 @@ impl Endpoint {
         self.packet_loss
     }
 
-    pub async fn send_to(&mut self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
+    pub fn send_to(&mut self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
         if payload.len() > self.config.max_packet_size {
             error!(
                 "[{}] packet to large to send, maximum is {} got {}.",
@@ -209,21 +206,22 @@ impl Endpoint {
                 self.config.name, sequence
             );
             let fragments = build_fragments(payload, sequence, ack, ack_bits, &self.config)?;
-            let futures = fragments.iter().map(|f| self.socket.send_to(&f, addrs));
-            try_join_all(futures).await?;
+            for f in fragments.iter() {
+                self.socket.send_to(&f, addrs)?;
+            }
         } else {
             // Normal packet
             debug!("[{}] sending normal packet {}.", self.config.name, sequence);
             let packet = build_normal_packet(payload, sequence, ack, ack_bits)?;
-            self.socket.send_to(&packet, addrs).await?;
+            self.socket.send_to(&packet, addrs)?;
         }
 
         Ok(())
     }
 
-    pub async fn recv_from(&mut self, buf: &mut [u8]) -> Result<Option<(Vec<u8>, SocketAddr)>> {
-        let (n, addrs) = self.socket.recv_from(buf).await?;
-        let mut payload = &buf[..n];
+    pub fn recv_from(&mut self, buf: &mut [u8]) -> Result<Option<(Vec<u8>, SocketAddr)>> {
+        let (n, addrs) = self.socket.recv_from(buf)?;
+        let payload = &mut buf[..n];
         if payload.len() > self.config.max_packet_size {
             error!(
                 "[{}] packet to large to received, maximum is {}, got {}.",
@@ -233,8 +231,15 @@ impl Endpoint {
             );
             return Err(RenetError::MaximumPacketSizeExceeded);
         }
+        if let Some(payload) = self.process_payload(payload)? {
+            return Ok(Some((payload, addrs)));
+        }
+        Ok(None)
+    }
+
+    pub fn process_payload(&mut self, payload: &mut [u8]) -> Result<Option<Vec<u8>>> {
         if payload[0] == PacketType::Packet as u8 {
-            let header = PacketHeader::parse(&mut payload)?;
+            let header = PacketHeader::parse(payload)?;
             // Received packet to buffer
             let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
             self.received_buffer
@@ -242,9 +247,9 @@ impl Endpoint {
             self.update_acket_packets(header.ack, header.ack_bits);
             let payload = &payload[header.size()..];
             debug!("[{}] successfuly processed packet {}.", self.config.name, header.sequence);
-            return Ok(Some((payload.into(), addrs)));
+            return Ok(Some((payload.into())));
         } else {
-            let fragment_header = FragmentHeader::parse(&mut payload)?;
+            let fragment_header = FragmentHeader::parse(payload)?;
 
             if let Some(received_packet) = self.received_buffer.get_mut(fragment_header.sequence) {
                 received_packet.size += payload.len();
@@ -264,7 +269,7 @@ impl Endpoint {
                 self.reassembly_buffer
                     .handle_fragment(fragment_header, payload, &self.config)?;
             if let Some(payload) = payload {
-                return Ok(Some((payload, addrs)));
+                return Ok(Some(payload));
             }
             return Ok(None);
         }
@@ -367,7 +372,7 @@ impl Endpoint {
 
     fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {
         let mut ack_bits = ack_bits;
-        // TODO: should we put the now time inside the endpoint?
+        // TODO: should we put the current time inside the endpoint?
         let now = Instant::now();
         for i in 0..32 {
             if ack_bits & 1 != 0 {
