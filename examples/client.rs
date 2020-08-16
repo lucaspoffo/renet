@@ -13,7 +13,7 @@ fn main() -> std::io::Result<()> {
     let payload = vec![7u8; 3500];
     let mut buf = vec![0u8; 1500];
     let config = Config::default();
-    let mut endpoint = Endpoint::new(config, socket);
+    let mut endpoint = Endpoint::new(config);
 
     let mut i: u32 = 0;
     loop {
@@ -27,9 +27,9 @@ fn main() -> std::io::Result<()> {
         trace!("RTT: {}", endpoint.rtt());
         trace!("Packet Loss: {}%", endpoint.packet_loss());
         endpoint
-            .send_to(&payload, "127.0.0.1:8080".parse().unwrap())
+            .send_to(&payload, "127.0.0.1:8080".parse().unwrap(), &socket)
             .unwrap();
-        if let Ok(Some((packet, addrs))) = endpoint.recv_from(&mut buf) {
+        if let Ok(Some((packet, addrs))) = endpoint.recv_from(&mut buf, &socket) {
             log::trace!("Received packet with len {}\n from {}", packet.len(), addrs);
         }
         //std::thread::sleep(Duration::from_millis(16));

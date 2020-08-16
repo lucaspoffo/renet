@@ -9,7 +9,7 @@ use std::net::{UdpSocket, SocketAddr};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
-mod error;
+pub mod error;
 mod packet;
 mod sequence_buffer;
 pub mod connection;
@@ -144,14 +144,13 @@ pub struct Endpoint {
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
     received_buffer: SequenceBuffer<ReceivedPacket>,
-    socket: UdpSocket,
     sent_bandwidth_kbps: f64,
     received_bandwidth_kbps: f64,
     packet_loss: f64,
 }
 
 impl Endpoint {
-    pub fn new(config: Config, socket: UdpSocket) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             rtt: 0.0,
             sequence: AtomicU16::new(0),
@@ -161,7 +160,6 @@ impl Endpoint {
             sent_buffer: SequenceBuffer::with_capacity(config.sent_packets_buffer_size),
             received_buffer: SequenceBuffer::with_capacity(config.received_packets_buffer_size),
             config,
-            socket,
             sent_bandwidth_kbps: 0.0,
             received_bandwidth_kbps: 0.0,
             packet_loss: 0.0,
@@ -184,7 +182,7 @@ impl Endpoint {
         self.packet_loss
     }
 
-    pub fn send_to(&mut self, payload: &[u8], addrs: SocketAddr) -> Result<()> {
+    pub fn generate_packets(&mut self, payload: &[u8]) -> Result<Vec<Vec<u8>>> {
         if payload.len() > self.config.max_packet_size {
             error!(
                 "[{}] packet to large to send, maximum is {} got {}.",
@@ -205,22 +203,26 @@ impl Endpoint {
                 "[{}] sending fragmented packet {}.",
                 self.config.name, sequence
             );
-            let fragments = build_fragments(payload, sequence, ack, ack_bits, &self.config)?;
-            for f in fragments.iter() {
-                self.socket.send_to(&f, addrs)?;
-            }
+            return build_fragments(payload, sequence, ack, ack_bits, &self.config);
         } else {
             // Normal packet
             debug!("[{}] sending normal packet {}.", self.config.name, sequence);
             let packet = build_normal_packet(payload, sequence, ack, ack_bits)?;
-            self.socket.send_to(&packet, addrs)?;
+            return Ok(vec![packet]);
+        }
+    }
+
+    pub fn send_to(&mut self, payload: &[u8], addrs: SocketAddr, socket: &UdpSocket) -> Result<()> {
+        let packets = self.generate_packets(payload)?;
+        for packet in packets {
+            socket.send_to(&packet, addrs)?;
         }
 
         Ok(())
     }
 
-    pub fn recv_from(&mut self, buf: &mut [u8]) -> Result<Option<(Vec<u8>, SocketAddr)>> {
-        let (n, addrs) = self.socket.recv_from(buf)?;
+    pub fn recv_from(&mut self, buf: &mut [u8], socket: &UdpSocket) -> Result<Option<(Vec<u8>, SocketAddr)>> {
+        let (n, addrs) = socket.recv_from(buf)?;
         let payload = &mut buf[..n];
         if payload.len() > self.config.max_packet_size {
             error!(
@@ -237,7 +239,7 @@ impl Endpoint {
         Ok(None)
     }
 
-    pub fn process_payload(&mut self, payload: &mut [u8]) -> Result<Option<Vec<u8>>> {
+    pub fn process_payload(&mut self, payload: &[u8]) -> Result<Option<Vec<u8>>> {
         if payload[0] == PacketType::Packet as u8 {
             let header = PacketHeader::parse(payload)?;
             // Received packet to buffer
