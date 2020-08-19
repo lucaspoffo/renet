@@ -1,6 +1,7 @@
 use crate::error::RenetError;
 use crate::{Config, Endpoint};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use log::{debug, error};
 use std::collections::HashMap;
 use std::io::{self, Cursor, Write};
 use std::net::{SocketAddr, UdpSocket};
@@ -166,6 +167,7 @@ pub struct RequestConnection {
     state: ClientState,
     socket: UdpSocket,
     server_addr: SocketAddr,
+    id: ClientId,
 }
 
 #[derive(Debug)]
@@ -184,14 +186,16 @@ impl From<io::Error> for ConnectionError {
 
 pub struct ServerConnection {
     socket: UdpSocket,
-    endpoint: Endpoint,
+    pub endpoint: Endpoint,
     server_addr: SocketAddr,
+    id: ClientId,
     pub received_payloads: Vec<Vec<u8>>,
 }
 
 impl ServerConnection {
-    fn new(socket: UdpSocket, server_addr: SocketAddr, endpoint: Endpoint) -> Self {
+    fn new(id: ClientId, socket: UdpSocket, server_addr: SocketAddr, endpoint: Endpoint) -> Self {
         Self {
+            id,
             socket,
             server_addr,
             endpoint,
@@ -204,11 +208,37 @@ impl ServerConnection {
         for reliable_packet in reliable_packets.iter_mut() {
             // TODO remove clone here
             let payload_packet = Packet::Payload(reliable_packet.clone().into_boxed_slice());
-            let mut buffer = vec![0u8; payload_packet.size()]; 
+            let mut buffer = vec![0u8; payload_packet.size()];
             payload_packet.encode(&mut buffer)?;
             self.socket.send_to(&buffer, self.server_addr)?;
         }
         Ok(())
+    }
+
+    fn process_packet(&mut self, mut packet: Packet) {
+        match packet {
+            Packet::Payload(ref mut payload) => match self.endpoint.process_payload(payload) {
+                Ok(Some(payload)) => {
+                    self.received_payloads.push(payload);
+                }
+                Err(e) => {
+                    error!(
+                        "Error in endpoint from server while processing payload:\n{:?}",
+                        e
+                    );
+                }
+                Ok(None) => {}
+            },
+            Packet::HeartBeat => {
+                debug!("Received HeartBeat from the server");
+            }
+            _ => {
+                debug!(
+                    "Ignoring Packet type {} while in connected state",
+                    packet.id()
+                );
+            }
+        }
     }
 
     pub fn process_events(&mut self) -> Result<(), RenetError> {
@@ -220,45 +250,27 @@ impl ServerConnection {
                         let payload = &buffer[..len];
                         Packet::decode(payload)?
                     } else {
-                        log::debug!("Discarded packet from unknown server {:?}", addr);
+                        debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
                 Err(e) => return Err(ConnectionError::IOError(e).into()),
             };
-
-            match packet {
-                Packet::Payload(ref mut payload) => match self.endpoint.process_payload(payload) {
-                    Ok(Some(payload)) => {
-                        self.received_payloads.push(payload);
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "Error in endpoint from server while processing payload:\n{:?}",
-                            e
-                        );
-                    }
-                    Ok(None) => {}
-                },
-                Packet::HeartBeat => {
-                    log::debug!("Received HeartBeat from the server");
-                }
-                _ => {
-                    log::debug!(
-                        "Ignoring Packet type {} while in connected state",
-                        packet.id()
-                    );
-                }
-            }
+            self.process_packet(packet);
         }
     }
 }
 
 impl RequestConnection {
-    pub fn new(socket: UdpSocket, server_addr: SocketAddr) -> Result<Self, ConnectionError> {
+    pub fn new(
+        id: ClientId,
+        socket: UdpSocket,
+        server_addr: SocketAddr,
+    ) -> Result<Self, ConnectionError> {
         socket.set_nonblocking(true)?;
         Ok(Self {
+            id,
             socket,
             server_addr,
             state: ClientState::SendingConnectionRequest,
@@ -268,22 +280,22 @@ impl RequestConnection {
     fn send_packet(&self, packet: Packet) -> Result<(), ConnectionError> {
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
-        log::debug!("Send Packet buffer: {:?}", buffer);
+        debug!("Send Packet buffer: {:?}", buffer);
         self.socket.send_to(&buffer, self.server_addr)?;
         Ok(())
     }
 
-    fn handle_packet(&mut self, packet: Packet) -> Result<(), ConnectionError> {
+    fn process_packet(&mut self, packet: Packet) -> Result<(), ConnectionError> {
         match packet {
             Packet::Challenge => {
                 if self.state == ClientState::SendingConnectionRequest {
-                    log::debug!("Received Challenge Packet, moving to State Sending Response");
+                    debug!("Received Challenge Packet, moving to State Sending Response");
                     self.state = ClientState::SendingChallengeResponse;
                 }
             }
             Packet::HeartBeat => {
                 if self.state == ClientState::SendingChallengeResponse {
-                    log::debug!("Received HeartBeat while sending challenge response, successfuly connected");
+                    debug!("Received HeartBeat while sending challenge response, successfuly connected");
                     self.state = ClientState::Connected;
                 }
             }
@@ -292,7 +304,7 @@ impl RequestConnection {
                 return Err(ConnectionError::Denied);
             }
             p => {
-                log::debug!("Received invalid packet {:?}", p);
+                debug!("Received invalid packet {:?}", p);
             }
         }
         Ok(())
@@ -300,10 +312,10 @@ impl RequestConnection {
 
     pub fn update(&mut self) -> Result<Option<ServerConnection>, ConnectionError> {
         self.process_events()?;
-        log::debug!("State: {:?}", self.state);
+        debug!("State: {:?}", self.state);
         match self.state {
             ClientState::SendingConnectionRequest => {
-                self.send_packet(Packet::ConnectionRequest(0))?;
+                self.send_packet(Packet::ConnectionRequest(self.id))?;
             }
             ClientState::SendingChallengeResponse => {
                 self.send_packet(Packet::ChallengeResponse)?;
@@ -313,6 +325,7 @@ impl RequestConnection {
                 let config = Config::default();
                 let endpoint = Endpoint::new(config);
                 return Ok(Some(ServerConnection::new(
+                    self.id,
                     self.socket.try_clone()?,
                     self.server_addr,
                     endpoint,
@@ -324,6 +337,7 @@ impl RequestConnection {
     }
 
     fn process_events(&mut self) -> Result<(), ConnectionError> {
+        // TODO: pass this buffer to struct
         let mut buffer = vec![0u8; 16000];
         loop {
             let packet = match self.socket.recv_from(&mut buffer) {
@@ -333,7 +347,7 @@ impl RequestConnection {
                         let packet = Packet::decode(payload)?;
                         packet
                     } else {
-                        log::debug!("Discarded packet from unknown server {:?}", addr);
+                        debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
                     }
                 }
@@ -341,7 +355,7 @@ impl RequestConnection {
                 Err(e) => return Err(ConnectionError::IOError(e).into()),
             };
 
-            self.handle_packet(packet)?;
+            self.process_packet(packet)?;
         }
     }
 }
@@ -373,13 +387,13 @@ impl HandleConnection {
             Packet::ChallengeResponse => {
                 if let ResponseConnectionState::SendingChallenge = self.state {
                     //TODO: check if challenge is valid
-                    log::debug!("Received Challenge Response from {}.", self.addr);
+                    debug!("Received Challenge Response from {}.", self.addr);
                     self.state = ResponseConnectionState::SendingHeartBeat;
                 }
             }
             Packet::HeartBeat => {
                 if let ResponseConnectionState::SendingHeartBeat = self.state {
-                    log::debug!(
+                    debug!(
                         "Received HeartBeat from {}, accepted connection.",
                         self.addr
                     );
@@ -425,6 +439,39 @@ impl Client {
             socket.send_to(&buffer, self.addr)?;
         }
         Ok(())
+    }
+
+    fn process_packet(&mut self, packet: &Packet) -> Option<Box<[u8]>> {
+        match packet {
+            Packet::Payload(payload) => match self.endpoint.process_payload(&payload) {
+                Ok(Some(payload)) => {
+                    return Some(payload.into());
+                }
+                Err(e) => {
+                    error!(
+                        "Error in endpoint from server while processing payload:\n{:?}",
+                        e
+                    );
+                }
+                Ok(None) => {}
+            },
+            Packet::ConnectionRequest(_) => {
+                debug!(
+                    "Received Packet Connection from client {} already connected",
+                    self.id
+                );
+            }
+            Packet::HeartBeat => {
+                debug!("Received HeartBeat from the server");
+            }
+            _ => {
+                debug!(
+                    "Ignoring Packet type {} while in connected state",
+                    packet.id()
+                );
+            }
+        }
+        return None;
     }
 }
 
@@ -496,12 +543,12 @@ impl Server {
     ) -> Result<(), ConnectionError> {
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
-        log::debug!("Sending Connection Packet {:?} to addr {:?}", packet, addr);
+        debug!("Sending Connection Packet {:?} to addr {:?}", packet, addr);
         self.socket.send_to(&buffer, addr)?;
         Ok(())
     }
 
-    fn send_payload_to_clients(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+    pub fn send_payload_to_clients(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         for (id, client) in self.clients.iter_mut() {
             client.send_payload(&self.socket, payload)?;
         }
@@ -510,110 +557,76 @@ impl Server {
 
     pub fn update(&mut self) {
         if let Err(e) = self.process_events() {
-            log::error!("Error while processing events:\n{:?}", e);
+            error!("Error while processing events:\n{:?}", e);
         }
         self.update_pending_connections();
+    }
+
+    fn process_packet_from(&mut self, packet: Packet, addr: &SocketAddr) -> Result<(), RenetError> {
+        let mut client_payload: Option<(ClientId, Box<[u8]>)> = None;
+        if let Some(client) = self.find_client_by_addr(addr) {
+            if let Some(payload) = client.process_packet(&packet) {
+                client_payload = Some((client.id, payload));
+            }
+        }
+
+        if let Some(client_payload) = client_payload {
+            self.received_payloads.push(client_payload);
+            return Ok(());
+        }
+
+        if self.clients.len() >= self.config.max_clients {
+            self.send_connection_packet(Packet::ConnectionDenied, &addr)?;
+            debug!("Connection Denied to addr {}, server is full.", addr);
+            return Err(ConnectionError::Denied.into());
+        }
+
+        let connection = match self.find_connection_by_addr(addr) {
+            Some(connection) => connection,
+            None => {
+                if let Packet::ConnectionRequest(client_id) = packet {
+                    let new_connection = HandleConnection::new(client_id, addr.clone());
+                    self.connecting.insert(client_id, new_connection);
+                    self.connecting.get_mut(&client_id).unwrap()
+                } else {
+                    debug!(
+                        "Received invalid packet {} from {} before connection request",
+                        packet.id(),
+                        addr
+                    );
+                    return Err(ConnectionError::InvalidPacket.into());
+                }
+            }
+        };
+
+        connection.process_packet(&packet);
+        Ok(())
     }
 
     // TODO: should we remove the ConnectionError returns and do a continue?
     fn process_events(&mut self) -> Result<(), RenetError> {
         let mut buffer = vec![0u8; self.config.max_payload_size];
-        let mut received_payloads: Vec<(ClientId, Box<[u8]>)> = vec![];
         loop {
-            let (packet, addr) = match self.socket.recv_from(&mut buffer) {
+            match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
                     let payload = &buffer[..len];
                     let packet = match Packet::decode(&payload) {
                         Ok(packet) => packet,
                         Err(e) => {
-                            log::error!("Failed to decote packet:\n{:?}", e);
+                            error!("Failed to decote packet:\n{:?}", e);
                             continue;
                         }
                     };
-
-                    if let Some(client) = self.find_client_by_addr(&addr) {
-                        // TODO add this to the Client struct
-                        match packet {
-                            Packet::Payload(payload) => {
-                                match client.endpoint.process_payload(&payload) {
-                                    Ok(Some(payload)) => {
-                                        received_payloads.push((client.id, payload.into()));
-                                        continue;
-                                    }
-                                    Err(e) => {
-                                        log::error!(
-                                            "Error in endpoint from server while processing payload:\n{:?}",
-                                            e
-                                        );
-                                        continue;
-                                    }
-                                    Ok(None) => {
-                                        continue;
-                                    }
-                                }
-                            }
-                            Packet::ConnectionRequest(_) => {
-                                log::debug!(
-                                    "Received Packet Connection from client {} already connected",
-                                    client.id
-                                );
-                                continue;
-                            }
-                            Packet::HeartBeat => {
-                                log::debug!("Received HeartBeat from the server");
-                                continue;
-                            }
-                            _ => {
-                                log::debug!(
-                                    "Ignoring Packet type {} while in connected state",
-                                    packet.id()
-                                );
-                                continue;
-                            }
-                        }
-                    } else {
-                        (packet, addr)
+                    if let Err(e) = self.process_packet_from(packet, &addr) {
+                        error!("Error while processing events:\n{:?}", e);
                     }
                 }
                 // Break from the loop if would block
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // TODO do something else here
-                    for p in received_payloads {
-                        self.received_payloads.push(p);
-                    }
-
                     return Ok(());
                 }
                 Err(e) => return Err(ConnectionError::IOError(e).into()),
             };
-
-            if self.clients.len() >= self.config.max_clients {
-                self.send_connection_packet(Packet::ConnectionDenied, &addr)?;
-                log::debug!("Connection Denied to addr {}, server is full.", addr);
-                continue;
-                //return Err(ConnectionError::Denied);
-            }
-
-            let connection = match self.find_connection_by_addr(&addr) {
-                Some(connection) => connection,
-                None => {
-                    if let Packet::ConnectionRequest(client_id) = packet {
-                        let new_connection = HandleConnection::new(client_id, addr.clone());
-                        self.connecting.insert(client_id, new_connection);
-                        self.connecting.get_mut(&client_id).unwrap()
-                    } else {
-                        log::debug!(
-                            "Received invalid packet {} from {} before connection request",
-                            packet.id(),
-                            addr
-                        );
-                        continue;
-                        //return Err(ConnectionError::InvalidPacket);
-                    }
-                }
-            };
-
-            connection.process_packet(&packet);
         }
     }
 
@@ -624,20 +637,18 @@ impl Server {
                 ResponseConnectionState::SendingChallenge => {
                     if let Err(e) = self.send_connection_packet(Packet::Challenge, &connection.addr)
                     {
-                        log::debug!(
+                        debug!(
                             "Error while sending Challenge Packet to {}: {:?}",
-                            connection.addr,
-                            e
+                            connection.addr, e
                         );
                     }
                 }
                 ResponseConnectionState::SendingHeartBeat => {
                     if let Err(e) = self.send_connection_packet(Packet::HeartBeat, &connection.addr)
                     {
-                        log::debug!(
+                        debug!(
                             "Error while sending HearBeat Packet to {}: {:?}",
-                            connection.addr,
-                            e
+                            connection.addr, e
                         );
                     }
                 }
@@ -652,7 +663,7 @@ impl Server {
                 .remove(&connected)
                 .expect("Should only connect existing clients.");
             if self.clients.len() >= self.config.max_clients {
-                log::debug!(
+                debug!(
                     "Connection from {} successfuly stablished but server was full.",
                     connection.addr
                 );
@@ -660,10 +671,9 @@ impl Server {
                 continue;
             }
 
-            log::debug!(
+            debug!(
                 "Connection stablished with client {} ({}).",
-                connection.client_id,
-                connection.addr,
+                connection.client_id, connection.addr,
             );
             let endpoint_config = Config::default();
             let endpoint: Endpoint = Endpoint::new(endpoint_config);
@@ -676,6 +686,7 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{SocketAddr, UdpSocket};
 
     #[test]
     fn encode_decode_payload() {
@@ -685,7 +696,7 @@ mod tests {
 
         packet.encode(&mut buffer).unwrap();
         let decoded_packet = Packet::decode(&buffer).unwrap();
-        
+
         assert_eq!(packet, decoded_packet);
     }
 
@@ -696,7 +707,53 @@ mod tests {
 
         packet.encode(&mut buffer).unwrap();
         let decoded_packet = Packet::decode(&buffer).unwrap();
-        
+
         assert_eq!(packet, decoded_packet);
+    }
+
+    #[test]
+    fn request_connection_flow() {
+        let socket = UdpSocket::bind("127.0.0.1:8081").unwrap();
+        let server_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let mut request_connection = RequestConnection::new(0, socket, server_addr).unwrap();
+
+        assert_eq!(
+            ClientState::SendingConnectionRequest,
+            request_connection.state
+        );
+
+        request_connection.process_packet(Packet::Challenge);
+        assert_eq!(
+            ClientState::SendingChallengeResponse,
+            request_connection.state
+        );
+
+        request_connection.process_packet(Packet::HeartBeat);
+        assert_eq!(ClientState::Connected, request_connection.state);
+    }
+
+    #[test]
+    fn server_client_connecting_flow() {
+        let socket = UdpSocket::bind("127.0.0.1:8080").unwrap();
+        let server_config = ServerConfig::default();
+        let mut server = Server::new(socket, server_config).unwrap();
+        
+        let client_addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+        let packet = Packet::ConnectionRequest(0);
+        server.process_packet_from(packet, &client_addr).unwrap();
+        assert_eq!(server.connecting.len(), 1);
+
+        let packet = Packet::ChallengeResponse;
+        server.process_packet_from(packet, &client_addr).unwrap();
+        server.update_pending_connections();
+        assert_eq!(server.connecting.len(), 1);
+        assert_eq!(server.clients.len(), 0);
+
+        let packet = Packet::HeartBeat;
+        server.process_packet_from(packet, &client_addr).unwrap();
+        server.update_pending_connections();
+        assert_eq!(server.connecting.len(), 0);
+        assert_eq!(server.clients.len(), 1);
+        assert!(server.clients.contains_key(&0));
     }
 }

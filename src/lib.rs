@@ -147,6 +147,7 @@ pub struct Endpoint {
     sent_bandwidth_kbps: f64,
     received_bandwidth_kbps: f64,
     packet_loss: f64,
+    acks: Vec<u16>,
 }
 
 impl Endpoint {
@@ -163,6 +164,7 @@ impl Endpoint {
             sent_bandwidth_kbps: 0.0,
             received_bandwidth_kbps: 0.0,
             packet_loss: 0.0,
+            acks: vec![],
         }
     }
 
@@ -382,6 +384,7 @@ impl Endpoint {
                 if let Some(ref mut sent_packet) = self.sent_buffer.get_mut(ack_sequence) {
                     if !sent_packet.ack {
                         debug!("Acked packet {}.", ack_sequence);
+                        self.acks.push(ack_sequence);
                         sent_packet.ack = true;
                         let rtt = (now - sent_packet.time).as_secs_f64();
                         if self.rtt == 0.0 && rtt > 0.0 || f64::abs(self.rtt - rtt) < 0.00001 {
@@ -394,6 +397,14 @@ impl Endpoint {
             }
             ack_bits >>= 1;
         }
+    }
+
+    pub fn reset_acks(&mut self) {
+        self.acks.clear();
+    }
+
+    pub fn get_acks(&self) -> Vec<u16> {
+        self.acks.clone()
     }
 }
 
