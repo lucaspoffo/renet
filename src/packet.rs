@@ -133,6 +133,7 @@ impl HeaderParser for FragmentHeader {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

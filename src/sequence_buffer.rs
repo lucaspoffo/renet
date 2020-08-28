@@ -85,11 +85,6 @@ impl<T: Clone + Default> SequenceBuffer<T> {
     }
 
     #[inline]
-    pub fn len(&mut self) -> usize {
-        self.entries.len()
-    }
-    
-    #[inline]
     pub fn sequence(&self) -> u16 {
         self.sequence
     }

@@ -20,7 +20,9 @@ fn main() -> std::io::Result<()> {
                 packet.len(),
                 addrs
             );
-            endpoint.send_to(&packet, addrs, &socket);
+            if let Err(e) = endpoint.send_to(&packet, addrs, &socket) {
+                log::error!("Error when sending packet to {}: {:?}", addrs, e);
+            }
         }
         i = i.wrapping_add(1);
         if i % 15 == 0 {

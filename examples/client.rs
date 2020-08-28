@@ -2,7 +2,7 @@ use alto_logger::TermLogger;
 use log::trace;
 use renet::{Config, Endpoint};
 use std::net::UdpSocket;
-use std::time::Duration;
+// use std::time::Duration;
 
 fn main() -> std::io::Result<()> {
     TermLogger::default().init().unwrap();

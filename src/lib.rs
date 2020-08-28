@@ -251,7 +251,7 @@ impl Endpoint {
             self.update_acket_packets(header.ack, header.ack_bits);
             let payload = &payload[header.size()..];
             debug!("[{}] successfuly processed packet {}.", self.config.name, header.sequence);
-            return Ok(Some((payload.into())));
+            return Ok(Some(payload.into()));
         } else {
             let fragment_header = FragmentHeader::parse(payload)?;
 

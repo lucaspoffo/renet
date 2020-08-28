@@ -3,9 +3,8 @@ use crate::{Config, Endpoint};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::{debug, error};
 use std::collections::HashMap;
-use std::io::{self, Cursor, Write};
+use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::time::{Duration, Instant};
 // TODO: Setup Client / Server arquitecture
 // Add ClientState
 // Connecting/Connected/Disconnected/Denied/TimedOut/RequestTimeOut/ResponseTimeOut
@@ -176,6 +175,7 @@ pub enum ConnectionError {
     IOError(io::Error),
     InvalidPacket,
     ClientAlreadyConnected,
+    ClientDisconnected,
 }
 
 impl From<io::Error> for ConnectionError {
@@ -201,6 +201,10 @@ impl ServerConnection {
             endpoint,
             received_payloads: vec![],
         }
+    }
+
+    pub fn id(&self) -> ClientId {
+        self.id
     }
 
     pub fn send_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
@@ -244,7 +248,7 @@ impl ServerConnection {
     pub fn process_events(&mut self) -> Result<(), RenetError> {
         let mut buffer = vec![0u8; 1500];
         loop {
-            let mut packet = match self.socket.recv_from(&mut buffer) {
+            let packet = match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
                     if addr == self.server_addr {
                         let payload = &buffer[..len];
@@ -424,12 +428,14 @@ impl Client {
         }
     }
 
-    fn send_to(&mut self, socket: &UdpSocket, payload: &[u8]) -> Result<(), RenetError> {
-        self.endpoint.send_to(payload, self.addr, socket)?;
-        Ok(())
+    fn is_connected(&self) -> bool {
+        self.state == ClientState::Connected
     }
 
     fn send_payload(&mut self, socket: &UdpSocket, payload: &[u8]) -> Result<(), RenetError> {
+        if !self.is_connected() {
+            return Err(ConnectionError::ClientDisconnected.into());
+        }
         let mut reliable_packets = self.endpoint.generate_packets(payload)?;
         for reliable_packet in reliable_packets.iter_mut() {
             // TODO remove clone here
@@ -509,12 +515,12 @@ pub struct Server {
 
 // TODO we should use a Sender / Receiver from something like crossbeam
 // to dispatch these events
-enum ServerEvent {
-    ClientConnected(ClientId),
-    ClientDisconnected(ClientId),
-    ServerSlotsFull,
-    RejectClient(ClientId),
-}
+// enum ServerEvent {
+//     ClientConnected(ClientId),
+//     ClientDisconnected(ClientId),
+//     ServerSlotsFull,
+//     RejectClient(ClientId),
+// }
 
 impl Server {
     pub fn new(socket: UdpSocket, config: ServerConfig) -> Result<Self, ConnectionError> {
@@ -549,7 +555,7 @@ impl Server {
     }
 
     pub fn send_payload_to_clients(&mut self, payload: &[u8]) -> Result<(), RenetError> {
-        for (id, client) in self.clients.iter_mut() {
+        for (_, client) in self.clients.iter_mut() {
             client.send_payload(&self.socket, payload)?;
         }
         Ok(())
@@ -637,7 +643,7 @@ impl Server {
                 ResponseConnectionState::SendingChallenge => {
                     if let Err(e) = self.send_connection_packet(Packet::Challenge, &connection.addr)
                     {
-                        debug!(
+                        error!(
                             "Error while sending Challenge Packet to {}: {:?}",
                             connection.addr, e
                         );
@@ -646,7 +652,7 @@ impl Server {
                 ResponseConnectionState::SendingHeartBeat => {
                     if let Err(e) = self.send_connection_packet(Packet::HeartBeat, &connection.addr)
                     {
-                        debug!(
+                        error!(
                             "Error while sending HearBeat Packet to {}: {:?}",
                             connection.addr, e
                         );
@@ -667,7 +673,14 @@ impl Server {
                     "Connection from {} successfuly stablished but server was full.",
                     connection.addr
                 );
-                self.send_connection_packet(Packet::ConnectionDenied, &connection.addr);
+                if let Err(e) =
+                    self.send_connection_packet(Packet::ConnectionDenied, &connection.addr)
+                {
+                    error!(
+                        "Error while sending Connection Denied Packet to {}: {:?}",
+                        connection.addr, e
+                    );
+                }
                 continue;
             }
 
@@ -722,13 +735,17 @@ mod tests {
             request_connection.state
         );
 
-        request_connection.process_packet(Packet::Challenge);
+        request_connection
+            .process_packet(Packet::Challenge)
+            .unwrap();
         assert_eq!(
             ClientState::SendingChallengeResponse,
             request_connection.state
         );
 
-        request_connection.process_packet(Packet::HeartBeat);
+        request_connection
+            .process_packet(Packet::HeartBeat)
+            .unwrap();
         assert_eq!(ClientState::Connected, request_connection.state);
     }
 
@@ -737,7 +754,7 @@ mod tests {
         let socket = UdpSocket::bind("127.0.0.1:8080").unwrap();
         let server_config = ServerConfig::default();
         let mut server = Server::new(socket, server_config).unwrap();
-        
+
         let client_addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
         let packet = Packet::ConnectionRequest(0);
         server.process_packet_from(packet, &client_addr).unwrap();
