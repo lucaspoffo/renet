@@ -1,5 +1,5 @@
 use crate::error::RenetError;
-use crate::{Config, Endpoint};
+use crate::{Config, Endpoint, NetworkInfo};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::{debug, error};
 use std::collections::HashMap;
@@ -205,6 +205,10 @@ impl ServerConnection {
 
     pub fn id(&self) -> ClientId {
         self.id
+    }
+
+    pub fn network_info(&self) -> &NetworkInfo {
+        self.endpoint.network_info()
     }
 
     pub fn send_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {

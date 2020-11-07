@@ -22,10 +22,11 @@ fn main() -> std::io::Result<()> {
             endpoint.update_sent_bandwidth();
             endpoint.update_received_bandwidth();
         }
-        trace!("Sent Bandwidth: {}", endpoint.sent_bandwidth_kbps());
-        trace!("Receive Bandwidth: {}", endpoint.received_bandwidth_kbps());
-        trace!("RTT: {}", endpoint.rtt());
-        trace!("Packet Loss: {}%", endpoint.packet_loss());
+        let network_info = endpoint.network_info();
+        trace!("Sent Bandwidth: {}", network_info.sent_bandwidth_kbps);
+        trace!("Receive Bandwidth: {}", network_info.received_bandwidth_kbps);
+        trace!("RTT: {}", network_info.rtt);
+        trace!("Packet Loss: {}%", network_info.packet_loss);
         endpoint
             .send_to(&payload, "127.0.0.1:8080".parse().unwrap(), &socket)
             .unwrap();

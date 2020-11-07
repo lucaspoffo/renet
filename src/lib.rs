@@ -5,14 +5,14 @@ use self::sequence_buffer::SequenceBuffer;
 use error::{RenetError, Result};
 use log::{debug, error};
 use std::io::{Cursor, Write};
-use std::net::{UdpSocket, SocketAddr};
+use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
+pub mod connection;
 pub mod error;
 mod packet;
 mod sequence_buffer;
-pub mod connection;
 
 #[derive(Clone)]
 struct ReassemblyFragment {
@@ -135,25 +135,27 @@ impl ReceivedPacket {
     }
 }
 
-// TODO: separate metrics (rtt, received/sent kbps, packet loss)
-// Move to a NetworkInfo struct
 pub struct Endpoint {
-    rtt: f64,
     config: Config,
     sequence: AtomicU16,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
     received_buffer: SequenceBuffer<ReceivedPacket>,
-    sent_bandwidth_kbps: f64,
-    received_bandwidth_kbps: f64,
-    packet_loss: f64,
     acks: Vec<u16>,
+    network_info: NetworkInfo,
+}
+
+#[derive(Debug)]
+pub struct NetworkInfo {
+    pub rtt: f64,
+    pub sent_bandwidth_kbps: f64,
+    pub received_bandwidth_kbps: f64,
+    pub packet_loss: f64,
 }
 
 impl Endpoint {
     pub fn new(config: Config) -> Self {
         Self {
-            rtt: 0.0,
             sequence: AtomicU16::new(0),
             reassembly_buffer: SequenceBuffer::with_capacity(
                 config.fragment_reassembly_buffer_size,
@@ -161,27 +163,18 @@ impl Endpoint {
             sent_buffer: SequenceBuffer::with_capacity(config.sent_packets_buffer_size),
             received_buffer: SequenceBuffer::with_capacity(config.received_packets_buffer_size),
             config,
-            sent_bandwidth_kbps: 0.0,
-            received_bandwidth_kbps: 0.0,
-            packet_loss: 0.0,
             acks: vec![],
+            network_info: NetworkInfo {
+                rtt: 0.0,
+                sent_bandwidth_kbps: 0.0,
+                received_bandwidth_kbps: 0.0,
+                packet_loss: 0.0,
+            },
         }
     }
 
-    pub fn sent_bandwidth_kbps(&self) -> f64 {
-        self.sent_bandwidth_kbps
-    }
-
-    pub fn received_bandwidth_kbps(&self) -> f64 {
-        self.received_bandwidth_kbps
-    }
-
-    pub fn rtt(&self) -> f64 {
-        self.rtt
-    }
-
-    pub fn packet_loss(&self) -> f64 {
-        self.packet_loss
+    pub fn network_info(&self) -> &NetworkInfo {
+        &self.network_info
     }
 
     pub fn generate_packets(&mut self, payload: &[u8]) -> Result<Vec<Vec<u8>>> {
@@ -223,7 +216,11 @@ impl Endpoint {
         Ok(())
     }
 
-    pub fn recv_from(&mut self, buf: &mut [u8], socket: &UdpSocket) -> Result<Option<(Vec<u8>, SocketAddr)>> {
+    pub fn recv_from(
+        &mut self,
+        buf: &mut [u8],
+        socket: &UdpSocket,
+    ) -> Result<Option<(Vec<u8>, SocketAddr)>> {
         let (n, addrs) = socket.recv_from(buf)?;
         let payload = &mut buf[..n];
         if payload.len() > self.config.max_packet_size {
@@ -250,7 +247,10 @@ impl Endpoint {
                 .insert(header.sequence, received_packet);
             self.update_acket_packets(header.ack, header.ack_bits);
             let payload = &payload[header.size()..];
-            debug!("[{}] successfuly processed packet {}.", self.config.name, header.sequence);
+            debug!(
+                "[{}] successfuly processed packet {}.",
+                self.config.name, header.sequence
+            );
             return Ok(Some(payload.into()));
         } else {
             let fragment_header = FragmentHeader::parse(payload)?;
@@ -311,11 +311,11 @@ impl Endpoint {
 
         // Calculate packet loss
         let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
-        if f64::abs(self.packet_loss - packet_loss) > 0.0001 {
-            self.packet_loss +=
-                (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
+        if f64::abs(self.network_info.packet_loss - packet_loss) > 0.0001 {
+            self.network_info.packet_loss +=
+                (packet_loss - self.network_info.packet_loss) * self.config.packet_loss_smoothing_factor;
         } else {
-            self.packet_loss = packet_loss;
+            self.network_info.packet_loss = packet_loss;
         }
 
         // Calculate sent bandwidth
@@ -325,11 +325,11 @@ impl Endpoint {
 
         let sent_bandwidth_kbps =
             bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
-        if f64::abs(self.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
-            self.sent_bandwidth_kbps += (sent_bandwidth_kbps - self.sent_bandwidth_kbps)
+        if f64::abs(self.network_info.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
+            self.network_info.sent_bandwidth_kbps += (sent_bandwidth_kbps - self.network_info.sent_bandwidth_kbps)
                 * self.config.bandwidth_smoothing_factor;
         } else {
-            self.sent_bandwidth_kbps = sent_bandwidth_kbps;
+            self.network_info.sent_bandwidth_kbps = sent_bandwidth_kbps;
         }
     }
 
@@ -365,12 +365,12 @@ impl Endpoint {
 
         let received_bandwidth_kbps =
             bytes_received as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
-        if f64::abs(self.received_bandwidth_kbps - received_bandwidth_kbps) > 0.0001 {
-            self.received_bandwidth_kbps += (received_bandwidth_kbps
-                - self.received_bandwidth_kbps)
+        if f64::abs(self.network_info.received_bandwidth_kbps - received_bandwidth_kbps) > 0.0001 {
+            self.network_info.received_bandwidth_kbps += (received_bandwidth_kbps
+                - self.network_info.received_bandwidth_kbps)
                 * self.config.bandwidth_smoothing_factor;
         } else {
-            self.received_bandwidth_kbps = received_bandwidth_kbps;
+            self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }
     }
 
@@ -387,10 +387,10 @@ impl Endpoint {
                         self.acks.push(ack_sequence);
                         sent_packet.ack = true;
                         let rtt = (now - sent_packet.time).as_secs_f64();
-                        if self.rtt == 0.0 && rtt > 0.0 || f64::abs(self.rtt - rtt) < 0.00001 {
-                            self.rtt = rtt;
+                        if self.network_info.rtt == 0.0 && rtt > 0.0 || f64::abs(self.network_info.rtt - rtt) < 0.00001 {
+                            self.network_info.rtt = rtt;
                         } else {
-                            self.rtt += (rtt - self.rtt) * self.config.rtt_smoothing_factor;
+                            self.network_info.rtt += (rtt - self.network_info.rtt) * self.config.rtt_smoothing_factor;
                         }
                     }
                 }

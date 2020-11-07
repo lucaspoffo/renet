@@ -29,10 +29,11 @@ fn main() -> std::io::Result<()> {
             endpoint.update_received_bandwidth();
             endpoint.update_sent_bandwidth();
         }
-        trace!("Received Bandwidth: {}", endpoint.received_bandwidth_kbps());
-        trace!("Sent Bandwidth: {}", endpoint.sent_bandwidth_kbps());
-        trace!("RTT: {}", endpoint.rtt());
-        trace!("Packet Loss: {}%", endpoint.packet_loss());
+        let network_info = endpoint.network_info();
+        trace!("Received Bandwidth: {}", network_info.received_bandwidth_kbps);
+        trace!("Sent Bandwidth: {}", network_info.sent_bandwidth_kbps);
+        trace!("RTT: {}", network_info.rtt);
+        trace!("Packet Loss: {}%", network_info.packet_loss);
         //let sent = socket.send_to(&buf[..n], &peer).await?;
         //println!("Sent {} out of {} bytes to {}", sent, n , peer);
     }
