@@ -72,6 +72,7 @@ pub struct FragmentHeader {
     pub sequence: u16,
     pub fragment_id: u8,
     pub num_fragments: u8,
+    // Only the first fragment has the PacketHeader
     pub packet_header: Option<PacketHeader>,
 }
 

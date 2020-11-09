@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 pub mod connection;
 pub mod error;
+mod channel;
 mod packet;
 mod sequence_buffer;
 

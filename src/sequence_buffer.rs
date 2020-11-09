@@ -1,4 +1,4 @@
-pub struct SequenceBuffer<T: Clone + Default> {
+pub struct SequenceBuffer<T> {
     sequence: u16,
     entry_sequences: Box<[Option<u16>]>,
     entries: Box<[T]>,
@@ -17,6 +17,14 @@ impl<T: Clone + Default> SequenceBuffer<T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
             return Some(&mut self.entries[index]);
+        }
+        None
+    }
+    
+    pub fn get(&self, sequence: u16) -> Option<&T> {
+        if self.exists(sequence) {
+            let index = self.index(sequence);
+            return Some(&self.entries[index]);
         }
         None
     }
