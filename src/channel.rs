@@ -11,7 +11,7 @@ struct ChannelConfig {
     message_send_queue_size: usize,
     message_receive_queue_size: usize,
     max_message_per_packet: u32,
-    packet_budget: Option<u32>,
+    packet_budget_bytes: Option<u32>,
     message_resend_time: Duration,
 }
 
@@ -22,7 +22,7 @@ impl Default for ChannelConfig {
             message_send_queue_size: 1024,
             message_receive_queue_size: 1024,
             max_message_per_packet: 256,
-            packet_budget: None,
+            packet_budget_bytes: None,
             message_resend_time: Duration::from_millis(100),
         }
     }
@@ -52,7 +52,7 @@ impl<T: Default> Default for Message<T> {
 trait Channel<T> {
     fn get_packet_data(
         &mut self,
-        available_bits: u32,
+        available_bits: Option<u32>,
         sequence: u16,
     ) -> Option<ChannelPacketData<T>>;
     fn process_packet_data(&mut self, packet_data: ChannelPacketData<T>);
@@ -61,6 +61,7 @@ trait Channel<T> {
     fn identifier(&self) -> u8;
     fn receive_message(&mut self) -> Option<Message<T>>;
     fn reset(&mut self);
+    fn update_current_time(&mut self, time: Instant);
 }
 
 #[derive(Debug, Clone)]
@@ -142,11 +143,13 @@ struct ReliableOrderedChannel<T> {
     num_messages_sent: u64,
     num_messages_received: u64,
     oldest_unacked_message_id: u16,
+    current_time: Instant 
 }
 
 impl<T: Content> ReliableOrderedChannel<T> {
-    fn new(config: ChannelConfig) -> Self {
+    pub fn new(current_time: Instant, config: ChannelConfig) -> Self {
         Self {
+            current_time,
             packets_sent: SequenceBuffer::with_capacity(config.sent_packet_buffer_size),
             messages_send: SequenceBuffer::with_capacity(config.message_send_queue_size),
             messages_received: SequenceBuffer::with_capacity(config.message_receive_queue_size),
@@ -164,12 +167,15 @@ impl<T: Content> ReliableOrderedChannel<T> {
     }
 
     // TODO: use bits or bytes?
-    fn get_messages_to_send(&mut self, available_bits: u32) -> Option<Vec<u16>> {
+    fn get_messages_to_send(&mut self, available_bits: Option<u32>) -> Option<Vec<u16>> {
         if !self.has_messages_to_send() {
             return None;
         }
 
-        let mut available_bits = if let Some(packet_budget) = self.config.packet_budget {
+        // TODO: Should we even be doing this?
+        let available_bits = available_bits.unwrap_or(u32::MAX);
+
+        let mut available_bits = if let Some(packet_budget) = self.config.packet_budget_bytes {
             std::cmp::min(packet_budget * 8, available_bits)
         } else {
             available_bits
@@ -179,8 +185,6 @@ impl<T: Content> ReliableOrderedChannel<T> {
             self.config.message_send_queue_size,
             self.config.message_receive_queue_size,
         );
-        // TODO: set current time in channel field?
-        let now = Instant::now();
         let mut num_messages = 0;
         let mut messages_id = vec![];
 
@@ -192,7 +196,7 @@ impl<T: Content> ReliableOrderedChannel<T> {
             let message_send = self.messages_send.get_mut(message_id);
             if let Some(message_send) = message_send {
                 let send = if let Some(last_time_sent) = message_send.last_time_sent {
-                    (last_time_sent + self.config.message_resend_time) <= now
+                    (last_time_sent + self.config.message_resend_time) <= self.current_time
                 } else {
                     true
                 };
@@ -211,13 +215,14 @@ impl<T: Content> ReliableOrderedChannel<T> {
         None
     }
 
-    fn get_messages_packet_data(&self, messages_id: &[u16]) -> ChannelPacketData<T> {
+    fn get_messages_packet_data(&mut self, messages_id: &[u16]) -> ChannelPacketData<T> {
         let mut messages: Vec<Message<T>> = Vec::with_capacity(messages_id.len());
         for &message_id in messages_id.iter() {
             let message_send = self
                 .messages_send
-                .get(message_id)
+                .get_mut(message_id)
                 .expect("Invalid message id when generating packet data");
+                message_send.last_time_sent = Some(self.current_time);
             // TODO: can we remove this clone? and pass the reference
             messages.push(message_send.message.clone());
         }
@@ -241,9 +246,13 @@ impl<T: Content> ReliableOrderedChannel<T> {
 }
 
 impl<T: Content> Channel<T> for ReliableOrderedChannel<T> {
+    fn update_current_time(&mut self, time: Instant) {
+        self.current_time = time;
+    }
+
     fn get_packet_data(
         &mut self,
-        available_bits: u32,
+        available_bits: Option<u32>,
         sequence: u16,
     ) -> Option<ChannelPacketData<T>> {
         if let Some(messages_id) = self.get_messages_to_send(available_bits) {
@@ -255,6 +264,10 @@ impl<T: Content> Channel<T> for ReliableOrderedChannel<T> {
     }
 
     fn process_packet_data(&mut self, packet_data: ChannelPacketData<T>) {
+        if self.identifier() != packet_data.channel_index {
+            // TODO: add debug log here.
+            return;
+        }
         for message in packet_data.messages.iter() {
             // TODO: validate min max message_id based on config queue size
             let message_id = message.id;
@@ -315,27 +328,135 @@ impl<T: Content> Channel<T> for ReliableOrderedChannel<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::{Serialize, Deserialize}; 
-    #[derive(Debug, Serialize, Deserialize, Clone)]
+    use serde::{Deserialize, Serialize};
+    #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
     enum TestMessages {
         Noop,
         First,
-        Second(u32)
+        Second(u32),
+        Third(u64),
     }
 
     impl Default for TestMessages {
         fn default() -> Self {
-            return TestMessages::Noop
+            return TestMessages::Noop;
         }
     }
 
     #[test]
     fn send_message() {
         let config = ChannelConfig::default();
-        let mut channel: ReliableOrderedChannel<TestMessages> = ReliableOrderedChannel::new(config);
+        let mut channel: ReliableOrderedChannel<TestMessages> = ReliableOrderedChannel::new(Instant::now(), config);
+        let sequence = 0;
+
+        assert!(!channel.has_messages_to_send());
+        assert_eq!(channel.num_messages_sent, 0);
 
         channel.send_message(TestMessages::Second(0));
+        assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
+        let packet_data = channel.get_packet_data(None, sequence).unwrap();
+
+        assert_eq!(packet_data.messages.len(), 1);
+        assert_eq!(
+            packet_data.messages.first().unwrap().content,
+            TestMessages::Second(0)
+        );
+
+        assert!(channel.has_messages_to_send());
+
+        channel.process_ack(sequence);
+        assert!(!channel.has_messages_to_send());
+    }
+
+    #[test]
+    fn receive_message() {
+        let config = ChannelConfig::default();
+        let mut channel: ReliableOrderedChannel<TestMessages> = ReliableOrderedChannel::new(Instant::now(), config);
+        let sequence = 0;
+
+        let received_packet_data = ChannelPacketData::new(
+            vec![
+                Message::new(0, TestMessages::First),
+                Message::new(1, TestMessages::Second(0)),
+            ],
+            sequence,
+        );
+
+        channel.process_packet_data(received_packet_data);
+
+        let message = channel.receive_message().unwrap();
+        assert_eq!(message.content, TestMessages::First);
+
+        let message = channel.receive_message().unwrap();
+        assert_eq!(message.content, TestMessages::Second(0));
+
+        assert_eq!(channel.num_messages_received, 2);
+    }
+
+    #[test]
+    fn over_budget() {
+        let first_message = TestMessages::Third(0);
+        let second_message = TestMessages::Third(1);
+        
+        let message = Message::new(0, first_message.clone());
+
+        let mut config = ChannelConfig::default();
+        config.packet_budget_bytes = Some(bincode::serialized_size(&message).unwrap() as u32);
+        let mut channel: ReliableOrderedChannel<TestMessages> = ReliableOrderedChannel::new(Instant::now(), config);
+        let sequence = 0;
+
+
+        channel.send_message(first_message.clone());
+        channel.send_message(second_message.clone());
+
+        let packet_data = channel.get_packet_data(None, sequence);
+        assert!(packet_data.is_some());
+        let packet_data = packet_data.unwrap();
+
+        assert_eq!(packet_data.messages.len(), 1);
+        assert_eq!(packet_data.messages[0].content, first_message);
+
+        channel.process_ack(0);
+
+        let packet_data = channel.get_packet_data(None, sequence + 1);
+        assert!(packet_data.is_some());
+        let packet_data = packet_data.unwrap();
+
+        assert_eq!(packet_data.messages.len(), 1);
+        assert_eq!(packet_data.messages[0].content, second_message);
+    }
+
+    #[test]
+    fn resend_message() {
+        let mut config = ChannelConfig::default();
+        let resend_time = 200;
+        config.message_resend_time = Duration::from_millis(resend_time);
+        let now = Instant::now();
+        let mut channel: ReliableOrderedChannel<TestMessages> = ReliableOrderedChannel::new(now, config);
+        let mut sequence = 0;
+
+        channel.send_message(TestMessages::First);
+
+        let packet_data = channel.get_packet_data(None, sequence).unwrap();
+        sequence += 1;
+
+        assert_eq!(packet_data.messages.len(), 1);
+        assert_eq!(packet_data.messages[0].content, TestMessages::First);
+        assert_eq!(packet_data.messages[0].id, 0);
+
+        let packet_data = channel.get_packet_data(None, sequence);
+        sequence += 1;
+        
+        assert!(packet_data.is_none());
+
+        channel.update_current_time(now + Duration::from_millis(resend_time));
+                    
+        let packet_data = channel.get_packet_data(None, sequence).unwrap();
+
+        assert_eq!(packet_data.messages.len(), 1);
+        assert_eq!(packet_data.messages[0].content, TestMessages::First);
+        assert_eq!(packet_data.messages[0].id, 0);
     }
 }
