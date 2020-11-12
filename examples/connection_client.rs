@@ -1,5 +1,5 @@
 use renet::connection::{RequestConnection, ConnectionError, ServerConnection};
-use renet::error::RenetError;
+use renet::RenetError;
 use alto_logger::TermLogger;
 use std::net::UdpSocket;
 use std::thread::sleep;

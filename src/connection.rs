@@ -1,5 +1,5 @@
 use crate::error::RenetError;
-use crate::{Config, Endpoint, NetworkInfo};
+use crate::endpoint::{Config, Endpoint, NetworkInfo};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::{debug, error};
 use std::collections::HashMap;

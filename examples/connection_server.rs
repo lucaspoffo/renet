@@ -1,6 +1,6 @@
 use std::net::UdpSocket;
 use renet::connection::{Server, ServerConfig};
-use renet::error::RenetError;
+use renet::RenetError;
 use alto_logger::TermLogger;
 use std::thread::sleep;
 use std::time::Duration;

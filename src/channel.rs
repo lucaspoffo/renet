@@ -1,4 +1,4 @@
-use crate::SequenceBuffer;
+use crate::sequence_buffer::SequenceBuffer;
 use bincode;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
