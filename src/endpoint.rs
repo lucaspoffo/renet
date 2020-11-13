@@ -6,7 +6,6 @@ use crate::error::{RenetError, Result};
 use log::{debug, error};
 use std::io::{Cursor, Write};
 use std::net::{SocketAddr, UdpSocket};
-use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 
@@ -51,7 +50,7 @@ impl ReassemblyFragment {
 
 pub struct Config {
     name: String,
-    max_packet_size: usize,
+    pub max_packet_size: usize,
     max_fragments: usize,
     fragment_above: usize,
     fragment_size: usize,
@@ -133,7 +132,7 @@ impl ReceivedPacket {
 
 pub struct Endpoint {
     config: Config,
-    sequence: AtomicU16,
+    sequence: u16,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
     received_buffer: SequenceBuffer<ReceivedPacket>,
@@ -152,7 +151,7 @@ pub struct NetworkInfo {
 impl Endpoint {
     pub fn new(config: Config) -> Self {
         Self {
-            sequence: AtomicU16::new(0),
+            sequence: 0,
             reassembly_buffer: SequenceBuffer::with_capacity(
                 config.fragment_reassembly_buffer_size,
             ),
@@ -167,6 +166,14 @@ impl Endpoint {
                 packet_loss: 0.0,
             },
         }
+    }
+    
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn sequence(&self) -> u16 {
+        self.sequence.into()
     }
 
     pub fn network_info(&self) -> &NetworkInfo {
@@ -183,7 +190,10 @@ impl Endpoint {
             );
             return Err(RenetError::MaximumPacketSizeExceeded);
         }
-        let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+        
+        let sequence = self.sequence;
+        self.sequence += 1;
+
         let (ack, ack_bits) = self.received_buffer.ack_bits();
         // TODO: add header size
         let sent_packet = SentPacket::new(Instant::now(), payload.len());

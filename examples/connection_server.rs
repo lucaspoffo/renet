@@ -1,3 +1,4 @@
+/*
 use std::net::UdpSocket;
 use renet::connection::{Server, ServerConfig};
 use renet::RenetError;
@@ -20,3 +21,5 @@ fn main() -> Result<(), RenetError> {
         sleep(Duration::from_millis(50));
     }
 }
+*/
+fn main() {}

@@ -1,10 +1,10 @@
-use renet::connection::{RequestConnection, ConnectionError, ServerConnection};
+/*
+use renet::connection::{RequestConnection, ConnectionError, ClientConnected};
 use renet::RenetError;
 use alto_logger::TermLogger;
 use std::net::UdpSocket;
 use std::thread::sleep;
 use std::time::Duration;
-
 fn main() -> Result<(), RenetError> {
     TermLogger::default().init().unwrap();
     let mut server_connection = get_connection()?;
@@ -21,7 +21,7 @@ fn main() -> Result<(), RenetError> {
     }
 }
 
-fn get_connection() -> Result<ServerConnection, ConnectionError> {
+fn get_connection() -> Result<ClientConnected, ConnectionError> {
     let socket = UdpSocket::bind("127.0.0.1:8081")?;
     let mut request_connection = RequestConnection::new(0, socket, "127.0.0.1:8080".parse().unwrap())?;
     loop {
@@ -41,3 +41,5 @@ fn get_connection() -> Result<ServerConnection, ConnectionError> {
     }
 
 }
+*/
+fn main() {}

@@ -14,6 +14,7 @@ pub enum RenetError {
     FragmentMissingPacketHeader,
     IOError(io::Error),
     ConnectionError(ConnectionError),
+    SerializationFailed,
 }
 
 impl From<io::Error> for RenetError {
