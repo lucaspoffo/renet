@@ -20,7 +20,7 @@ impl<T: Clone + Default> SequenceBuffer<T> {
         }
         None
     }
-    
+
     pub fn get(&self, sequence: u16) -> Option<&T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
@@ -28,7 +28,7 @@ impl<T: Clone + Default> SequenceBuffer<T> {
         }
         None
     }
-    
+
     #[inline]
     pub fn index(&self, sequence: u16) -> usize {
         sequence as usize % self.entries.len()
@@ -51,7 +51,7 @@ impl<T: Clone + Default> SequenceBuffer<T> {
         ) {
             return None;
         }
-        
+
         // TODO: investigate why adding 1 here, we subtracting 1 when generating ack because of this
         if sequence_greater_than(sequence.wrapping_add(1), self.sequence) {
             self.remove_entries(u32::from(sequence));
@@ -100,13 +100,14 @@ impl<T: Clone + Default> SequenceBuffer<T> {
     pub fn ack_bits(&self) -> (u16, u32) {
         let ack = self.sequence().wrapping_sub(1);
         let mut ack_bits = 0;
+        let mut mask = 1;
 
-        for i in 1..=32 {
+        for i in 0..32 {
             let sequence = ack.wrapping_sub(i);
             if self.exists(sequence) {
-                ack_bits |= 1;
+                ack_bits |= mask;
             }
-            ack_bits <<= 1;
+            mask <<= 1;
         }
 
         (ack, ack_bits)
@@ -177,6 +178,23 @@ mod tests {
         assert!(!buffer.exists(u16::max_value()));
 
         assert_eq!(count_entries(&buffer), 1);
+    }
+
+    #[test]
+    fn ack_bits() {
+        let mut buffer = SequenceBuffer::with_capacity(64);
+        buffer.insert(0, DataStub).unwrap();
+        buffer.insert(1, DataStub).unwrap();
+        buffer.insert(3, DataStub).unwrap();
+        buffer.insert(4, DataStub).unwrap();
+        buffer.insert(5, DataStub).unwrap();
+        buffer.insert(7, DataStub).unwrap();
+        buffer.insert(30, DataStub).unwrap();
+        buffer.insert(31, DataStub).unwrap();
+        let (last_ack, ack_bits) = buffer.ack_bits();
+
+        assert_eq!(last_ack, 31);
+        assert_eq!(ack_bits, 0b11011101000000000000000000000011u32);
     }
 
     fn count_entries(buffer: &SequenceBuffer<DataStub>) -> usize {

@@ -206,6 +206,12 @@ impl Connection {
         self.channels.insert(channel_id, channel);
     }
 
+    pub fn update_channels_current_time(&mut self, current_time: Instant) {
+        for channel in self.channels.values_mut() {
+            channel.update_current_time(current_time.clone());
+        }
+    }
+
     pub fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
         let channel = self
             .channels
@@ -236,6 +242,13 @@ impl Connection {
             };
             channel.process_packet_data(packet_data);
         }
+
+        for ack in self.endpoint.get_acks().iter() {
+            for channel in self.channels.values_mut() {
+                channel.process_ack(*ack);
+            }
+        }
+        self.endpoint.reset_acks();
     }
 
     fn send_payload(&mut self, payload: &[u8], socket: &UdpSocket) -> Result<(), RenetError> {
@@ -246,6 +259,7 @@ impl Connection {
                 ConnectionPacket::Payload(reliable_packet.clone().into_boxed_slice());
             let mut buffer = vec![0u8; payload_packet.size()];
             payload_packet.encode(&mut buffer)?;
+            println!("Packet Size: {}", buffer.len());
             socket.send_to(&buffer, self.addr)?;
         }
         Ok(())
@@ -342,7 +356,18 @@ impl ClientConnected {
         self.connection.send_message(channel_id, message);
     }
 
+    pub fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {
+        self.connection
+            .receive_all_messages_from_channel(channel_id)
+    }
+
     pub fn network_info(&self) -> &NetworkInfo {
+        self.connection.endpoint.network_info()
+    }
+
+    pub fn update_network_info(&mut self) -> &NetworkInfo {
+        self.connection.endpoint.update_sent_bandwidth();
+        self.connection.endpoint.update_received_bandwidth();
         self.connection.endpoint.network_info()
     }
 
@@ -381,8 +406,9 @@ impl ClientConnected {
         }
     }
 
-    pub fn process_events(&mut self) -> Result<(), RenetError> {
+    pub fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
         let mut buffer = vec![0u8; 1500];
+        self.connection.update_channels_current_time(current_time);
         loop {
             let packet = match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
@@ -660,6 +686,10 @@ impl Server {
         self.channels_config.insert(channel_id, config);
     }
 
+    pub fn has_clients(&self) -> bool {
+        !self.clients.is_empty()
+    }
+
     fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Client> {
         self.clients
             .values_mut()
@@ -668,6 +698,32 @@ impl Server {
 
     fn find_connection_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection> {
         self.connecting.values_mut().find(|c| c.addr == *addr)
+    }
+
+    pub fn get_client_network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
+        if let Some(client) = self.clients.get_mut(&client_id) {
+            client.connection.endpoint.update_sent_bandwidth();
+            client.connection.endpoint.update_received_bandwidth();
+            return Some(client.connection.endpoint.network_info());
+        }
+        None
+    }
+
+    pub fn send_message_to_all_clients(&mut self, channel_id: u8, message: Box<[u8]>) {
+        for client in self.clients.values_mut() {
+            client.connection.send_message(channel_id, message.clone());
+        }
+    }
+
+    pub fn send_message_to_client(
+        &mut self,
+        client_id: ClientId,
+        channel_id: u8,
+        message: Box<[u8]>,
+    ) {
+        if let Some(client) = self.clients.get_mut(&client_id) {
+            client.connection.send_message(channel_id, message);
+        }
     }
 
     fn send_connection_packet(
@@ -682,8 +738,8 @@ impl Server {
         Ok(())
     }
 
-    pub fn update(&mut self) {
-        if let Err(e) = self.process_events() {
+    pub fn update(&mut self, current_time: Instant) {
+        if let Err(e) = self.process_events(current_time) {
             error!("Error while processing events:\n{:?}", e);
         }
         self.update_pending_connections();
@@ -742,7 +798,10 @@ impl Server {
     }
 
     // TODO: should we remove the ConnectionError returns and do a continue?
-    fn process_events(&mut self) -> Result<(), RenetError> {
+    fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
+        for client in self.clients.values_mut() {
+            client.connection.update_channels_current_time(current_time);
+        }
         let mut buffer = vec![0u8; self.config.max_payload_size];
         loop {
             match self.socket.recv_from(&mut buffer) {

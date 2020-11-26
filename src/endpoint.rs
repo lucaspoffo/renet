@@ -286,12 +286,11 @@ impl Endpoint {
     }
 
     pub fn update_sent_bandwidth(&mut self) {
-        let sample_size = self.config.sent_packets_buffer_size / 2;
+        let sample_size = self.config.sent_packets_buffer_size / 4;
         let base_sequence = self
             .sent_buffer
             .sequence()
-            .wrapping_sub(self.config.sent_packets_buffer_size as u16)
-            .wrapping_add(1);
+            .wrapping_sub(sample_size as u16);
 
         let mut packets_dropped = 0;
         let mut bytes_sent = 0;
@@ -300,8 +299,12 @@ impl Endpoint {
         for i in 0..sample_size {
             if let Some(sent_packet) = self
                 .sent_buffer
-                .get_mut(base_sequence.wrapping_add(i as u16))
+                .get(base_sequence.wrapping_add(i as u16))
             {
+                if sent_packet.size == 0 {
+                    // Only Default Packets have size 0 
+                    continue;
+                }
                 bytes_sent += sent_packet.size;
                 if sent_packet.time < start_time {
                     start_time = sent_packet.time;
@@ -328,7 +331,7 @@ impl Endpoint {
         if end_time <= start_time {
             return;
         }
-
+        
         let sent_bandwidth_kbps =
             bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
         if f64::abs(self.network_info.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
@@ -340,11 +343,11 @@ impl Endpoint {
     }
 
     pub fn update_received_bandwidth(&mut self) {
-        let sample_size = self.config.received_packets_buffer_size / 2;
+        let sample_size = self.config.received_packets_buffer_size / 4;
         let base_sequence = self
             .received_buffer
             .sequence()
-            .wrapping_sub(self.config.received_packets_buffer_size as u16)
+            .wrapping_sub(sample_size as u16)
             .wrapping_add(1);
 
         let mut bytes_received = 0;

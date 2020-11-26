@@ -17,7 +17,7 @@ pub struct ChannelConfig {
     message_receive_queue_size: usize,
     max_message_per_packet: u32,
     packet_budget_bytes: Option<u32>,
-    message_resend_time: Duration,
+    pub message_resend_time: Duration,
 }
 
 impl Default for ChannelConfig {
@@ -306,11 +306,13 @@ impl Channel for ReliableOrderedChannel {
 
     fn process_ack(&mut self, ack: u16) {
         if let Some(sent_packet) = self.packets_sent.get_mut(ack) {
+            println!("Acket packet: {}", ack);
             // Should we assert already acked?
             if sent_packet.acked {
                 return;
             }
-
+            sent_packet.acked = true;
+            
             for &message_id in sent_packet.messages_id.iter() {
                 if self.messages_send.exists(message_id) {
                     self.messages_send.remove(message_id);
