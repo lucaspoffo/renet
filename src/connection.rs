@@ -259,7 +259,6 @@ impl Connection {
                 ConnectionPacket::Payload(reliable_packet.clone().into_boxed_slice());
             let mut buffer = vec![0u8; payload_packet.size()];
             payload_packet.encode(&mut buffer)?;
-            println!("Packet Size: {}", buffer.len());
             socket.send_to(&buffer, self.addr)?;
         }
         Ok(())

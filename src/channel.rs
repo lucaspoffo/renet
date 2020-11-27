@@ -306,7 +306,6 @@ impl Channel for ReliableOrderedChannel {
 
     fn process_ack(&mut self, ack: u16) {
         if let Some(sent_packet) = self.packets_sent.get_mut(ack) {
-            println!("Acket packet: {}", ack);
             // Should we assert already acked?
             if sent_packet.acked {
                 return;
