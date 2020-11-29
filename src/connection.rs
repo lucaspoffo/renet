@@ -528,7 +528,7 @@ impl RequestConnection {
     }
 }
 
-enum ResponseConnectionState {
+enum HandleConnectionState {
     SendingChallenge,
     SendingHeartBeat,
     Accepted,
@@ -537,7 +537,7 @@ enum ResponseConnectionState {
 struct HandleConnection {
     addr: SocketAddr,
     client_id: ClientId,
-    state: ResponseConnectionState,
+    state: HandleConnectionState,
 }
 
 impl HandleConnection {
@@ -545,7 +545,7 @@ impl HandleConnection {
         Self {
             client_id,
             addr,
-            state: ResponseConnectionState::SendingChallenge,
+            state: HandleConnectionState::SendingChallenge,
         }
     }
 
@@ -553,19 +553,19 @@ impl HandleConnection {
         match packet {
             ConnectionPacket::ConnectionRequest(_) => {}
             ConnectionPacket::ChallengeResponse => {
-                if let ResponseConnectionState::SendingChallenge = self.state {
+                if let HandleConnectionState::SendingChallenge = self.state {
                     //TODO: check if challenge is valid
                     debug!("Received Challenge Response from {}.", self.addr);
-                    self.state = ResponseConnectionState::SendingHeartBeat;
+                    self.state = HandleConnectionState::SendingHeartBeat;
                 }
             }
             ConnectionPacket::HeartBeat => {
-                if let ResponseConnectionState::SendingHeartBeat = self.state {
+                if let HandleConnectionState::SendingHeartBeat = self.state {
                     debug!(
                         "Received HeartBeat from {}, accepted connection.",
                         self.addr
                     );
-                    self.state = ResponseConnectionState::Accepted;
+                    self.state = HandleConnectionState::Accepted;
                 }
             }
             _ => {}
@@ -832,8 +832,11 @@ impl Server {
     fn update_pending_connections(&mut self) {
         let mut connected_connections = vec![];
         for connection in self.connecting.values() {
+            // TODO: this prob should be moved to HandleConnection in an get_packet_method
+            // that returns an ConnectionPacket, and an is_connected function also.
+            // TODO: Send denied connection when server full in HandleConnection
             match connection.state {
-                ResponseConnectionState::SendingChallenge => {
+                HandleConnectionState::SendingChallenge => {
                     if let Err(e) =
                         self.send_connection_packet(ConnectionPacket::Challenge, &connection.addr)
                     {
@@ -843,7 +846,7 @@ impl Server {
                         );
                     }
                 }
-                ResponseConnectionState::SendingHeartBeat => {
+                HandleConnectionState::SendingHeartBeat => {
                     if let Err(e) =
                         self.send_connection_packet(ConnectionPacket::HeartBeat, &connection.addr)
                     {
@@ -853,7 +856,7 @@ impl Server {
                         );
                     }
                 }
-                ResponseConnectionState::Accepted => {
+                HandleConnectionState::Accepted => {
                     connected_connections.push(connection.client_id);
                 }
             }
