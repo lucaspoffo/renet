@@ -224,7 +224,7 @@ impl Connection {
     }
 
     fn process_payload(&mut self, payload: &[u8]) {
-        let channel_packets = match bincode::deserialize::<Vec<(u8, ChannelPacketData)>>(&payload) {
+        let channel_packets = match bincode::deserialize::<Vec<ChannelPacketData>>(&payload) {
             Ok(x) => x,
             Err(e) => {
                 error!(
@@ -235,15 +235,15 @@ impl Connection {
             }
         };
 
-        for (channel_id, packet_data) in channel_packets.iter() {
-            let channel = match self.channels.get_mut(channel_id) {
+        for channel_packet_data in channel_packets.iter() {
+            let channel = match self.channels.get_mut(&channel_packet_data.channel_id()) {
                 Some(c) => c,
                 None => {
-                    error!("Received channel packet with invalid id: {:?}", channel_id);
+                    error!("Received channel packet with invalid id: {:?}", channel_packet_data.channel_id());
                     continue;
                 }
             };
-            channel.process_packet_data(packet_data);
+            channel.process_packet_data(channel_packet_data);
         }
 
         for ack in self.endpoint.get_acks().iter() {
@@ -269,14 +269,14 @@ impl Connection {
 
     fn get_packet(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
         let sequence = self.endpoint.sequence();
-        let mut channel_packets: Vec<(u8, ChannelPacketData)> = vec![];
-        for (id, channel) in self.channels.iter_mut() {
+        let mut channel_packets: Vec<ChannelPacketData> = vec![];
+        for channel in self.channels.values_mut() {
             let packet_data = channel.get_packet_data(
                 Some(self.endpoint.config().max_packet_size as u32),
                 sequence,
             );
             if let Some(packet_data) = packet_data {
-                channel_packets.push((id.clone(), packet_data));
+                channel_packets.push(packet_data);
             }
         }
         if channel_packets.is_empty() {
@@ -285,7 +285,7 @@ impl Connection {
         let payload = match bincode::serialize(&channel_packets) {
             Ok(p) => p,
             Err(e) => {
-                error!("Failed to serialize Vec<(u8, ChannelPacketData)>: {:?}", e);
+                error!("Failed to serialize Vec<ChannelPacketData>: {:?}", e);
                 return Err(RenetError::SerializationFailed);
             }
         };
@@ -329,8 +329,6 @@ impl Connection {
     }
 }
 
-// TODO: Move channels and endpoit to it's own struct
-// The ClientConnected and Client use the same logic with them
 pub struct ClientConnected {
     socket: UdpSocket,
     id: ClientId,
@@ -367,10 +365,9 @@ impl ClientConnected {
         self.connection.endpoint.network_info()
     }
 
-    pub fn update_network_info(&mut self) -> &NetworkInfo {
+    pub fn update_network_info(&mut self) {
         self.connection.endpoint.update_sent_bandwidth();
         self.connection.endpoint.update_received_bandwidth();
-        self.connection.endpoint.network_info()
     }
 
     pub fn send_packets(&mut self) -> Result<(), RenetError> {

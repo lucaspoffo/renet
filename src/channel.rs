@@ -148,6 +148,10 @@ impl ChannelPacketData {
             channel_id,
         }
     }
+
+    pub fn channel_id(&self) -> u8 {
+        self.channel_id
+    }
 }
 
 pub struct ReliableOrderedChannel {
