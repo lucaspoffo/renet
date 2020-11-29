@@ -149,7 +149,6 @@ impl ConnectionPacket {
     }
 }
 
-// TODO separate connected state from connecting state
 // TODO investigate if we can separate the client state
 // in the server from the from the client itself
 #[derive(Debug, Eq, PartialEq)]
@@ -166,8 +165,6 @@ pub enum ConnectionState {
     SendingConnectionRequest,
     SendingChallengeResponse,
     TimedOut,
-    ResponseTimedOut,
-    RequestTimedOut
 }
 
 pub struct RequestConnection {
