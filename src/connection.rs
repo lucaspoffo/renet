@@ -154,18 +154,24 @@ impl ConnectionPacket {
 // in the server from the from the client itself
 #[derive(Debug, Eq, PartialEq)]
 pub enum ClientState {
-    ConnectionTimedOut,
-    ConnectionResponseTimedOut,
-    ConnectionRequestTimedOut,
-    ConnectionDenied,
+    Connected,
     Disconnected,
+    ConnectionTimedOut,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ConnectionState {
+    Accepted,
+    Denied,
     SendingConnectionRequest,
     SendingChallengeResponse,
-    Connected,
+    TimedOut,
+    ResponseTimedOut,
+    RequestTimedOut
 }
 
 pub struct RequestConnection {
-    state: ClientState,
+    state: ConnectionState,
     socket: UdpSocket,
     server_addr: SocketAddr,
     id: ClientId,
@@ -343,7 +349,7 @@ impl ClientConnected {
         }
     }
 
-    pub fn add_channel(&mut self, channel_id: u8, mut channel: Box<dyn Channel>) {
+    pub fn add_channel(&mut self, channel_id: u8, channel: Box<dyn Channel>) {
         self.connection.add_channel(channel_id, channel);
     }
 
@@ -438,7 +444,7 @@ impl RequestConnection {
             id,
             socket,
             server_addr,
-            state: ClientState::SendingConnectionRequest,
+            state: ConnectionState::SendingConnectionRequest,
         })
     }
 
@@ -453,19 +459,19 @@ impl RequestConnection {
     fn process_packet(&mut self, packet: ConnectionPacket) -> Result<(), ConnectionError> {
         match packet {
             ConnectionPacket::Challenge => {
-                if self.state == ClientState::SendingConnectionRequest {
+                if self.state == ConnectionState::SendingConnectionRequest {
                     debug!("Received Challenge Packet, moving to State Sending Response");
-                    self.state = ClientState::SendingChallengeResponse;
+                    self.state = ConnectionState::SendingChallengeResponse;
                 }
             }
             ConnectionPacket::HeartBeat => {
-                if self.state == ClientState::SendingChallengeResponse {
+                if self.state == ConnectionState::SendingChallengeResponse {
                     debug!("Received HeartBeat while sending challenge response, successfuly connected");
-                    self.state = ClientState::Connected;
+                    self.state = ConnectionState::Accepted;
                 }
             }
             ConnectionPacket::ConnectionDenied => {
-                self.state = ClientState::ConnectionDenied;
+                self.state = ConnectionState::Denied;
                 return Err(ConnectionError::Denied);
             }
             p => {
@@ -479,13 +485,13 @@ impl RequestConnection {
         self.process_events()?;
         debug!("State: {:?}", self.state);
         match self.state {
-            ClientState::SendingConnectionRequest => {
+            ConnectionState::SendingConnectionRequest => {
                 self.send_packet(ConnectionPacket::ConnectionRequest(self.id))?;
             }
-            ClientState::SendingChallengeResponse => {
+            ConnectionState::SendingChallengeResponse => {
                 self.send_packet(ConnectionPacket::ChallengeResponse)?;
             }
-            ClientState::Connected => {
+            ConnectionState::Accepted => {
                 self.send_packet(ConnectionPacket::HeartBeat)?;
                 let config = Config::default();
                 let endpoint = Endpoint::new(config);
@@ -528,7 +534,7 @@ impl RequestConnection {
 enum ResponseConnectionState {
     SendingChallenge,
     SendingHeartBeat,
-    Connected,
+    Accepted,
 }
 
 struct HandleConnection {
@@ -562,7 +568,7 @@ impl HandleConnection {
                         "Received HeartBeat from {}, accepted connection.",
                         self.addr
                     );
-                    self.state = ResponseConnectionState::Connected;
+                    self.state = ResponseConnectionState::Accepted;
                 }
             }
             _ => {}
@@ -850,7 +856,7 @@ impl Server {
                         );
                     }
                 }
-                ResponseConnectionState::Connected => {
+                ResponseConnectionState::Accepted => {
                     connected_connections.push(connection.client_id);
                 }
             }
@@ -927,7 +933,7 @@ mod tests {
         let mut request_connection = RequestConnection::new(0, socket, server_addr).unwrap();
 
         assert_eq!(
-            ClientState::SendingConnectionRequest,
+            ConnectionState::SendingConnectionRequest,
             request_connection.state
         );
 
@@ -935,14 +941,14 @@ mod tests {
             .process_packet(ConnectionPacket::Challenge)
             .unwrap();
         assert_eq!(
-            ClientState::SendingChallengeResponse,
+            ConnectionState::SendingChallengeResponse,
             request_connection.state
         );
 
         request_connection
             .process_packet(ConnectionPacket::HeartBeat)
             .unwrap();
-        assert_eq!(ClientState::Connected, request_connection.state);
+        assert_eq!(ConnectionState::Accepted, request_connection.state);
     }
 
     #[test]
