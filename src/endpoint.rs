@@ -412,8 +412,8 @@ impl Endpoint {
         self.acks.clear();
     }
 
-    pub fn get_acks(&self) -> Vec<u16> {
-        self.acks.clone()
+    pub fn get_acks(&self) -> &[u16] {
+        &self.acks
     }
 }
 

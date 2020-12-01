@@ -11,6 +11,10 @@ name = "tcp"
 path = "src/tcp.rs"
 
 [[bin]]
+name = "udp"
+path = "src/udp.rs"
+
+[[bin]]
 name = "renet"
 path = "src/renet.rs"
 

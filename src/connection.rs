@@ -796,7 +796,6 @@ impl Server {
         Ok(())
     }
 
-    // TODO: should we remove the ConnectionError returns and do a continue?
     fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
         for client in self.clients.values_mut() {
             client.connection.update_channels_current_time(current_time);
