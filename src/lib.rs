@@ -6,4 +6,6 @@ pub mod error;
 pub mod channel;
 mod packet;
 pub mod sequence_buffer;
-mod endpoint;
+pub mod endpoint;
+mod client;
+mod server;
