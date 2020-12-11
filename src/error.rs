@@ -1,5 +1,4 @@
 use std::{io, result};
-use crate::connection::ConnectionError;
 
 pub type Result<T> = result::Result<T, RenetError>;
 
@@ -13,8 +12,8 @@ pub enum RenetError {
     InvalidHeaderType,
     FragmentMissingPacketHeader,
     IOError(io::Error),
-    ConnectionError(ConnectionError),
     SerializationFailed,
+    AuthenticationError(Box<dyn std::error::Error>),
 }
 
 impl From<io::Error> for RenetError {
@@ -23,8 +22,3 @@ impl From<io::Error> for RenetError {
     }
 }
 
-impl From<ConnectionError> for RenetError {
-    fn from(inner: ConnectionError) -> RenetError {
-        RenetError::ConnectionError(inner)
-    }
-}

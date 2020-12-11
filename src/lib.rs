@@ -9,3 +9,4 @@ pub mod sequence_buffer;
 pub mod endpoint;
 mod client;
 mod server;
+mod protocol;

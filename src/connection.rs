@@ -1,8 +1,9 @@
 use crate::channel::{Channel, ChannelConfig, ChannelPacketData};
+use crate::client::ClientConnected;
 use crate::endpoint::{Config, Endpoint, NetworkInfo};
 use crate::error::RenetError;
-use crate::client::ClientConnected;
-use crate::server::{ServerConfig, Server};
+use crate::server::{Server, ServerConfig};
+use crate::protocol::{SecurityService, AuthenticationProtocol};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::{debug, error};
 use std::collections::HashMap;
@@ -10,135 +11,20 @@ use std::io;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Instant;
 
-const PACKET_CONNECTION: u8 = 0;
-const PACKET_CONNECTION_DENIED: u8 = 1;
-const PACKET_CHALLENGE: u8 = 2;
-const PACKET_CHALLENGE_RESPONSE: u8 = 3;
-const PACKET_HEARTBEAT: u8 = 4;
-const PACKET_PAYLOAD: u8 = 5;
-const PACKET_DISCONNECT: u8 = 6;
-
-// TODO Should we divide the packet types in 2 enum?
-// One for the client packets and another for the server packets
-#[derive(Debug, Eq, PartialEq)]
-pub enum ConnectionPacket {
-    ConnectionRequest(ClientId),
-    ConnectionDenied,
-    Challenge,
-    ChallengeResponse,
-    HeartBeat,
-    Payload(Box<[u8]>),
-    Disconnect,
-}
-
-impl ConnectionPacket {
-    pub fn id(&self) -> u8 {
-        match *self {
-            ConnectionPacket::ConnectionRequest(_) => PACKET_CONNECTION,
-            ConnectionPacket::ConnectionDenied => PACKET_CONNECTION_DENIED,
-            ConnectionPacket::Challenge => PACKET_CHALLENGE,
-            ConnectionPacket::ChallengeResponse => PACKET_CHALLENGE_RESPONSE,
-            ConnectionPacket::HeartBeat => PACKET_HEARTBEAT,
-            ConnectionPacket::Disconnect => PACKET_DISCONNECT,
-            ConnectionPacket::Payload(_) => PACKET_PAYLOAD,
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        match self {
-            ConnectionPacket::ConnectionRequest(_) => 9,
-            ConnectionPacket::Payload(ref p) => 1 + p.len(),
-            _ => 1,
-        }
-    }
-
-    fn write<W>(&self, out: &mut W) -> Result<(), io::Error>
-    where
-        W: io::Write,
-    {
-        match *self {
-            ConnectionPacket::ConnectionRequest(p) => out.write_u64::<BigEndian>(p),
-            // Packet::Challenge(ref p) => p.write(out),
-            // Packet::Response(ref p) => p.write(out),
-            // Packet::KeepAlive(ref p) => p.write(out),
-            ConnectionPacket::Payload(ref p) => out.write_all(p),
-            // Packet::ConnectionDenied | Packet::Payload(_) | Packet::Disconnect => Ok(()),
-            _ => Ok(()),
-        }
-    }
-
-    pub fn encode(&self, mut buffer: &mut [u8]) -> Result<(), ConnectionError> {
-        buffer.write_u8(self.id())?;
-        self.write(&mut buffer)?;
-        Ok(())
-    }
-
-    pub fn decode(mut buffer: &[u8]) -> Result<ConnectionPacket, ConnectionError> {
-        let packet_type = buffer.read_u8()?;
-
-        match packet_type {
-            PACKET_CONNECTION => {
-                let client_id = buffer.read_u64::<BigEndian>()?;
-                Ok(ConnectionPacket::ConnectionRequest(client_id))
-            }
-            PACKET_PAYLOAD => {
-                let payload = buffer[..buffer.len()].to_vec().into_boxed_slice();
-                Ok(ConnectionPacket::Payload(payload))
-            }
-            PACKET_DISCONNECT => Ok(ConnectionPacket::Disconnect),
-            PACKET_HEARTBEAT => Ok(ConnectionPacket::HeartBeat),
-            PACKET_CHALLENGE => Ok(ConnectionPacket::Challenge),
-            PACKET_CONNECTION_DENIED => Ok(ConnectionPacket::ConnectionDenied),
-            PACKET_CHALLENGE_RESPONSE => Ok(ConnectionPacket::ChallengeResponse),
-            _ => Err(ConnectionError::InvalidPacket),
-        }
-    }
-}
-
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum ConnectionState {
-    Accepted,
-    Denied,
-    SendingConnectionRequest,
-    SendingChallengeResponse,
-    TimedOut,
-}
-
-pub struct RequestConnection {
-    state: ConnectionState,
-    socket: UdpSocket,
-    server_addr: SocketAddr,
-    id: ClientId,
-}
-
-#[derive(Debug)]
-pub enum ConnectionError {
-    Denied,
-    IOError(io::Error),
-    InvalidPacket,
-    ClientAlreadyConnected,
-    ClientDisconnected,
-}
-
-impl From<io::Error> for ConnectionError {
-    fn from(inner: io::Error) -> ConnectionError {
-        ConnectionError::IOError(inner)
-    }
-}
-
 pub struct Connection {
     pub endpoint: Endpoint,
     channels: HashMap<u8, Box<dyn Channel>>,
     addr: SocketAddr,
+    security_service: Box<dyn SecurityService>
 }
 
 impl Connection {
-    pub fn new(server_addr: SocketAddr, endpoint: Endpoint) -> Self {
+    pub fn new(server_addr: SocketAddr, endpoint: Endpoint, security_service: Box<dyn SecurityService>) -> Self {
         Self {
             endpoint,
             channels: HashMap::new(),
             addr: server_addr,
+            security_service
         }
     }
 
@@ -165,15 +51,19 @@ impl Connection {
         channel.send_message(message);
     }
 
-    pub fn process_payload(&mut self, payload: &[u8]) {
+    pub fn process_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
+        let payload = self.security_service.ss_unwrap(payload)?;
+        let payload = match self.endpoint.process_payload(&payload)? {
+            Some(payload) => payload,
+            None => return Ok(())
+        };
+
         let channel_packets = match bincode::deserialize::<Vec<ChannelPacketData>>(&payload) {
             Ok(x) => x,
             Err(e) => {
-                error!(
-                    "Failed to deserialize ChannelPacketData from payload: {:?}",
-                    e
-                );
-                return;
+                error!("Failed to deserialize ChannelPacketData: {:?}", e);
+                // TODO: remove bincode and serde, update serialize errors
+                return Err(RenetError::SerializationFailed);
             }
         };
 
@@ -181,7 +71,10 @@ impl Connection {
             let channel = match self.channels.get_mut(&channel_packet_data.channel_id()) {
                 Some(c) => c,
                 None => {
-                    error!("Received channel packet with invalid id: {:?}", channel_packet_data.channel_id());
+                    error!(
+                        "Received channel packet with invalid id: {:?}",
+                        channel_packet_data.channel_id()
+                    );
                     continue;
                 }
             };
@@ -194,17 +87,15 @@ impl Connection {
             }
         }
         self.endpoint.reset_acks();
+        Ok(())
     }
 
     pub fn send_payload(&mut self, payload: &[u8], socket: &UdpSocket) -> Result<(), RenetError> {
-        let mut reliable_packets = self.endpoint.generate_packets(payload)?;
-        for reliable_packet in reliable_packets.iter_mut() {
-            // TODO remove clone here
-            let payload_packet =
-                ConnectionPacket::Payload(reliable_packet.clone().into_boxed_slice());
-            let mut buffer = vec![0u8; payload_packet.size()];
-            payload_packet.encode(&mut buffer)?;
-            socket.send_to(&buffer, self.addr)?;
+        let reliable_packets = self.endpoint.generate_packets(payload)?;
+        for reliable_packet in reliable_packets.iter() {
+            // TODO: remove clone
+            let payload = self.security_service.ss_wrap(reliable_packet.clone().into_boxed_slice())?;
+            socket.send_to(&payload, self.addr)?;
         }
         Ok(())
     }
@@ -271,122 +162,93 @@ impl Connection {
     }
 }
 
+pub struct RequestConnection {
+    socket: UdpSocket,
+    server_addr: SocketAddr,
+    id: ClientId,
+    protocol: Box<dyn AuthenticationProtocol>
+}
+
 impl RequestConnection {
     pub fn new(
         id: ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
-    ) -> Result<Self, ConnectionError> {
+        protocol: Box<dyn AuthenticationProtocol>
+    ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         Ok(Self {
             id,
             socket,
             server_addr,
-            state: ConnectionState::SendingConnectionRequest,
+            protocol
         })
     }
 
-    fn send_packet(&self, packet: ConnectionPacket) -> Result<(), ConnectionError> {
-        let mut buffer = vec![0u8; packet.size()];
-        packet.encode(&mut buffer)?;
-        debug!("Send Packet buffer: {:?}", buffer);
-        self.socket.send_to(&buffer, self.server_addr)?;
+    fn process_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
+        self.protocol.read_payload(payload)?;
         Ok(())
     }
 
-    fn process_packet(&mut self, packet: ConnectionPacket) -> Result<(), ConnectionError> {
-        match packet {
-            ConnectionPacket::Challenge => {
-                if self.state == ConnectionState::SendingConnectionRequest {
-                    debug!("Received Challenge Packet, moving to State Sending Response");
-                    self.state = ConnectionState::SendingChallengeResponse;
-                }
-            }
-            ConnectionPacket::HeartBeat => {
-                if self.state == ConnectionState::SendingChallengeResponse {
-                    debug!("Received HeartBeat while sending challenge response, successfuly connected");
-                    self.state = ConnectionState::Accepted;
-                }
-            }
-            ConnectionPacket::ConnectionDenied => {
-                self.state = ConnectionState::Denied;
-                return Err(ConnectionError::Denied);
-            }
-            p => {
-                debug!("Received invalid packet {:?}", p);
-            }
-        }
-        Ok(())
-    }
-
-    pub fn update(&mut self) -> Result<Option<ClientConnected>, ConnectionError> {
+    pub fn update(&mut self) -> Result<Option<ClientConnected>, RenetError> {
         self.process_events()?;
-        debug!("State: {:?}", self.state);
-        match self.state {
-            ConnectionState::SendingConnectionRequest => {
-                self.send_packet(ConnectionPacket::ConnectionRequest(self.id))?;
-            }
-            ConnectionState::SendingChallengeResponse => {
-                self.send_packet(ConnectionPacket::ChallengeResponse)?;
-            }
-            ConnectionState::Accepted => {
-                self.send_packet(ConnectionPacket::HeartBeat)?;
-                let config = Config::default();
-                let endpoint = Endpoint::new(config);
-                return Ok(Some(ClientConnected::new(
-                    self.id,
-                    self.socket.try_clone()?,
-                    self.server_addr,
-                    endpoint,
-                )));
-            }
-            _ => {}
+        
+        if self.protocol.is_authenticated() {
+            let config = Config::default();
+            let endpoint = Endpoint::new(config);
+            let security_service = self.protocol.build_security_interface();
+            return Ok(Some(ClientConnected::new(
+                self.id,
+                self.socket.try_clone()?,
+                self.server_addr,
+                endpoint,
+                security_service
+            )));
         }
+
+        match self.protocol.create_payload() {
+            Ok(Some(payload)) => { self.socket.send_to(&payload, self.server_addr)?; },
+            Ok(None) => {},
+            Err(e) => error!("Failed to create protocol payload: {:?}", e),
+        }
+
         Ok(None)
     }
 
-    fn process_events(&mut self) -> Result<(), ConnectionError> {
-        // TODO: pass this buffer to struct
-        let mut buffer = vec![0u8; 16000];
+    fn process_events(&mut self) -> Result<(), RenetError> {
+        // TODO: remove this buffer
+        let mut buffer = vec![0u8; 1500];
         loop {
-            let packet = match self.socket.recv_from(&mut buffer) {
+            let payload = match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
                     if addr == self.server_addr {
-                        let payload = &buffer[..len];
-                        let packet = ConnectionPacket::decode(payload)?;
-                        packet
+                        buffer[..len].to_vec().into_boxed_slice()
                     } else {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
-                Err(e) => return Err(ConnectionError::IOError(e).into()),
+                Err(e) => return Err(RenetError::IOError(e)),
             };
 
-            self.process_packet(packet)?;
+            self.process_payload(payload)?;
         }
     }
-}
-
-pub enum HandleConnectionState {
-    SendingChallenge,
-    SendingHeartBeat,
-    Accepted,
 }
 
 pub struct HandleConnection {
     addr: SocketAddr,
     client_id: ClientId,
-    state: HandleConnectionState,
+    pub protocol: Box<dyn AuthenticationProtocol>
 }
 
 impl HandleConnection {
-    pub fn new(client_id: ClientId, addr: SocketAddr) -> Self {
+    pub fn new(client_id: ClientId, addr: SocketAddr, protocol: Box<dyn AuthenticationProtocol>) -> Self {
         Self {
             client_id,
             addr,
-            state: HandleConnectionState::SendingChallenge,
+            protocol
         }
     }
 
@@ -394,34 +256,17 @@ impl HandleConnection {
         &self.addr
     }
 
-    pub fn state(&self) -> &HandleConnectionState {
-        &self.state
-    }
-
     pub fn client_id(&self) -> ClientId {
         self.client_id
     }
 
-    pub fn process_packet(&mut self, packet: &ConnectionPacket) {
-        match packet {
-            ConnectionPacket::ConnectionRequest(_) => {}
-            ConnectionPacket::ChallengeResponse => {
-                if let HandleConnectionState::SendingChallenge = self.state {
-                    //TODO: check if challenge is valid
-                    debug!("Received Challenge Response from {}.", self.addr);
-                    self.state = HandleConnectionState::SendingHeartBeat;
-                }
-            }
-            ConnectionPacket::HeartBeat => {
-                if let HandleConnectionState::SendingHeartBeat = self.state {
-                    debug!(
-                        "Received HeartBeat from {}, accepted connection.",
-                        self.addr
-                    );
-                    self.state = HandleConnectionState::Accepted;
-                }
-            }
-            _ => {}
+    pub fn is_authenticated(&self) -> bool {
+        self.protocol.is_authenticated()
+    }
+
+    pub fn process_payload(&mut self, payload: Box<[u8]>) {
+        if let Err(e) = self.protocol.read_payload(payload) {
+            error!("Error reading protocol payload:\n{:?}", e);
         }
     }
 }
