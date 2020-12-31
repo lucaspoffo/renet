@@ -5,7 +5,7 @@ use crate::error::RenetError;
 use crate::server::{Server, ServerConfig};
 use crate::protocol::{SecurityService, AuthenticationProtocol};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use log::{debug, error};
+use log::{debug, error, info};
 use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
@@ -207,7 +207,10 @@ impl RequestConnection {
         }
 
         match self.protocol.create_payload() {
-            Ok(Some(payload)) => { self.socket.send_to(&payload, self.server_addr)?; },
+            Ok(Some(payload)) => {
+                info!("Sending protocol payload to server: {:?}", payload);
+                self.socket.send_to(&payload, self.server_addr)?; 
+            },
             Ok(None) => {},
             Err(e) => error!("Failed to create protocol payload: {:?}", e),
         }
@@ -240,7 +243,7 @@ impl RequestConnection {
 pub struct HandleConnection {
     addr: SocketAddr,
     client_id: ClientId,
-    pub protocol: Box<dyn AuthenticationProtocol>
+    pub(crate) protocol: Box<dyn AuthenticationProtocol>
 }
 
 impl HandleConnection {
@@ -260,10 +263,6 @@ impl HandleConnection {
         self.client_id
     }
 
-    pub fn is_authenticated(&self) -> bool {
-        self.protocol.is_authenticated()
-    }
-
     pub fn process_payload(&mut self, payload: Box<[u8]>) {
         if let Err(e) = self.protocol.read_payload(payload) {
             error!("Error reading protocol payload:\n{:?}", e);
@@ -273,6 +272,7 @@ impl HandleConnection {
 
 pub type ClientId = u64;
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,3 +326,4 @@ mod tests {
         assert_eq!(ConnectionState::Accepted, request_connection.state);
     }
 }
+*/

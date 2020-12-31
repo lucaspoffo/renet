@@ -3,7 +3,7 @@ use crate::connection::{ClientId, Connection, HandleConnection};
 use crate::endpoint::{Config, Endpoint, NetworkInfo};
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
-use log::{debug, error};
+use log::{debug, error, info};
 use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
@@ -21,7 +21,6 @@ pub enum ClientState {
 
 struct Client {
     id: ClientId,
-    state: ClientState,
     connection: Connection,
 }
 
@@ -29,13 +28,8 @@ impl Client {
     fn new(id: ClientId, addr: SocketAddr, endpoint: Endpoint, security_service: Box<dyn SecurityService>) -> Self {
         Self {
             id,
-            state: ClientState::Connected,
             connection: Connection::new(addr, endpoint, security_service),
         }
-    }
-
-    fn is_connected(&self) -> bool {
-        self.state == ClientState::Connected
     }
 
     fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {
@@ -217,6 +211,7 @@ where P: AuthenticationProtocol + ServerAuthenticationProtocol,
             None => {
                 let protocol = P::from_payload(payload)?;
                 let id = protocol.id();
+                info!("Created new protocol from payload with client id {}", id); 
                 let new_connection = HandleConnection::new(protocol.id(), addr.clone(), protocol);
                 self.connecting.insert(id, new_connection);
             }
@@ -249,9 +244,15 @@ where P: AuthenticationProtocol + ServerAuthenticationProtocol,
 
     fn update_pending_connections(&mut self) {
         let mut connected_connections = vec![];
-        for connection in self.connecting.values() {
-                if connection.is_authenticated() {
+        for connection in self.connecting.values_mut() {
+                if connection.protocol.is_authenticated() {
                     connected_connections.push(connection.client_id());
+                } else {
+                    if let Ok(Some(payload)) = connection.protocol.create_payload() {
+                        if let Err(e) = self.socket.send_to(&payload, connection.addr()) {
+                            error!("Failed to send protocol packet {}", e);
+                        }
+                    }
                 }
         }
         for connected in connected_connections {
@@ -287,6 +288,7 @@ where P: AuthenticationProtocol + ServerAuthenticationProtocol,
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,3 +319,4 @@ mod tests {
         assert!(server.clients.contains_key(&0));
     }
 }
+*/

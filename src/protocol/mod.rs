@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::connection::ClientId;
 
-mod unsecure;
+pub mod unsecure;
 
 pub trait SecurityService {
     fn ss_wrap(&mut self, data: Box<[u8]>) -> Result<Box<[u8]>>;

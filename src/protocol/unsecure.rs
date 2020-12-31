@@ -2,16 +2,15 @@ use crate::connection::ClientId;
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use log::debug;
+use log::{info, debug};
 use std::io;
 
+// TODO: Add version verification
 #[derive(Debug, Eq, PartialEq)]
 enum Packet {
     ConnectionRequest(ClientId),
     ConnectionDenied,
-    Challenge,
-    ChallengeResponse,
-    HeartBeat,
+    KeepAlive,
     Payload(Box<[u8]>),
     Disconnect,
 }
@@ -20,11 +19,9 @@ enum Packet {
 enum PacketId {
     ConnectionRequest = 1,
     ConnectionDenied = 2,
-    Challenge = 3,
-    ChallengeResponse = 4,
-    HeartBeat = 5,
-    Payload = 6,
-    Disconnect = 7,
+    KeepAlive = 3,
+    Payload = 4,
+    Disconnect = 5,
 }
 
 impl PacketId {
@@ -32,11 +29,9 @@ impl PacketId {
         let packet_id = match id {
             1 => Self::ConnectionRequest,
             2 => Self::ConnectionDenied,
-            3 => Self::Challenge,
-            4 => Self::ChallengeResponse,
-            5 => Self::HeartBeat,
-            6 => Self::Payload,
-            7 => Self::Disconnect,
+            3 => Self::KeepAlive,
+            4 => Self::Payload,
+            5 => Self::Disconnect,
             _ => return Err(ConnectionError::InvalidPacket),
         };
 
@@ -44,7 +39,7 @@ impl PacketId {
     }
 }
 
-// TODO: Refactor with error crate 
+// TODO: Refactor with error crate
 #[derive(Debug)]
 pub enum ConnectionError {
     Denied,
@@ -83,9 +78,7 @@ impl Packet {
         match *self {
             Packet::ConnectionRequest(_) => PacketId::ConnectionRequest,
             Packet::ConnectionDenied => PacketId::ConnectionDenied,
-            Packet::Challenge => PacketId::ConnectionDenied,
-            Packet::ChallengeResponse => PacketId::ChallengeResponse,
-            Packet::HeartBeat => PacketId::HeartBeat,
+            Packet::KeepAlive => PacketId::KeepAlive,
             Packet::Disconnect => PacketId::Disconnect,
             Packet::Payload(_) => PacketId::Payload,
         }
@@ -105,11 +98,7 @@ impl Packet {
     {
         match *self {
             Packet::ConnectionRequest(p) => out.write_u64::<BigEndian>(p),
-            // Packet::Challenge(ref p) => p.write(out),
-            // Packet::Response(ref p) => p.write(out),
-            // Packet::KeepAlive(ref p) => p.write(out),
             Packet::Payload(ref p) => out.write_all(p),
-            // Packet::ConnectionDenied | Packet::Payload(_) | Packet::Disconnect => Ok(()),
             _ => Ok(()),
         }
     }
@@ -134,10 +123,8 @@ impl Packet {
                 Ok(Packet::Payload(payload))
             }
             PacketId::Disconnect => Ok(Packet::Disconnect),
-            PacketId::HeartBeat => Ok(Packet::HeartBeat),
-            PacketId::Challenge => Ok(Packet::Challenge),
+            PacketId::KeepAlive => Ok(Packet::KeepAlive),
             PacketId::ConnectionDenied => Ok(Packet::ConnectionDenied),
-            PacketId::ChallengeResponse => Ok(Packet::ChallengeResponse),
         }
     }
 }
@@ -147,23 +134,21 @@ enum ClientState {
     Accepted,
     Denied,
     SendingConnectionRequest,
-    SendingChallengeResponse,
     // TimedOut,
 }
 
-
-struct UnsecureClientProtocol {
+pub struct UnsecureClientProtocol {
     id: ClientId,
     state: ClientState,
 }
 
-struct UnsecureService;
+pub struct UnsecureService;
 
 impl UnsecureClientProtocol {
     pub fn new(id: ClientId) -> Self {
         Self {
             id,
-            state: ClientState::SendingConnectionRequest
+            state: ClientState::SendingConnectionRequest,
         }
     }
 }
@@ -178,9 +163,7 @@ impl SecurityService for UnsecureService {
     }
 
     fn ss_unwrap(&mut self, data: Box<[u8]>) -> Result<Box<[u8]>, RenetError> {
-        // TODO: Move this buffer somewhere
-        let mut buffer = vec![0u8; 1500];
-        let packet = Packet::decode(&buffer)?;
+        let packet = Packet::decode(&data)?;
         match packet {
             Packet::Payload(payload) => {
                 return Ok(payload);
@@ -188,7 +171,7 @@ impl SecurityService for UnsecureService {
             p => {
                 debug!("Received invalid packet: {:?}", p);
                 return Err(ConnectionError::InvalidPacket.into());
-            },
+            }
         }
     }
 }
@@ -201,7 +184,7 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
     fn create_payload(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
         let packet = match self.state {
             ClientState::SendingConnectionRequest => Packet::ConnectionRequest(self.id),
-            ClientState::SendingChallengeResponse => Packet::ChallengeResponse,
+            ClientState::Accepted => Packet::KeepAlive,
             _ => return Ok(None),
         };
         // TODO: create buffer inside struct
@@ -214,14 +197,8 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         let packet = Packet::decode(&payload)?;
         // TODO: better debug logs
         match (packet, &self.state) {
-            (Packet::Challenge, ClientState::SendingConnectionRequest) => {
-                debug!("Received Challenge Packet, moving to State Sending Response");
-                self.state = ClientState::SendingChallengeResponse;
-            }
-            (Packet::HeartBeat, ClientState::SendingChallengeResponse) => {
-                debug!(
-                    "Received HeartBeat while sending challenge response, successfuly connected"
-                );
+            (Packet::KeepAlive, ClientState::SendingConnectionRequest) => {
+                debug!("Received KeepAlive, moving to State Accepted");
                 self.state = ClientState::Accepted;
             }
             (Packet::ConnectionDenied, _) => {
@@ -244,15 +221,14 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
 
 #[derive(Debug, Eq, PartialEq)]
 enum ServerState {
-    SendingChallenge,
-    SendingHeartBeat,
+    SendingKeepAlive,
     Accepted,
     // TimedOut,
 }
 
-struct UnsecureServerProtocol {
+pub struct UnsecureServerProtocol {
     id: ClientId,
-    state: ServerState
+    state: ServerState,
 }
 
 impl AuthenticationProtocol for UnsecureServerProtocol {
@@ -261,10 +237,9 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
     }
 
     fn create_payload(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
-        let packet = match self.state {        
-            ServerState::SendingChallenge => Packet::Challenge,
-            ServerState::SendingHeartBeat => Packet::HeartBeat,
-            _ => return Ok(None)
+        let packet = match self.state {
+            ServerState::SendingKeepAlive => Packet::KeepAlive,
+            _ => return Ok(None),
         };
 
         // TODO: create buffer inside struct
@@ -273,29 +248,26 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         Ok(Some(buffer.into_boxed_slice()))
     }
 
-    fn read_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> { 
+    fn read_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
         let packet = Packet::decode(&payload)?;
         // TODO: better debug logs
         match (packet, &self.state) {
             (Packet::ConnectionRequest(_), _) => {}
-            (Packet::ChallengeResponse, ServerState::SendingChallenge) => {
-                    debug!("Received Challenge Response from {}.", self.id);
-                    self.state = ServerState::SendingHeartBeat;
+            (Packet::KeepAlive, ServerState::SendingKeepAlive) => {
+                debug!("Received KeepAlive from {}, accepted connection.", self.id);
+                self.state = ServerState::Accepted;
             }
-            (Packet::HeartBeat, ServerState::SendingHeartBeat) => {
-                    debug!(
-                        "Received HeartBeat from {}, accepted connection.",
-                        self.id
-                    );
-                    self.state = ServerState::Accepted;
-                }
+            (Packet::Payload(_), ServerState::SendingKeepAlive) => {
+                debug!("Received Payload from {}, accepted connection.", self.id);
+                self.state = ServerState::Accepted;
+            }
             _ => {}
         }
 
         Ok(())
     }
 
-    fn is_authenticated(&self) -> bool { 
+    fn is_authenticated(&self) -> bool {
         return self.state == ServerState::Accepted;
     }
 
@@ -310,9 +282,44 @@ impl ServerAuthenticationProtocol for UnsecureServerProtocol {
         if let Packet::ConnectionRequest(client_id) = packet {
             return Ok(Box::new(Self {
                 id: client_id,
-                state: ServerState::SendingChallenge
+                state: ServerState::SendingKeepAlive,
             }));
         }
         Err(ConnectionError::InvalidPacket.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protocol_success() {
+        let mut client_protocol = UnsecureClientProtocol::new(1);
+
+        let connection_payload = client_protocol.create_payload().unwrap().unwrap();
+
+        let mut server_protocol = UnsecureServerProtocol::from_payload(connection_payload).unwrap();
+
+        let server_keep_alive_payload = server_protocol.create_payload().unwrap().unwrap();
+
+        client_protocol.read_payload(server_keep_alive_payload).unwrap();
+        
+        assert!(client_protocol.is_authenticated(), "Client protocol should be authenticated!");
+        let client_keep_alive_payload = client_protocol.create_payload().unwrap().unwrap();
+
+        server_protocol.read_payload(client_keep_alive_payload).unwrap();
+        assert!(server_protocol.is_authenticated(), "Server protocol should be authenticated!");
+
+        let mut client_ss =  client_protocol.build_security_interface();
+        let mut server_ss = server_protocol.build_security_interface();
+
+        let payload = vec![0, 1, 2, 3, 4, 5, 6, 7, 8 ,9];
+        
+        let wrapped_payload = server_ss.ss_wrap(payload.clone().into_boxed_slice()).unwrap();
+
+        let unwrapped_payload = client_ss.ss_unwrap(wrapped_payload).unwrap();
+        
+        assert_eq!(unwrapped_payload, payload.into_boxed_slice());
     }
 }

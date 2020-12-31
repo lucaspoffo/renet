@@ -1,8 +1,11 @@
 use benchmark::{Message, MICROS_PER_FRAME, save_to_csv_f64, save_to_csv};
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannel},
-    connection::{ClientConnected, ConnectionError, RequestConnection, Server, ServerConfig},
-    RenetError,
+    server::{Server, ServerConfig},
+    client::ClientConnected,
+    connection::RequestConnection,
+    protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
+    error::RenetError
 };
 use std::env;
 use std::net::UdpSocket;
@@ -31,7 +34,7 @@ fn main() -> Result<(), RenetError> {
 fn server(ip: String) -> Result<(), RenetError> {
     let socket = UdpSocket::bind(ip)?;
     let server_config = ServerConfig::default();
-    let mut server = Server::new(socket, server_config)?;
+    let mut server: Server<UnsecureServerProtocol> = Server::new(socket, server_config)?;
     let mut tick = 0;
     let mut channel_config = ChannelConfig::default();
     channel_config.message_resend_time = Duration::from_millis(100);
@@ -106,19 +109,13 @@ fn client(ip: String) -> Result<(), RenetError> {
     Ok(())
 }
 
-fn get_connection(ip: String) -> Result<ClientConnected, ConnectionError> {
+fn get_connection(ip: String) -> Result<ClientConnected, RenetError> {
     let socket = UdpSocket::bind("127.0.0.1:8080")?;
     let mut request_connection =
-        RequestConnection::new(0, socket, ip.parse().unwrap())?;
+        RequestConnection::new(0, socket, ip.parse().unwrap(), Box::new(UnsecureClientProtocol::new(0)))?;
     loop {
-        match request_connection.update() {
-            Ok(Some(connection)) => {
+        if let Some(connection) = request_connection.update()? {
                 return Ok(connection);
-            }
-            Err(ConnectionError::Denied) => {
-                return Err(ConnectionError::Denied);
-            }
-            _ => {}
         }
         sleep(Duration::from_micros(MICROS_PER_FRAME));
     }
