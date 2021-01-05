@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use bincode;
 use serde::{Deserialize, Serialize};
 
-pub mod reliable_channel;
+pub mod reliable;
 
 #[derive(Clone)]
 pub enum ChannelType {
@@ -39,7 +39,7 @@ impl ChannelConfig {
     pub fn new_channel(&self, current_time: Instant) -> Box<dyn Channel> {
         match self.channel_type {
             ChannelType::ReliableOrderedChannel => {
-                return Box::new(reliable_channel::ReliableOrderedChannel::new(
+                return Box::new(reliable::ReliableOrderedChannel::new(
                     current_time,
                     self.clone(),
                 ));
