@@ -1,4 +1,4 @@
-use crate::channel::{ChannelConfig, ChannelPacketData, Channel, MessageSend, Message, PacketSent};
+use crate::channel::{Channel, ChannelConfig, ChannelPacketData, Message, MessageSend, PacketSent};
 use crate::sequence_buffer::SequenceBuffer;
 use std::time::Instant;
 
@@ -163,7 +163,7 @@ impl Channel for ReliableOrderedChannel {
                 return;
             }
             sent_packet.acked = true;
-            
+
             for &message_id in sent_packet.messages_id.iter() {
                 if self.messages_send.exists(message_id) {
                     self.messages_send.remove(message_id);

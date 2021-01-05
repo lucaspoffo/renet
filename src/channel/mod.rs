@@ -55,7 +55,7 @@ pub struct Message {
 }
 
 impl Message {
-    fn new(id: u16, payload: Box<[u8]>) -> Self {
+    pub fn new(id: u16, payload: Box<[u8]>) -> Self {
         Self { id, payload }
     }
 }
@@ -86,7 +86,7 @@ pub trait Channel {
 }
 
 #[derive(Debug, Clone)]
-pub struct MessageSend {
+pub(crate) struct MessageSend {
     message: Message,
     last_time_sent: Option<Instant>,
     serialized_size_bits: u32,
@@ -113,7 +113,7 @@ impl Default for MessageSend {
 }
 
 #[derive(Debug, Clone)]
-pub struct PacketSent {
+pub(crate) struct PacketSent {
     acked: bool,
     time_sent: Instant,
     messages_id: Vec<u16>,
