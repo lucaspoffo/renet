@@ -1,13 +1,12 @@
+use crate::error::{RenetError, Result};
 use crate::packet::{
-    FragmentHeader, HeaderParser, PacketHeader, PacketType, FRAGMENT_MAX_COUNT, FRAGMENT_MAX_SIZE,
+    FragmentHeader, HeaderParser, PacketHeader, PacketType,
 };
 use crate::sequence_buffer::SequenceBuffer;
-use crate::error::{RenetError, Result};
 use log::{debug, error};
 use std::io::{Cursor, Write};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
-
 
 #[derive(Clone)]
 struct ReassemblyFragment {
@@ -15,26 +14,12 @@ struct ReassemblyFragment {
     num_fragments_received: usize,
     num_fragments_total: usize,
     buffer: Vec<u8>,
-    fragments_received: [bool; FRAGMENT_MAX_COUNT],
-}
-
-// TODO: remove FRAGMENT_MAX_COUNT and FRAGMENT_MAX_SIZE
-// pass these values to config
-impl Default for ReassemblyFragment {
-    fn default() -> Self {
-        Self {
-            sequence: 0,
-            num_fragments_received: 0,
-            num_fragments_total: 0,
-            buffer: Vec::with_capacity(0),
-            fragments_received: [false; FRAGMENT_MAX_COUNT],
-        }
-    }
+    fragments_received: Vec<bool>,
 }
 
 impl ReassemblyFragment {
-    pub fn new(sequence: u16, num_fragments_total: usize) -> Self {
-        let len = num_fragments_total * FRAGMENT_MAX_SIZE;
+    pub fn new(sequence: u16, num_fragments_total: usize, fragment_max_count: usize, fragment_max_size: usize) -> Self {
+        let len = num_fragments_total * fragment_max_size;
         let mut buffer = Vec::with_capacity(len);
         buffer.resize(len, 0u8);
 
@@ -43,7 +28,7 @@ impl ReassemblyFragment {
             num_fragments_received: 0,
             num_fragments_total,
             buffer,
-            fragments_received: [false; FRAGMENT_MAX_COUNT],
+            fragments_received: vec![false; fragment_max_count],
         }
     }
 }
@@ -54,6 +39,8 @@ pub struct Config {
     max_fragments: usize,
     fragment_above: usize,
     fragment_size: usize,
+    fragment_max_size: usize,
+    fragment_max_count: usize,
     fragment_reassembly_buffer_size: usize,
     sent_packets_buffer_size: usize,
     received_packets_buffer_size: usize,
@@ -70,6 +57,8 @@ impl Default for Config {
             max_fragments: 32,
             fragment_above: 1024,
             fragment_size: 1024,
+            fragment_max_count: 256,
+            fragment_max_size: 1024,
             fragment_reassembly_buffer_size: 256,
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
@@ -167,7 +156,7 @@ impl Endpoint {
             },
         }
     }
-    
+
     pub fn config(&self) -> &Config {
         &self.config
     }
@@ -190,7 +179,7 @@ impl Endpoint {
             );
             return Err(RenetError::MaximumPacketSizeExceeded);
         }
-        
+
         let sequence = self.sequence;
         self.sequence += 1;
 
@@ -287,22 +276,16 @@ impl Endpoint {
 
     pub fn update_sent_bandwidth(&mut self) {
         let sample_size = self.config.sent_packets_buffer_size / 4;
-        let base_sequence = self
-            .sent_buffer
-            .sequence()
-            .wrapping_sub(sample_size as u16);
+        let base_sequence = self.sent_buffer.sequence().wrapping_sub(sample_size as u16);
 
         let mut packets_dropped = 0;
         let mut bytes_sent = 0;
         let mut start_time = Instant::now();
         let mut end_time = Instant::now() - Duration::from_secs(100);
         for i in 0..sample_size {
-            if let Some(sent_packet) = self
-                .sent_buffer
-                .get(base_sequence.wrapping_add(i as u16))
-            {
+            if let Some(sent_packet) = self.sent_buffer.get(base_sequence.wrapping_add(i as u16)) {
                 if sent_packet.size == 0 {
-                    // Only Default Packets have size 0 
+                    // Only Default Packets have size 0
                     continue;
                 }
                 bytes_sent += sent_packet.size;
@@ -321,8 +304,8 @@ impl Endpoint {
         // Calculate packet loss
         let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
         if f64::abs(self.network_info.packet_loss - packet_loss) > 0.0001 {
-            self.network_info.packet_loss +=
-                (packet_loss - self.network_info.packet_loss) * self.config.packet_loss_smoothing_factor;
+            self.network_info.packet_loss += (packet_loss - self.network_info.packet_loss)
+                * self.config.packet_loss_smoothing_factor;
         } else {
             self.network_info.packet_loss = packet_loss;
         }
@@ -331,11 +314,12 @@ impl Endpoint {
         if end_time <= start_time {
             return;
         }
-        
+
         let sent_bandwidth_kbps =
             bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
         if f64::abs(self.network_info.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
-            self.network_info.sent_bandwidth_kbps += (sent_bandwidth_kbps - self.network_info.sent_bandwidth_kbps)
+            self.network_info.sent_bandwidth_kbps += (sent_bandwidth_kbps
+                - self.network_info.sent_bandwidth_kbps)
                 * self.config.bandwidth_smoothing_factor;
         } else {
             self.network_info.sent_bandwidth_kbps = sent_bandwidth_kbps;
@@ -396,10 +380,13 @@ impl Endpoint {
                         self.acks.push(ack_sequence);
                         sent_packet.ack = true;
                         let rtt = (now - sent_packet.time).as_secs_f64();
-                        if self.network_info.rtt == 0.0 && rtt > 0.0 || f64::abs(self.network_info.rtt - rtt) < 0.00001 {
+                        if self.network_info.rtt == 0.0 && rtt > 0.0
+                            || f64::abs(self.network_info.rtt - rtt) < 0.00001
+                        {
                             self.network_info.rtt = rtt;
                         } else {
-                            self.network_info.rtt += (rtt - self.network_info.rtt) * self.config.rtt_smoothing_factor;
+                            self.network_info.rtt +=
+                                (rtt - self.network_info.rtt) * self.config.rtt_smoothing_factor;
                         }
                     }
                 }
@@ -494,7 +481,7 @@ impl SequenceBuffer<ReassemblyFragment> {
     ) -> Result<Option<Vec<u8>>> {
         if !self.exists(header.sequence) {
             let reassembly_fragment =
-                ReassemblyFragment::new(header.sequence, header.num_fragments as usize);
+                ReassemblyFragment::new(header.sequence, header.num_fragments as usize, config.fragment_max_count, config.fragment_max_size);
             self.insert(header.sequence, reassembly_fragment);
         }
 

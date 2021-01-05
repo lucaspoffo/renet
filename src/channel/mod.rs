@@ -3,7 +3,8 @@ use std::time::{Duration, Instant};
 use bincode;
 use serde::{Deserialize, Serialize};
 
-pub mod reliable;
+mod reliable;
+pub use reliable::ReliableOrderedChannel;
 
 #[derive(Clone)]
 pub enum ChannelType {

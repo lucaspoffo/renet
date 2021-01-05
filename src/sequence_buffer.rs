@@ -1,22 +1,22 @@
 pub struct SequenceBuffer<T> {
     sequence: u16,
     entry_sequences: Box<[Option<u16>]>,
-    entries: Box<[T]>,
+    entries: Box<[Option<T>]>,
 }
 
-impl<T: Clone + Default> SequenceBuffer<T> {
+impl<T: Clone> SequenceBuffer<T> {
     pub fn with_capacity(size: usize) -> Self {
         Self {
             sequence: 0,
-            entry_sequences: vec![None; size as usize].into_boxed_slice(),
-            entries: vec![T::default(); size as usize].into_boxed_slice(),
+            entry_sequences: vec![None; size].into_boxed_slice(),
+            entries: vec![None; size].into_boxed_slice(),
         }
     }
 
     pub fn get_mut(&mut self, sequence: u16) -> Option<&mut T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
-            return Some(&mut self.entries[index]);
+            return self.entries[index].as_mut();
         }
         None
     }
@@ -24,7 +24,7 @@ impl<T: Clone + Default> SequenceBuffer<T> {
     pub fn get(&self, sequence: u16) -> Option<&T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
-            return Some(&self.entries[index]);
+            return self.entries[index].as_ref();
         }
         None
     }
@@ -60,8 +60,8 @@ impl<T: Clone + Default> SequenceBuffer<T> {
 
         let index = self.index(sequence);
         self.entry_sequences[index] = Some(sequence);
-        self.entries[index] = data;
-        Some(&mut self.entries[index])
+        self.entries[index] = Some(data);
+        self.entries[index].as_mut()
     }
 
     fn remove_entries(&mut self, mut finish_sequence: u32) {
@@ -76,7 +76,7 @@ impl<T: Clone + Default> SequenceBuffer<T> {
             }
         } else {
             for index in 0..self.entry_sequences.len() {
-                self.entries[index] = T::default();
+                self.entries[index] = None;
                 self.entry_sequences[index] = None;
             }
         }
@@ -85,9 +85,9 @@ impl<T: Clone + Default> SequenceBuffer<T> {
     pub fn remove(&mut self, sequence: u16) -> Option<T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
-            let value = std::mem::replace(&mut self.entries[index], T::default());
             self.entry_sequences[index] = None;
-            return Some(value);
+            let value = self.entries[index].take();
+            return value;
         }
         None
     }
@@ -150,7 +150,8 @@ mod tests {
     fn remove() {
         let mut buffer = SequenceBuffer::with_capacity(2);
         buffer.insert(0, DataStub).unwrap();
-        buffer.remove(0);
+        let removed = buffer.remove(0);
+        assert!(removed.is_some());
         assert!(!buffer.exists(0));
     }
 

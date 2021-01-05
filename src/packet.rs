@@ -1,9 +1,6 @@
 use super::error::{RenetError, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-pub const FRAGMENT_MAX_COUNT: usize = 256;
-pub const FRAGMENT_MAX_SIZE: usize = 1024;
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PacketType {
     Packet = 0,
