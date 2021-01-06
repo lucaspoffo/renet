@@ -1,18 +1,18 @@
-use benchmark::{Message, MICROS_PER_FRAME, save_to_csv_f64, save_to_csv};
+use alto_logger::TermLogger;
+use benchmark::{save_to_csv, save_to_csv_f64, Message, MICROS_PER_FRAME};
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannel},
-    server::{Server, ServerConfig},
-    client::ClientConnected,
-    connection::RequestConnection,
+    client::{ClientConnected, RequestConnection},
+    endpoint::EndpointConfig,
+    error::RenetError,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
-    error::RenetError
+    server::{Server, ServerConfig},
 };
+use std::collections::HashMap;
 use std::env;
 use std::net::UdpSocket;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
-use std::collections::HashMap;
-use alto_logger::TermLogger;
 
 fn main() -> Result<(), RenetError> {
     TermLogger::default().init().unwrap();
@@ -34,11 +34,18 @@ fn main() -> Result<(), RenetError> {
 fn server(ip: String) -> Result<(), RenetError> {
     let socket = UdpSocket::bind(ip)?;
     let server_config = ServerConfig::default();
-    let mut server: Server<UnsecureServerProtocol> = Server::new(socket, server_config)?;
-    let mut tick = 0;
+
     let mut channel_config = ChannelConfig::default();
     channel_config.message_resend_time = Duration::from_millis(100);
-    server.add_channel_config(0, channel_config);
+
+    let mut channels_config = HashMap::new();
+    channels_config.insert(0, channel_config);
+
+    let endpoint_config = EndpointConfig::default();
+
+    let mut server: Server<UnsecureServerProtocol> =
+        Server::new(socket, server_config, endpoint_config, channels_config)?;
+    let mut tick = 0;
     let mut result: HashMap<u64, f64> = HashMap::new();
 
     loop {
@@ -50,7 +57,10 @@ fn server(ip: String) -> Result<(), RenetError> {
 
         server.update(start.clone());
         if server.has_clients() {
-            let message = Message { time: SystemTime::now(), tick };
+            let message = Message {
+                time: SystemTime::now(),
+                tick,
+            };
             let message = bincode::serialize(&message).expect("Failed to serialize message.");
             let network_info = server.get_client_network_info(0).unwrap();
             result.insert(tick, network_info.sent_bandwidth_kbps);
@@ -70,9 +80,6 @@ fn server(ip: String) -> Result<(), RenetError> {
 
 fn client(ip: String) -> Result<(), RenetError> {
     let mut connection = get_connection(ip)?;
-    let channel_config = ChannelConfig::default();
-    let channel = ReliableOrderedChannel::new(Instant::now(), channel_config);
-    connection.add_channel(0, Box::new(channel));
     let mut received_message;
     let mut result: HashMap<u64, Duration> = HashMap::new();
     let mut count = 0;
@@ -111,11 +118,27 @@ fn client(ip: String) -> Result<(), RenetError> {
 
 fn get_connection(ip: String) -> Result<ClientConnected, RenetError> {
     let socket = UdpSocket::bind("127.0.0.1:8080")?;
-    let mut request_connection =
-        RequestConnection::new(0, socket, ip.parse().unwrap(), Box::new(UnsecureClientProtocol::new(0)))?;
+
+    let mut channel_config = ChannelConfig::default();
+    channel_config.message_resend_time = Duration::from_millis(100);
+
+    let mut channels_config = HashMap::new();
+    channels_config.insert(0, channel_config);
+
+    let endpoint_config = EndpointConfig::default();
+
+    let mut request_connection = RequestConnection::new(
+        0,
+        socket,
+        ip.parse().unwrap(),
+        Box::new(UnsecureClientProtocol::new(0)),
+        endpoint_config,
+        channels_config,
+    )?;
+
     loop {
         if let Some(connection) = request_connection.update()? {
-                return Ok(connection);
+            return Ok(connection);
         }
         sleep(Duration::from_micros(MICROS_PER_FRAME));
     }

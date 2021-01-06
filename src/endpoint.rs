@@ -33,25 +33,26 @@ impl ReassemblyFragment {
     }
 }
 
-pub struct Config {
-    name: String,
+#[derive(Debug, Clone)]
+pub struct EndpointConfig {
+    pub name: String,
     pub max_packet_size: usize,
-    max_fragments: usize,
-    fragment_above: usize,
-    fragment_size: usize,
-    fragment_max_size: usize,
-    fragment_max_count: usize,
-    fragment_reassembly_buffer_size: usize,
-    sent_packets_buffer_size: usize,
-    received_packets_buffer_size: usize,
-    bandwidth_smoothing_factor: f64,
-    rtt_smoothing_factor: f64,
-    packet_loss_smoothing_factor: f64,
+    pub max_fragments: usize,
+    pub fragment_above: usize,
+    pub fragment_size: usize,
+    pub fragment_max_size: usize,
+    pub fragment_max_count: usize,
+    pub fragment_reassembly_buffer_size: usize,
+    pub sent_packets_buffer_size: usize,
+    pub received_packets_buffer_size: usize,
+    pub bandwidth_smoothing_factor: f64,
+    pub rtt_smoothing_factor: f64,
+    pub packet_loss_smoothing_factor: f64,
 }
 
-impl Default for Config {
+impl Default for EndpointConfig {
     fn default() -> Self {
-        Config {
+        EndpointConfig {
             name: "Endpoint".into(),
             max_packet_size: 16 * 1024,
             max_fragments: 32,
@@ -120,7 +121,7 @@ impl ReceivedPacket {
 }
 
 pub struct Endpoint {
-    config: Config,
+    config: EndpointConfig,
     sequence: u16,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
@@ -138,7 +139,7 @@ pub struct NetworkInfo {
 }
 
 impl Endpoint {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: EndpointConfig) -> Self {
         Self {
             sequence: 0,
             reassembly_buffer: SequenceBuffer::with_capacity(
@@ -157,7 +158,7 @@ impl Endpoint {
         }
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &EndpointConfig {
         &self.config
     }
 
@@ -404,7 +405,7 @@ impl Endpoint {
     }
 }
 
-pub fn build_normal_packet(
+fn build_normal_packet(
     payload: &[u8],
     sequence: u16,
     ack: u16,
@@ -423,12 +424,12 @@ pub fn build_normal_packet(
     Ok(buffer)
 }
 
-pub fn build_fragments(
+fn build_fragments(
     payload: &[u8],
     sequence: u16,
     ack: u16,
     ack_bits: u32,
-    config: &Config,
+    config: &EndpointConfig,
 ) -> Result<Vec<Vec<u8>>> {
     let packet_bytes = payload.len();
     let exact_division = ((packet_bytes % config.fragment_size) != 0) as usize;
@@ -477,7 +478,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         &mut self,
         header: FragmentHeader,
         payload: &[u8],
-        config: &Config,
+        config: &EndpointConfig,
     ) -> Result<Option<Vec<u8>>> {
         if !self.exists(header.sequence) {
             let reassembly_fragment =
@@ -571,7 +572,7 @@ mod tests {
     #[test]
     fn fragment() {
         let payload = [0u8; 2500];
-        let config = Config::default();
+        let config = EndpointConfig::default();
         let fragments = build_fragments(&payload, 0, 0, 0, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
             SequenceBuffer::with_capacity(256);

@@ -1,17 +1,15 @@
 use crate::channel::ChannelConfig;
-use crate::connection::{ClientId, Connection, HandleConnection};
-use crate::endpoint::{Config, Endpoint, NetworkInfo};
+use crate::connection::{ClientId, Connection};
+use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
 use log::{debug, error, info};
 use std::collections::HashMap;
 use std::io;
+use std::marker::PhantomData;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Instant;
-use std::marker::PhantomData;
 
-// TODO investigate if we can separate the client state
-// in the server from the from the client itself
 #[derive(Debug, Eq, PartialEq)]
 pub enum ClientState {
     Connected,
@@ -25,7 +23,12 @@ struct Client {
 }
 
 impl Client {
-    fn new(id: ClientId, addr: SocketAddr, endpoint: Endpoint, security_service: Box<dyn SecurityService>) -> Self {
+    fn new(
+        id: ClientId,
+        addr: SocketAddr,
+        endpoint: Endpoint,
+        security_service: Box<dyn SecurityService>,
+    ) -> Self {
         Self {
             id,
             connection: Connection::new(addr, endpoint, security_service),
@@ -39,6 +42,40 @@ impl Client {
 
     fn process_payload(&mut self, payload: Box<[u8]>) {
         self.connection.process_payload(payload);
+    }
+}
+
+pub struct HandleConnection {
+    addr: SocketAddr,
+    client_id: ClientId,
+    pub(crate) protocol: Box<dyn AuthenticationProtocol>,
+}
+
+impl HandleConnection {
+    pub fn new(
+        client_id: ClientId,
+        addr: SocketAddr,
+        protocol: Box<dyn AuthenticationProtocol>,
+    ) -> Self {
+        Self {
+            client_id,
+            addr,
+            protocol,
+        }
+    }
+
+    pub fn addr(&self) -> &SocketAddr {
+        &self.addr
+    }
+
+    pub fn client_id(&self) -> ClientId {
+        self.client_id
+    }
+
+    pub fn process_payload(&mut self, payload: Box<[u8]>) {
+        if let Err(e) = self.protocol.read_payload(payload) {
+            error!("Error reading protocol payload:\n{:?}", e);
+        }
     }
 }
 
@@ -80,28 +117,32 @@ pub struct Server<P> {
     channels_config: HashMap<u8, ChannelConfig>,
     current_time: Instant,
     events: Vec<Event>,
-    _authentication_protocol: PhantomData<P>
+    endpoint_config: EndpointConfig,
+    _authentication_protocol: PhantomData<P>,
 }
 
 impl<P> Server<P>
-where P: AuthenticationProtocol + ServerAuthenticationProtocol,
+where
+    P: AuthenticationProtocol + ServerAuthenticationProtocol,
 {
-    pub fn new(socket: UdpSocket, config: ServerConfig) -> Result<Self, RenetError> {
+    pub fn new(
+        socket: UdpSocket,
+        config: ServerConfig,
+        endpoint_config: EndpointConfig,
+        channels_config: HashMap<u8, ChannelConfig>,
+    ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         Ok(Self {
             socket,
             clients: HashMap::new(),
             connecting: HashMap::new(),
             config,
-            channels_config: HashMap::new(),
+            channels_config,
+            endpoint_config,
             current_time: Instant::now(),
             events: Vec::new(),
-            _authentication_protocol: PhantomData
+            _authentication_protocol: PhantomData,
         })
-    }
-
-    pub fn add_channel_config(&mut self, channel_id: u8, config: ChannelConfig) {
-        self.channels_config.insert(channel_id, config);
     }
 
     pub fn has_clients(&self) -> bool {
@@ -207,11 +248,11 @@ where P: AuthenticationProtocol + ServerAuthenticationProtocol,
         match self.find_connection_by_addr(addr) {
             Some(connection) => {
                 connection.process_payload(payload);
-            },
+            }
             None => {
                 let protocol = P::from_payload(payload)?;
                 let id = protocol.id();
-                info!("Created new protocol from payload with client id {}", id); 
+                info!("Created new protocol from payload with client id {}", id);
                 let new_connection = HandleConnection::new(protocol.id(), addr.clone(), protocol);
                 self.connecting.insert(id, new_connection);
             }
@@ -245,15 +286,15 @@ where P: AuthenticationProtocol + ServerAuthenticationProtocol,
     fn update_pending_connections(&mut self) {
         let mut connected_connections = vec![];
         for connection in self.connecting.values_mut() {
-                if connection.protocol.is_authenticated() {
-                    connected_connections.push(connection.client_id());
-                } else {
-                    if let Ok(Some(payload)) = connection.protocol.create_payload() {
-                        if let Err(e) = self.socket.send_to(&payload, connection.addr()) {
-                            error!("Failed to send protocol packet {}", e);
-                        }
+            if connection.protocol.is_authenticated() {
+                connected_connections.push(connection.client_id());
+            } else {
+                if let Ok(Some(payload)) = connection.protocol.create_payload() {
+                    if let Err(e) = self.socket.send_to(&payload, connection.addr()) {
+                        error!("Failed to send protocol packet {}", e);
                     }
                 }
+            }
         }
         for connected in connected_connections {
             let connection = self
@@ -274,14 +315,21 @@ where P: AuthenticationProtocol + ServerAuthenticationProtocol,
                 connection.client_id(),
                 connection.addr(),
             );
-            let endpoint_config = Config::default();
-            let endpoint: Endpoint = Endpoint::new(endpoint_config);
+
+            let endpoint: Endpoint = Endpoint::new(self.endpoint_config.clone());
             let security_service = connection.protocol.build_security_interface();
-            let mut client = Client::new(connection.client_id(), *connection.addr(), endpoint, security_service);
+            let mut client = Client::new(
+                connection.client_id(),
+                *connection.addr(),
+                endpoint,
+                security_service,
+            );
+
             for (channel_id, channel_config) in self.channels_config.iter() {
                 let channel = channel_config.new_channel(self.current_time);
                 client.connection.add_channel(*channel_id, channel);
             }
+
             self.events.push(Event::ClientConnected(client.id));
             self.clients.insert(client.id, client);
         }

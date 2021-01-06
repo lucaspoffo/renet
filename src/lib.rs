@@ -1,4 +1,4 @@
-pub use self::endpoint::{Config, Endpoint};
+pub use self::endpoint::{EndpointConfig, Endpoint};
 pub use error::RenetError;
 
 pub mod connection;

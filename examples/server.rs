@@ -1,6 +1,6 @@
 use alto_logger::TermLogger;
 use log::trace;
-use renet::{Config, Endpoint};
+use renet::{EndpointConfig, Endpoint};
 use std::net::UdpSocket;
 
 fn main() -> std::io::Result<()> {
@@ -9,7 +9,7 @@ fn main() -> std::io::Result<()> {
     println!("Listening on {}", socket.local_addr()?);
 
     let mut buf = vec![0u8; 1500];
-    let config = Config::default();
+    let config = EndpointConfig::default();
     let mut endpoint = Endpoint::new(config);
     let mut i: u32 = 0;
 
