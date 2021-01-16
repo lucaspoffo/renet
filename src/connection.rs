@@ -10,9 +10,9 @@ use std::time::Instant;
 pub type ClientId = u64;
 
 pub struct Connection {
-    pub endpoint: Endpoint,
+    pub(crate) endpoint: Endpoint,
+    pub(crate) addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
-    addr: SocketAddr,
     security_service: Box<dyn SecurityService>,
 }
 
@@ -28,10 +28,6 @@ impl Connection {
             addr: server_addr,
             security_service,
         }
-    }
-
-    pub fn addr(&self) -> &SocketAddr {
-        &self.addr
     }
 
     pub fn add_channel(&mut self, channel_id: u8, mut channel: Box<dyn Channel>) {

@@ -2,7 +2,7 @@ use crate::channel::ChannelConfig;
 use crate::connection::{ClientId, Connection};
 use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
-use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
+use crate::protocol::{AuthenticationProtocol, ServerAuthenticationProtocol};
 use log::{debug, error, info};
 use std::collections::HashMap;
 use std::io;
@@ -10,97 +10,8 @@ use std::marker::PhantomData;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Instant;
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum ClientState {
-    Connected,
-    Disconnected,
-    ConnectionTimedOut,
-}
-
-struct Client {
-    id: ClientId,
-    connection: Connection,
-}
-
-impl Client {
-    fn new(
-        id: ClientId,
-        addr: SocketAddr,
-        endpoint: Endpoint,
-        security_service: Box<dyn SecurityService>,
-    ) -> Self {
-        Self {
-            id,
-            connection: Connection::new(addr, endpoint, security_service),
-        }
-    }
-
-    fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {
-        self.connection
-            .receive_all_messages_from_channel(channel_id)
-    }
-
-    fn process_payload(&mut self, payload: Box<[u8]>) {
-        self.connection.process_payload(payload);
-    }
-}
-
-pub struct HandleConnection {
-    addr: SocketAddr,
-    client_id: ClientId,
-    pub(crate) protocol: Box<dyn AuthenticationProtocol>,
-}
-
-impl HandleConnection {
-    pub fn new(
-        client_id: ClientId,
-        addr: SocketAddr,
-        protocol: Box<dyn AuthenticationProtocol>,
-    ) -> Self {
-        Self {
-            client_id,
-            addr,
-            protocol,
-        }
-    }
-
-    pub fn addr(&self) -> &SocketAddr {
-        &self.addr
-    }
-
-    pub fn client_id(&self) -> ClientId {
-        self.client_id
-    }
-
-    pub fn process_payload(&mut self, payload: Box<[u8]>) {
-        if let Err(e) = self.protocol.read_payload(payload) {
-            error!("Error reading protocol payload:\n{:?}", e);
-        }
-    }
-}
-
-pub struct ServerConfig {
-    max_clients: usize,
-    max_payload_size: usize,
-}
-
-impl ServerConfig {
-    pub fn new(max_clients: usize, max_payload_size: usize) -> Self {
-        Self {
-            max_clients,
-            max_payload_size,
-        }
-    }
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            max_clients: 16,
-            max_payload_size: 8 * 1024,
-        }
-    }
-}
+use super::handle_connection::HandleConnection;
+use super::ServerConfig;
 
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -112,7 +23,7 @@ pub enum Event {
 pub struct Server<P> {
     config: ServerConfig,
     socket: UdpSocket,
-    clients: HashMap<ClientId, Client>,
+    clients: HashMap<ClientId, Connection>,
     connecting: HashMap<ClientId, HandleConnection>,
     channels_config: HashMap<u8, ChannelConfig>,
     current_time: Instant,
@@ -149,36 +60,32 @@ where
         !self.clients.is_empty()
     }
 
-    pub fn get_events(&self) -> Vec<Event> {
-        self.events.clone()
+    pub fn get_event(&mut self) -> Option<Event> {
+        self.events.pop()
     }
 
-    pub fn clear_events(&mut self) {
-        self.events.clear();
-    }
-
-    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Client> {
+    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Connection> {
         self.clients
             .values_mut()
-            .find(|c| c.connection.addr() == addr)
+            .find(|c| c.addr == *addr)
     }
 
     fn find_connection_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection> {
-        self.connecting.values_mut().find(|c| c.addr() == addr)
+        self.connecting.values_mut().find(|c| c.addr == *addr)
     }
 
     pub fn get_client_network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
-        if let Some(client) = self.clients.get_mut(&client_id) {
-            client.connection.endpoint.update_sent_bandwidth();
-            client.connection.endpoint.update_received_bandwidth();
-            return Some(client.connection.endpoint.network_info());
+        if let Some(connection) = self.clients.get_mut(&client_id) {
+            connection.endpoint.update_sent_bandwidth();
+            connection.endpoint.update_received_bandwidth();
+            return Some(connection.endpoint.network_info());
         }
         None
     }
 
     pub fn send_message_to_all_clients(&mut self, channel_id: u8, message: Box<[u8]>) {
-        for client in self.clients.values_mut() {
-            client.connection.send_message(channel_id, message.clone());
+        for connection in self.clients.values_mut() {
+            connection.send_message(channel_id, message.clone());
         }
     }
 
@@ -188,8 +95,8 @@ where
         channel_id: u8,
         message: Box<[u8]>,
     ) {
-        if let Some(client) = self.clients.get_mut(&client_id) {
-            client.connection.send_message(channel_id, message);
+        if let Some(connection) = self.clients.get_mut(&client_id) {
+            connection.send_message(channel_id, message);
         }
     }
 
@@ -204,6 +111,17 @@ where
         None
     }
 
+    pub fn get_messages_from_channel(&mut self, channel_id: u8) -> Vec<(ClientId, Vec<Box<[u8]>>)> {
+        let mut clients = Vec::new();
+        for (client_id, connection) in self.clients.iter_mut() {
+            let messages = connection.receive_all_messages_from_channel(channel_id);
+            if !messages.is_empty() {
+                clients.push((*client_id, messages));
+            }
+        }
+        clients
+    }
+
     pub fn get_clients_id(&self) -> Vec<ClientId> {
         self.clients.keys().map(|x| x.clone()).collect()
     }
@@ -216,15 +134,15 @@ where
     }
 
     pub fn send_packets(&mut self) {
-        for client in self.clients.values_mut() {
-            match client.connection.get_packet() {
+        for (client_id, connection) in self.clients.iter_mut() {
+            match connection.get_packet() {
                 Ok(Some(payload)) => {
-                    if let Err(e) = client.connection.send_payload(&payload, &self.socket) {
-                        error!("Failed to send payload for client {}: {:?}", client.id, e);
+                    if let Err(e) = connection.send_payload(&payload, &self.socket) {
+                        error!("Failed to send payload for client {}: {:?}", client_id, e);
                     }
                 }
                 Ok(None) => {}
-                Err(_) => error!("Failed to get packet for client {}.", client.id),
+                Err(_) => error!("Failed to get packet for client {}.", client_id),
             }
         }
     }
@@ -247,7 +165,9 @@ where
 
         match self.find_connection_by_addr(addr) {
             Some(connection) => {
-                connection.process_payload(payload);
+                if let Err(e) = connection.process_payload(payload) {
+                    error!("{}", e)
+                }
             }
             None => {
                 let protocol = P::from_payload(payload)?;
@@ -262,8 +182,8 @@ where
     }
 
     fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
-        for client in self.clients.values_mut() {
-            client.connection.update_channels_current_time(current_time);
+        for connection in self.clients.values_mut() {
+            connection.update_channels_current_time(current_time);
         }
         let mut buffer = vec![0u8; self.config.max_payload_size];
         loop {
@@ -284,27 +204,27 @@ where
     }
 
     fn update_pending_connections(&mut self) {
-        let mut connected_connections = vec![];
+        let mut connected_clients = vec![];
         for connection in self.connecting.values_mut() {
             if connection.protocol.is_authenticated() {
-                connected_connections.push(connection.client_id());
+                connected_clients.push(connection.client_id);
             } else {
                 if let Ok(Some(payload)) = connection.protocol.create_payload() {
-                    if let Err(e) = self.socket.send_to(&payload, connection.addr()) {
+                    if let Err(e) = self.socket.send_to(&payload, connection.addr) {
                         error!("Failed to send protocol packet {}", e);
                     }
                 }
             }
         }
-        for connected in connected_connections {
-            let connection = self
+        for client_id in connected_clients {
+            let handle_connection = self
                 .connecting
-                .remove(&connected)
+                .remove(&client_id)
                 .expect("Should only connect existing clients.");
             if self.clients.len() >= self.config.max_clients {
                 debug!(
                     "Connection from {} successfuly stablished but server was full.",
-                    connection.addr()
+                    handle_connection.addr
                 );
                 // TODO: deny connection, max player
                 continue;
@@ -312,26 +232,24 @@ where
 
             debug!(
                 "Connection stablished with client {} ({}).",
-                connection.client_id(),
-                connection.addr(),
+                handle_connection.client_id, handle_connection.addr,
             );
 
             let endpoint: Endpoint = Endpoint::new(self.endpoint_config.clone());
-            let security_service = connection.protocol.build_security_interface();
-            let mut client = Client::new(
-                connection.client_id(),
-                *connection.addr(),
+            let security_service = handle_connection.protocol.build_security_interface();
+            let mut connection = Connection::new(
+                handle_connection.addr,
                 endpoint,
                 security_service,
             );
 
             for (channel_id, channel_config) in self.channels_config.iter() {
                 let channel = channel_config.new_channel(self.current_time);
-                client.connection.add_channel(*channel_id, channel);
+                connection.add_channel(*channel_id, channel);
             }
 
-            self.events.push(Event::ClientConnected(client.id));
-            self.clients.insert(client.id, client);
+            self.events.push(Event::ClientConnected(handle_connection.client_id));
+            self.clients.insert(handle_connection.client_id, connection);
         }
     }
 }

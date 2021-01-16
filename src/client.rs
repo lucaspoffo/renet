@@ -1,4 +1,4 @@
-use crate::channel::{Channel, ChannelConfig};
+use crate::channel::ChannelConfig;
 use crate::connection::{ClientId, Connection};
 use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
@@ -157,7 +157,7 @@ impl ClientConnected {
         loop {
             let payload = match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
-                    if addr == *self.connection.addr() {
+                    if addr == self.connection.addr {
                         buffer[..len].to_vec().into_boxed_slice()
                     } else {
                         debug!("Discarded packet from unknown server {:?}", addr);

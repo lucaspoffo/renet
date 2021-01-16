@@ -8,5 +8,5 @@ mod packet;
 pub mod sequence_buffer;
 pub mod endpoint;
 pub mod client;
-pub mod server;
 pub mod protocol;
+pub mod server;

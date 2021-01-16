@@ -1,4 +1,5 @@
 use std::{io, result};
+use std::fmt::{self, Display, Formatter};
 
 pub type Result<T> = result::Result<T, RenetError>;
 
@@ -19,6 +20,13 @@ pub enum RenetError {
 impl From<io::Error> for RenetError {
     fn from(inner: io::Error) -> RenetError {
         RenetError::IOError(inner)
+    }
+}
+
+// TODO: add comments and impl error display correctly
+impl Display for RenetError {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+        write!(fmt, "RenetError")
     }
 }
 

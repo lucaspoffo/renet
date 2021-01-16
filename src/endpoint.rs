@@ -45,9 +45,7 @@ pub struct EndpointConfig {
     pub fragment_reassembly_buffer_size: usize,
     pub sent_packets_buffer_size: usize,
     pub received_packets_buffer_size: usize,
-    pub bandwidth_smoothing_factor: f64,
-    pub rtt_smoothing_factor: f64,
-    pub packet_loss_smoothing_factor: f64,
+    pub measure_smoothing_factor: f64,
 }
 
 impl Default for EndpointConfig {
@@ -63,9 +61,7 @@ impl Default for EndpointConfig {
             fragment_reassembly_buffer_size: 256,
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
-            bandwidth_smoothing_factor: 0.1,
-            rtt_smoothing_factor: 0.0025,
-            packet_loss_smoothing_factor: 0.1,
+            measure_smoothing_factor: 0.05,
         }
     }
 }
@@ -306,7 +302,7 @@ impl Endpoint {
         let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
         if f64::abs(self.network_info.packet_loss - packet_loss) > 0.0001 {
             self.network_info.packet_loss += (packet_loss - self.network_info.packet_loss)
-                * self.config.packet_loss_smoothing_factor;
+                * self.config.measure_smoothing_factor;
         } else {
             self.network_info.packet_loss = packet_loss;
         }
@@ -321,7 +317,7 @@ impl Endpoint {
         if f64::abs(self.network_info.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
             self.network_info.sent_bandwidth_kbps += (sent_bandwidth_kbps
                 - self.network_info.sent_bandwidth_kbps)
-                * self.config.bandwidth_smoothing_factor;
+                * self.config.measure_smoothing_factor;
         } else {
             self.network_info.sent_bandwidth_kbps = sent_bandwidth_kbps;
         }
@@ -362,7 +358,7 @@ impl Endpoint {
         if f64::abs(self.network_info.received_bandwidth_kbps - received_bandwidth_kbps) > 0.0001 {
             self.network_info.received_bandwidth_kbps += (received_bandwidth_kbps
                 - self.network_info.received_bandwidth_kbps)
-                * self.config.bandwidth_smoothing_factor;
+                * self.config.measure_smoothing_factor;
         } else {
             self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }
@@ -387,7 +383,7 @@ impl Endpoint {
                             self.network_info.rtt = rtt;
                         } else {
                             self.network_info.rtt +=
-                                (rtt - self.network_info.rtt) * self.config.rtt_smoothing_factor;
+                                (rtt - self.network_info.rtt) * self.config.measure_smoothing_factor;
                         }
                     }
                 }
