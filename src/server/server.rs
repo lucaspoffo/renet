@@ -65,9 +65,7 @@ where
     }
 
     fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Connection> {
-        self.clients
-            .values_mut()
-            .find(|c| c.addr == *addr)
+        self.clients.values_mut().find(|c| c.addr == *addr)
     }
 
     fn find_connection_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection> {
@@ -153,8 +151,7 @@ where
         addr: &SocketAddr,
     ) -> Result<(), RenetError> {
         if let Some(client) = self.find_client_by_addr(addr) {
-            client.process_payload(payload);
-            return Ok(());
+            return client.process_payload(payload);
         }
 
         if self.clients.len() >= self.config.max_clients {
@@ -237,52 +234,17 @@ where
 
             let endpoint: Endpoint = Endpoint::new(self.endpoint_config.clone());
             let security_service = handle_connection.protocol.build_security_interface();
-            let mut connection = Connection::new(
-                handle_connection.addr,
-                endpoint,
-                security_service,
-            );
+            let mut connection =
+                Connection::new(handle_connection.addr, endpoint, security_service);
 
             for (channel_id, channel_config) in self.channels_config.iter() {
                 let channel = channel_config.new_channel(self.current_time);
                 connection.add_channel(*channel_id, channel);
             }
 
-            self.events.push(ServerEvent::ClientConnected(handle_connection.client_id));
+            self.events
+                .push(ServerEvent::ClientConnected(handle_connection.client_id));
             self.clients.insert(handle_connection.client_id, connection);
         }
     }
 }
-
-/*
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::{SocketAddr, UdpSocket};
-
-    #[test]
-    fn server_client_connecting_flow() {
-        let socket = UdpSocket::bind("127.0.0.1:8080").unwrap();
-        let server_config = ServerConfig::default();
-        let mut server = Server::new(socket, server_config).unwrap();
-
-        let client_addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
-        let packet = ConnectionPacket::ConnectionRequest(0);
-        server.process_packet_from(packet, &client_addr).unwrap();
-        assert_eq!(server.connecting.len(), 1);
-
-        let packet = ConnectionPacket::ChallengeResponse;
-        server.process_packet_from(packet, &client_addr).unwrap();
-        server.update_pending_connections();
-        assert_eq!(server.connecting.len(), 1);
-        assert_eq!(server.clients.len(), 0);
-
-        let packet = ConnectionPacket::HeartBeat;
-        server.process_packet_from(packet, &client_addr).unwrap();
-        server.update_pending_connections();
-        assert_eq!(server.connecting.len(), 0);
-        assert_eq!(server.clients.len(), 1);
-        assert!(server.clients.contains_key(&0));
-    }
-}
-*/
