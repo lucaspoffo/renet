@@ -15,6 +15,7 @@ pub enum RenetError {
     IOError(io::Error),
     SerializationFailed,
     AuthenticationError(Box<dyn std::error::Error>),
+    ConnectionTimedOut,
 }
 
 impl From<io::Error> for RenetError {

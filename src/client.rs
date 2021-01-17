@@ -3,7 +3,10 @@ use crate::connection::{ClientId, Connection};
 use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService};
+use crate::Timer;
+
 use log::{debug, error, info};
+
 use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
@@ -17,6 +20,7 @@ pub struct RequestConnection {
     endpoint_config: EndpointConfig,
     channels_config: HashMap<u8, ChannelConfig>,
     buffer: Box<[u8]>,
+    timeout_timer: Timer,
 }
 
 impl RequestConnection {
@@ -30,6 +34,7 @@ impl RequestConnection {
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         let buffer = vec![0; endpoint_config.max_packet_size].into_boxed_slice();
+        let timeout_timer = Timer::new(endpoint_config.timeout_duration);
         Ok(Self {
             id,
             socket,
@@ -37,17 +42,24 @@ impl RequestConnection {
             protocol,
             channels_config,
             endpoint_config,
+            timeout_timer,
             buffer,
         })
     }
 
     fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+        self.timeout_timer.reset();
         self.protocol.read_payload(payload)?;
         Ok(())
     }
 
     pub fn update(&mut self) -> Result<Option<ClientConnected>, RenetError> {
         self.process_events()?;
+
+        if self.timeout_timer.is_finished() {
+            error!("Connection with the server timed out");
+            return Err(RenetError::ConnectionTimedOut);
+        }
 
         if self.protocol.is_authenticated() {
             let endpoint = Endpoint::new(self.endpoint_config.clone());

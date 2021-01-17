@@ -1,7 +1,7 @@
 use crate::connection::ClientId;
 use crate::error::Result;
 use crate::protocol::AuthenticationProtocol;
-use crate::timer::Timer;
+use crate::Timer;
 
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
