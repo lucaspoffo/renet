@@ -14,7 +14,7 @@ use super::handle_connection::HandleConnection;
 use super::ServerConfig;
 
 #[derive(Debug, Clone)]
-pub enum Event {
+pub enum ServerEvent {
     ClientConnected(ClientId),
     ClientDisconnected(ClientId),
 }
@@ -27,7 +27,7 @@ pub struct Server<P> {
     connecting: HashMap<ClientId, HandleConnection>,
     channels_config: HashMap<u8, ChannelConfig>,
     current_time: Instant,
-    events: Vec<Event>,
+    events: Vec<ServerEvent>,
     endpoint_config: EndpointConfig,
     _authentication_protocol: PhantomData<P>,
 }
@@ -60,7 +60,7 @@ where
         !self.clients.is_empty()
     }
 
-    pub fn get_event(&mut self) -> Option<Event> {
+    pub fn get_event(&mut self) -> Option<ServerEvent> {
         self.events.pop()
     }
 
@@ -248,7 +248,7 @@ where
                 connection.add_channel(*channel_id, channel);
             }
 
-            self.events.push(Event::ClientConnected(handle_connection.client_id));
+            self.events.push(ServerEvent::ClientConnected(handle_connection.client_id));
             self.clients.insert(handle_connection.client_id, connection);
         }
     }
