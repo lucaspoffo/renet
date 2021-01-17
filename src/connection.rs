@@ -2,7 +2,10 @@ use crate::channel::{Channel, ChannelPacketData};
 use crate::endpoint::Endpoint;
 use crate::error::RenetError;
 use crate::protocol::SecurityService;
+use crate::Timer;
+
 use log::error;
+
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Instant;
@@ -14,6 +17,7 @@ pub struct Connection {
     pub(crate) addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
     security_service: Box<dyn SecurityService>,
+    timeout_timer: Timer,
 }
 
 impl Connection {
@@ -22,17 +26,23 @@ impl Connection {
         endpoint: Endpoint,
         security_service: Box<dyn SecurityService>,
     ) -> Self {
+        let timeout_timer = Timer::new(endpoint.config().timeout_duration);
         Self {
             endpoint,
             channels: HashMap::new(),
             addr: server_addr,
             security_service,
+            timeout_timer,
         }
     }
 
     pub fn add_channel(&mut self, channel_id: u8, mut channel: Box<dyn Channel>) {
         channel.set_id(channel_id);
         self.channels.insert(channel_id, channel);
+    }
+
+    pub fn has_timed_out(&mut self) -> bool {
+        self.timeout_timer.is_finished()
     }
 
     pub fn update_channels_current_time(&mut self, current_time: Instant) {
@@ -50,6 +60,7 @@ impl Connection {
     }
 
     pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+        self.timeout_timer.reset();
         let payload = self.security_service.ss_unwrap(payload)?;
         let payload = match self.endpoint.process_payload(&payload)? {
             Some(payload) => payload,

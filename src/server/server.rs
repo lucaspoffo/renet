@@ -125,6 +125,19 @@ where
     }
 
     pub fn update(&mut self, current_time: Instant) {
+        let mut timed_out_connections: Vec<ClientId> = vec![];
+        for (&client_id, connection) in self.clients.iter_mut() {
+            if connection.has_timed_out() {
+                timed_out_connections.push(client_id);
+            }
+        }
+
+        for &client_id in timed_out_connections.iter() {
+            self.clients.remove(&client_id).unwrap();
+            self.events.push(ServerEvent::ClientDisconnected(client_id));
+            info!("Client {} disconnected.", client_id);
+        }
+
         if let Err(e) = self.process_events(current_time) {
             error!("Error while processing events:\n{:?}", e);
         }
@@ -226,9 +239,10 @@ where
 
         for client_id in disconnected_clients {
             let handle_connection = self.connecting.remove(&client_id).unwrap();
-            self.events
-                .push(ServerEvent::ClientDisconnected(handle_connection.client_id));
-            info!("Client {} disconnected.", handle_connection.client_id);
+            info!(
+                "Request connection {} disconnected.",
+                handle_connection.client_id
+            );
         }
 
         for client_id in connected_clients {

@@ -114,7 +114,7 @@ pub struct ClientConnected {
 }
 
 impl ClientConnected {
-    pub fn new(
+    pub(crate) fn new(
         id: ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
@@ -151,13 +151,10 @@ impl ClientConnected {
             .receive_all_messages_from_channel(channel_id)
     }
 
-    pub fn network_info(&self) -> &NetworkInfo {
-        self.connection.endpoint.network_info()
-    }
-
-    pub fn update_network_info(&mut self) {
+    pub fn network_info(&mut self) -> &NetworkInfo {
         self.connection.endpoint.update_sent_bandwidth();
         self.connection.endpoint.update_received_bandwidth();
+        self.connection.endpoint.network_info()
     }
 
     pub fn send_packets(&mut self) -> Result<(), RenetError> {
@@ -168,6 +165,10 @@ impl ClientConnected {
     }
 
     pub fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
+        if self.connection.has_timed_out() {
+            return Err(RenetError::ConnectionTimedOut);
+        }
+
         self.connection.update_channels_current_time(current_time);
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
