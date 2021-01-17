@@ -16,6 +16,7 @@ pub struct RequestConnection {
     protocol: Box<dyn AuthenticationProtocol>,
     endpoint_config: EndpointConfig,
     channels_config: HashMap<u8, ChannelConfig>,
+    buffer: Box<[u8]>,
 }
 
 impl RequestConnection {
@@ -28,6 +29,7 @@ impl RequestConnection {
         channels_config: HashMap<u8, ChannelConfig>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
+        let buffer = vec![0; endpoint_config.max_packet_size].into_boxed_slice();
         Ok(Self {
             id,
             socket,
@@ -35,6 +37,7 @@ impl RequestConnection {
             protocol,
             channels_config,
             endpoint_config,
+            buffer,
         })
     }
 
@@ -72,13 +75,11 @@ impl RequestConnection {
     }
 
     fn process_events(&mut self) -> Result<(), RenetError> {
-        // TODO: remove this buffer
-        let mut buffer = vec![0u8; 1500];
         loop {
-            let payload = match self.socket.recv_from(&mut buffer) {
+            let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
                     if addr == self.server_addr {
-                        buffer[..len].to_vec().into_boxed_slice()
+                        self.buffer[..len].to_vec().into_boxed_slice()
                     } else {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
@@ -97,6 +98,7 @@ pub struct ClientConnected {
     socket: UdpSocket,
     id: ClientId,
     connection: Connection,
+    buffer: Box<[u8]>,
 }
 
 impl ClientConnected {
@@ -108,17 +110,20 @@ impl ClientConnected {
         channels_config: HashMap<u8, ChannelConfig>,
         security_service: Box<dyn SecurityService>,
     ) -> Self {
+        let buffer = vec![0; endpoint.config().max_packet_size].into_boxed_slice();
         let mut connection = Connection::new(server_addr, endpoint, security_service);
-        
+
         for (channel_id, channel_config) in channels_config.iter() {
             let channel = channel_config.new_channel(Instant::now());
             connection.add_channel(*channel_id, channel);
         }
 
+
         Self {
             id,
             socket,
-            connection 
+            connection,
+            buffer,
         }
     }
 
@@ -152,13 +157,12 @@ impl ClientConnected {
     }
 
     pub fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
-        let mut buffer = vec![0u8; 1500];
         self.connection.update_channels_current_time(current_time);
         loop {
-            let payload = match self.socket.recv_from(&mut buffer) {
+            let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
                     if addr == self.connection.addr {
-                        buffer[..len].to_vec().into_boxed_slice()
+                        self.buffer[..len].to_vec().into_boxed_slice()
                     } else {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
