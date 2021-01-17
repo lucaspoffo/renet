@@ -1,7 +1,5 @@
 use crate::error::{RenetError, Result};
-use crate::packet::{
-    FragmentHeader, HeaderParser, PacketHeader, PacketType,
-};
+use crate::packet::{FragmentHeader, HeaderParser, PacketHeader, PacketType};
 use crate::sequence_buffer::SequenceBuffer;
 use log::{debug, error};
 use std::io::{Cursor, Write};
@@ -18,7 +16,12 @@ struct ReassemblyFragment {
 }
 
 impl ReassemblyFragment {
-    pub fn new(sequence: u16, num_fragments_total: usize, fragment_max_count: usize, fragment_max_size: usize) -> Self {
+    pub fn new(
+        sequence: u16,
+        num_fragments_total: usize,
+        fragment_max_count: usize,
+        fragment_max_size: usize,
+    ) -> Self {
         let len = num_fragments_total * fragment_max_size;
         let mut buffer = Vec::with_capacity(len);
         buffer.resize(len, 0u8);
@@ -382,8 +385,8 @@ impl Endpoint {
                         {
                             self.network_info.rtt = rtt;
                         } else {
-                            self.network_info.rtt +=
-                                (rtt - self.network_info.rtt) * self.config.measure_smoothing_factor;
+                            self.network_info.rtt += (rtt - self.network_info.rtt)
+                                * self.config.measure_smoothing_factor;
                         }
                     }
                 }
@@ -401,12 +404,7 @@ impl Endpoint {
     }
 }
 
-fn build_normal_packet(
-    payload: &[u8],
-    sequence: u16,
-    ack: u16,
-    ack_bits: u32,
-) -> Result<Vec<u8>> {
+fn build_normal_packet(payload: &[u8], sequence: u16, ack: u16, ack_bits: u32) -> Result<Vec<u8>> {
     let header = PacketHeader {
         sequence,
         ack,
@@ -477,8 +475,12 @@ impl SequenceBuffer<ReassemblyFragment> {
         config: &EndpointConfig,
     ) -> Result<Option<Vec<u8>>> {
         if !self.exists(header.sequence) {
-            let reassembly_fragment =
-                ReassemblyFragment::new(header.sequence, header.num_fragments as usize, config.fragment_max_count, config.fragment_max_size);
+            let reassembly_fragment = ReassemblyFragment::new(
+                header.sequence,
+                header.num_fragments as usize,
+                config.fragment_max_count,
+                config.fragment_max_size,
+            );
             self.insert(header.sequence, reassembly_fragment);
         }
 

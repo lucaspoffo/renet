@@ -41,7 +41,7 @@ impl RequestConnection {
         })
     }
 
-    fn process_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
+    fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.protocol.read_payload(payload)?;
         Ok(())
     }
@@ -89,7 +89,7 @@ impl RequestConnection {
                 Err(e) => return Err(RenetError::IOError(e)),
             };
 
-            self.process_payload(payload)?;
+            self.process_payload(&payload)?;
         }
     }
 }
@@ -117,7 +117,6 @@ impl ClientConnected {
             let channel = channel_config.new_channel(Instant::now());
             connection.add_channel(*channel_id, channel);
         }
-
 
         Self {
             id,
@@ -162,7 +161,7 @@ impl ClientConnected {
             let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
                     if addr == self.connection.addr {
-                        self.buffer[..len].to_vec().into_boxed_slice()
+                        &self.buffer[..len]
                     } else {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;

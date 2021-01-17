@@ -147,7 +147,7 @@ where
 
     pub fn process_payload_from(
         &mut self,
-        payload: Box<[u8]>,
+        payload: &[u8],
         addr: &SocketAddr,
     ) -> Result<(), RenetError> {
         if let Some(client) = self.find_client_by_addr(addr) {
@@ -186,8 +186,7 @@ where
         loop {
             match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
-                    let payload = buffer[..len].to_vec().into_boxed_slice();
-                    if let Err(e) = self.process_payload_from(payload, &addr) {
+                    if let Err(e) = self.process_payload_from(&buffer[..len], &addr) {
                         error!("Error while processing events:\n{:?}", e);
                     }
                 }

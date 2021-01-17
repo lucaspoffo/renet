@@ -39,7 +39,7 @@ fn server(ip: String) -> std::io::Result<()> {
         };
         println!("{:?}", message);
         let message = bincode::serialize(&message).expect("Failed to serialize message.");
-        
+
         let sent_packet = SentPacket {
             size: message.len(),
             time: Instant::now(),
@@ -121,7 +121,7 @@ impl SentPackets {
     pub fn new() -> Self {
         Self {
             sent_buffer: SequenceBuffer::with_capacity(256),
-            sent_bandwidth_kbps: 0.0
+            sent_bandwidth_kbps: 0.0,
         }
     }
 

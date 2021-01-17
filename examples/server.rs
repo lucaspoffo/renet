@@ -1,6 +1,6 @@
 use alto_logger::TermLogger;
 use log::trace;
-use renet::{EndpointConfig, Endpoint};
+use renet::{Endpoint, EndpointConfig};
 use std::net::UdpSocket;
 
 fn main() -> std::io::Result<()> {
@@ -30,7 +30,10 @@ fn main() -> std::io::Result<()> {
             endpoint.update_sent_bandwidth();
         }
         let network_info = endpoint.network_info();
-        trace!("Received Bandwidth: {}", network_info.received_bandwidth_kbps);
+        trace!(
+            "Received Bandwidth: {}",
+            network_info.received_bandwidth_kbps
+        );
         trace!("Sent Bandwidth: {}", network_info.sent_bandwidth_kbps);
         trace!("RTT: {}", network_info.rtt);
         trace!("Packet Loss: {}%", network_info.packet_loss);

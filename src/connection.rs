@@ -49,7 +49,7 @@ impl Connection {
         channel.send_message(message);
     }
 
-    pub fn process_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
+    pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         let payload = self.security_service.ss_unwrap(payload)?;
         let payload = match self.endpoint.process_payload(&payload)? {
             Some(payload) => payload,
@@ -92,9 +92,7 @@ impl Connection {
         let reliable_packets = self.endpoint.generate_packets(payload)?;
         for reliable_packet in reliable_packets.iter() {
             // TODO: remove clone
-            let payload = self
-                .security_service
-                .ss_wrap(reliable_packet.clone().into_boxed_slice())?;
+            let payload = self.security_service.ss_wrap(&reliable_packet)?;
             socket.send_to(&payload, self.addr)?;
         }
         Ok(())

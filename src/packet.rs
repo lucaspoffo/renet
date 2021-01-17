@@ -9,7 +9,7 @@ pub enum PacketType {
 
 // TODO: implement prefix byte to accomodate 4 bits for the packet type
 // and 4 bits for the ack_bits enconding optimization
-// TODO: we can delta encode the sequence with the ack, but should we? 
+// TODO: we can delta encode the sequence with the ack, but should we?
 pub trait HeaderParser {
     type Header;
 
@@ -141,7 +141,7 @@ mod tests {
             sequence: 42,
             fragment_id: 3,
             num_fragments: 5,
-            packet_header: None
+            packet_header: None,
         };
 
         let mut buffer = vec![0u8; fragment_header.size()];
@@ -154,7 +154,11 @@ mod tests {
 
     #[test]
     fn packet_header_read_write() {
-        let header = PacketHeader { sequence: 42, ack: 0, ack_bits: 0 };
+        let header = PacketHeader {
+            sequence: 42,
+            ack: 0,
+            ack_bits: 0,
+        };
 
         let mut buffer = vec![0u8; header.size()];
 

@@ -1,12 +1,12 @@
-pub use self::endpoint::{EndpointConfig, Endpoint};
+pub use self::endpoint::{Endpoint, EndpointConfig};
 pub use error::RenetError;
 
-pub mod connection;
-pub mod error;
 pub mod channel;
-mod packet;
-pub mod sequence_buffer;
-pub mod endpoint;
 pub mod client;
+pub mod connection;
+pub mod endpoint;
+pub mod error;
+mod packet;
 pub mod protocol;
+pub mod sequence_buffer;
 pub mod server;

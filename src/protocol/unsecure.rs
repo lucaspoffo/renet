@@ -2,7 +2,7 @@ use crate::connection::ClientId;
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use log::{info, debug};
+use log::debug;
 use std::io;
 
 // TODO: Add version verification
@@ -154,22 +154,20 @@ impl UnsecureClientProtocol {
 }
 
 impl SecurityService for UnsecureService {
-    fn ss_wrap(&mut self, data: Box<[u8]>) -> Result<Box<[u8]>, RenetError> {
-        let packet = Packet::Payload(data);
-        // TODO: can we remove this buffer?
+    fn ss_wrap(&mut self, data: &[u8]) -> Result<Box<[u8]>, RenetError> {
+        let packet = Packet::Payload(data.into());
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
         Ok(buffer.into_boxed_slice())
     }
 
-    fn ss_unwrap(&mut self, data: Box<[u8]>) -> Result<Box<[u8]>, RenetError> {
-        let packet = Packet::decode(&data)?;
+    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Box<[u8]>, RenetError> {
+        let packet = Packet::decode(data)?;
         match packet {
             Packet::Payload(payload) => {
                 return Ok(payload);
             }
-            p => {
-                debug!("Received invalid packet: {:?}", p);
+            _ => {
                 return Err(ConnectionError::InvalidPacket.into());
             }
         }
@@ -193,8 +191,8 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         Ok(Some(buffer.into_boxed_slice()))
     }
 
-    fn read_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
-        let packet = Packet::decode(&payload)?;
+    fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+        let packet = Packet::decode(payload)?;
         // TODO: better debug logs
         match (packet, &self.state) {
             (Packet::KeepAlive, ClientState::SendingConnectionRequest) => {
@@ -248,8 +246,8 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         Ok(Some(buffer.into_boxed_slice()))
     }
 
-    fn read_payload(&mut self, payload: Box<[u8]>) -> Result<(), RenetError> {
-        let packet = Packet::decode(&payload)?;
+    fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+        let packet = Packet::decode(payload)?;
         // TODO: better debug logs
         match (packet, &self.state) {
             (Packet::ConnectionRequest(_), _) => {}
@@ -277,8 +275,8 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
 }
 
 impl ServerAuthenticationProtocol for UnsecureServerProtocol {
-    fn from_payload(payload: Box<[u8]>) -> Result<Box<dyn AuthenticationProtocol>, RenetError> {
-        let packet = Packet::decode(&payload)?;
+    fn from_payload(payload: &[u8]) -> Result<Box<dyn AuthenticationProtocol>, RenetError> {
+        let packet = Packet::decode(payload)?;
         if let Packet::ConnectionRequest(client_id) = packet {
             return Ok(Box::new(Self {
                 id: client_id,
@@ -299,27 +297,38 @@ mod tests {
 
         let connection_payload = client_protocol.create_payload().unwrap().unwrap();
 
-        let mut server_protocol = UnsecureServerProtocol::from_payload(connection_payload).unwrap();
+        let mut server_protocol =
+            UnsecureServerProtocol::from_payload(&connection_payload).unwrap();
 
         let server_keep_alive_payload = server_protocol.create_payload().unwrap().unwrap();
 
-        client_protocol.read_payload(server_keep_alive_payload).unwrap();
-        
-        assert!(client_protocol.is_authenticated(), "Client protocol should be authenticated!");
+        client_protocol
+            .read_payload(&server_keep_alive_payload)
+            .unwrap();
+
+        assert!(
+            client_protocol.is_authenticated(),
+            "Client protocol should be authenticated!"
+        );
         let client_keep_alive_payload = client_protocol.create_payload().unwrap().unwrap();
 
-        server_protocol.read_payload(client_keep_alive_payload).unwrap();
-        assert!(server_protocol.is_authenticated(), "Server protocol should be authenticated!");
+        server_protocol
+            .read_payload(&client_keep_alive_payload)
+            .unwrap();
+        assert!(
+            server_protocol.is_authenticated(),
+            "Server protocol should be authenticated!"
+        );
 
-        let mut client_ss =  client_protocol.build_security_interface();
+        let mut client_ss = client_protocol.build_security_interface();
         let mut server_ss = server_protocol.build_security_interface();
 
-        let payload = vec![0, 1, 2, 3, 4, 5, 6, 7, 8 ,9];
-        
-        let wrapped_payload = server_ss.ss_wrap(payload.clone().into_boxed_slice()).unwrap();
+        let payload = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-        let unwrapped_payload = client_ss.ss_unwrap(wrapped_payload).unwrap();
-        
+        let wrapped_payload = server_ss.ss_wrap(&payload).unwrap();
+
+        let unwrapped_payload = client_ss.ss_unwrap(&wrapped_payload).unwrap();
+
         assert_eq!(unwrapped_payload, payload.into_boxed_slice());
     }
 }

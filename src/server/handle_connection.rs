@@ -1,7 +1,7 @@
-use std::net::SocketAddr;
 use crate::connection::ClientId;
-use crate::protocol::AuthenticationProtocol;
 use crate::error::Result;
+use crate::protocol::AuthenticationProtocol;
+use std::net::SocketAddr;
 
 pub struct HandleConnection {
     pub(crate) addr: SocketAddr,
@@ -22,7 +22,7 @@ impl HandleConnection {
         }
     }
 
-    pub fn process_payload(&mut self, payload: Box<[u8]>) -> Result<()> {
+    pub fn process_payload(&mut self, payload: &[u8]) -> Result<()> {
         self.protocol.read_payload(payload)
     }
 }

@@ -8,7 +8,7 @@ use std::time::Duration;
 fn main() -> Result<(), RenetError> {
     TermLogger::default().init().unwrap();
     let mut server_connection = get_connection()?;
-    
+
     loop {
         server_connection.process_events()?;
         for payload in server_connection.received_payloads.iter() {

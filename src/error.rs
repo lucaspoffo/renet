@@ -1,5 +1,5 @@
-use std::{io, result};
 use std::fmt::{self, Display, Formatter};
+use std::{io, result};
 
 pub type Result<T> = result::Result<T, RenetError>;
 
@@ -29,4 +29,3 @@ impl Display for RenetError {
         write!(fmt, "RenetError")
     }
 }
-
