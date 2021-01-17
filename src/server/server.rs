@@ -170,7 +170,12 @@ where
                 let protocol = P::from_payload(payload)?;
                 let id = protocol.id();
                 info!("Created new protocol from payload with client id {}", id);
-                let new_connection = HandleConnection::new(protocol.id(), addr.clone(), protocol);
+                let new_connection = HandleConnection::new(
+                    protocol.id(),
+                    addr.clone(),
+                    protocol,
+                    self.endpoint_config.timeout_duration,
+                );
                 self.connecting.insert(id, new_connection);
             }
         };
@@ -201,24 +206,35 @@ where
 
     fn update_pending_connections(&mut self) {
         let mut connected_clients = vec![];
-        for connection in self.connecting.values_mut() {
-            if connection.protocol.is_authenticated() {
-                connected_clients.push(connection.client_id);
+        let mut disconnected_clients = vec![];
+        for handle_connection in self.connecting.values_mut() {
+            if handle_connection.has_timed_out() {
+                disconnected_clients.push(handle_connection.client_id);
+                continue;
+            }
+
+            if handle_connection.protocol.is_authenticated() {
+                connected_clients.push(handle_connection.client_id);
             } else {
-                if let Ok(Some(payload)) = connection.protocol.create_payload() {
-                    if let Err(e) = self.socket.send_to(&payload, connection.addr) {
+                if let Ok(Some(payload)) = handle_connection.protocol.create_payload() {
+                    if let Err(e) = self.socket.send_to(&payload, handle_connection.addr) {
                         error!("Failed to send protocol packet {}", e);
                     }
                 }
             }
         }
+
+        for client_id in disconnected_clients {
+            let handle_connection = self.connecting.remove(&client_id).unwrap();
+            self.events
+                .push(ServerEvent::ClientDisconnected(handle_connection.client_id));
+            info!("Client {} disconnected.", handle_connection.client_id);
+        }
+
         for client_id in connected_clients {
-            let handle_connection = self
-                .connecting
-                .remove(&client_id)
-                .expect("Should only connect existing clients.");
+            let handle_connection = self.connecting.remove(&client_id).unwrap();
             if self.clients.len() >= self.config.max_clients {
-                debug!(
+                info!(
                     "Connection from {} successfuly stablished but server was full.",
                     handle_connection.addr
                 );
@@ -226,7 +242,7 @@ where
                 continue;
             }
 
-            debug!(
+            info!(
                 "Connection stablished with client {} ({}).",
                 handle_connection.client_id, handle_connection.addr,
             );

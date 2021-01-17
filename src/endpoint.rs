@@ -49,6 +49,7 @@ pub struct EndpointConfig {
     pub sent_packets_buffer_size: usize,
     pub received_packets_buffer_size: usize,
     pub measure_smoothing_factor: f64,
+    pub timeout_duration: Duration,
 }
 
 impl Default for EndpointConfig {
@@ -65,6 +66,7 @@ impl Default for EndpointConfig {
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
             measure_smoothing_factor: 0.05,
+            timeout_duration: Duration::from_secs(5),
         }
     }
 }
