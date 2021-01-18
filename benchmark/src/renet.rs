@@ -1,7 +1,7 @@
 use alto_logger::TermLogger;
 use benchmark::{save_to_csv, save_to_csv_f64, Message, MICROS_PER_FRAME};
 use renet::{
-    channel::{ChannelConfig, ReliableOrderedChannel},
+    channel::{ChannelConfig, ReliableOrderedChannel, ReliableOrderedChannelConfig},
     client::{ClientConnected, RequestConnection},
     endpoint::EndpointConfig,
     error::RenetError,
@@ -35,11 +35,11 @@ fn server(ip: String) -> Result<(), RenetError> {
     let socket = UdpSocket::bind(ip)?;
     let server_config = ServerConfig::default();
 
-    let mut channel_config = ChannelConfig::default();
+    let mut channel_config = ReliableOrderedChannelConfig::default();
     channel_config.message_resend_time = Duration::from_millis(100);
 
-    let mut channels_config = HashMap::new();
-    channels_config.insert(0, channel_config);
+    let mut channels_config: HashMap<u8, Box<dyn ChannelConfig>> = HashMap::new();
+    channels_config.insert(0, Box::new(channel_config));
 
     let endpoint_config = EndpointConfig::default();
 
@@ -119,11 +119,11 @@ fn client(ip: String) -> Result<(), RenetError> {
 fn get_connection(ip: String) -> Result<ClientConnected, RenetError> {
     let socket = UdpSocket::bind("127.0.0.1:8080")?;
 
-    let mut channel_config = ChannelConfig::default();
+    let mut channel_config = ReliableOrderedChannelConfig::default();
     channel_config.message_resend_time = Duration::from_millis(100);
 
-    let mut channels_config = HashMap::new();
-    channels_config.insert(0, channel_config);
+    let mut channels_config: HashMap<u8, Box<dyn ChannelConfig>> = HashMap::new();
+    channels_config.insert(0, Box::new(channel_config));
 
     let endpoint_config = EndpointConfig::default();
 

@@ -18,7 +18,7 @@ pub struct RequestConnection {
     id: ClientId,
     protocol: Box<dyn AuthenticationProtocol>,
     endpoint_config: EndpointConfig,
-    channels_config: HashMap<u8, ChannelConfig>,
+    channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     buffer: Box<[u8]>,
     timeout_timer: Timer,
 }
@@ -30,7 +30,7 @@ impl RequestConnection {
         server_addr: SocketAddr,
         protocol: Box<dyn AuthenticationProtocol>,
         endpoint_config: EndpointConfig,
-        channels_config: HashMap<u8, ChannelConfig>,
+        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         let buffer = vec![0; endpoint_config.max_packet_size].into_boxed_slice();
@@ -119,7 +119,7 @@ impl ClientConnected {
         socket: UdpSocket,
         server_addr: SocketAddr,
         endpoint: Endpoint,
-        channels_config: HashMap<u8, ChannelConfig>,
+        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
         security_service: Box<dyn SecurityService>,
     ) -> Self {
         let buffer = vec![0; endpoint.config().max_packet_size].into_boxed_slice();

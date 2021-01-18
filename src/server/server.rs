@@ -25,7 +25,7 @@ pub struct Server<P> {
     socket: UdpSocket,
     clients: HashMap<ClientId, Connection>,
     connecting: HashMap<ClientId, HandleConnection>,
-    channels_config: HashMap<u8, ChannelConfig>,
+    channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     current_time: Instant,
     events: Vec<ServerEvent>,
     endpoint_config: EndpointConfig,
@@ -40,7 +40,7 @@ where
         socket: UdpSocket,
         config: ServerConfig,
         endpoint_config: EndpointConfig,
-        channels_config: HashMap<u8, ChannelConfig>,
+        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         Ok(Self {

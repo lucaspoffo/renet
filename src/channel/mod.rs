@@ -1,53 +1,20 @@
 use std::time::{Duration, Instant};
 // TODO: Remove bincode and serde dependency
 use bincode;
+use dyn_clone::DynClone;
 use serde::{Deserialize, Serialize};
 
 mod reliable;
-pub use reliable::ReliableOrderedChannel;
+pub use reliable::{ReliableOrderedChannel, ReliableOrderedChannelConfig};
 
-#[derive(Clone)]
-pub enum ChannelType {
-    ReliableOrderedChannel,
+mod unreliable;
+pub use unreliable::{UnreliableUnorderedChannel, UnreliableUnorderedChannelConfig};
+
+pub trait ChannelConfig: DynClone {
+    fn new_channel(&self, current_time: Instant) -> Box<dyn Channel>;
 }
 
-#[derive(Clone)]
-pub struct ChannelConfig {
-    pub channel_type: ChannelType,
-    pub sent_packet_buffer_size: usize,
-    pub message_send_queue_size: usize,
-    pub message_receive_queue_size: usize,
-    pub max_message_per_packet: u32,
-    pub packet_budget_bytes: Option<u32>,
-    pub message_resend_time: Duration,
-}
-
-impl Default for ChannelConfig {
-    fn default() -> Self {
-        Self {
-            channel_type: ChannelType::ReliableOrderedChannel,
-            sent_packet_buffer_size: 1024,
-            message_send_queue_size: 1024,
-            message_receive_queue_size: 1024,
-            max_message_per_packet: 256,
-            packet_budget_bytes: None,
-            message_resend_time: Duration::from_millis(100),
-        }
-    }
-}
-
-impl ChannelConfig {
-    pub fn new_channel(&self, current_time: Instant) -> Box<dyn Channel> {
-        match self.channel_type {
-            ChannelType::ReliableOrderedChannel => {
-                return Box::new(reliable::ReliableOrderedChannel::new(
-                    current_time,
-                    self.clone(),
-                ));
-            }
-        }
-    }
-}
+dyn_clone::clone_trait_object!(ChannelConfig);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -58,6 +25,10 @@ pub struct Message {
 impl Message {
     pub fn new(id: u16, payload: Box<[u8]>) -> Self {
         Self { id, payload }
+    }
+
+    pub fn serialized_size_bytes(&self) -> u32 {
+        self.payload.len() as u32 + 2
     }
 }
 
@@ -82,6 +53,7 @@ pub trait Channel {
     fn receive_message(&mut self) -> Option<Box<[u8]>>;
     // TODO: do we need reset at all?
     fn reset(&mut self);
+    // TODO: remove current_time use wrapped Instant like tokio does.
     fn update_current_time(&mut self, time: Instant);
 }
 
@@ -95,7 +67,7 @@ pub(crate) struct MessageSend {
 impl MessageSend {
     pub fn new(message: Message) -> Self {
         Self {
-            serialized_size_bits: bincode::serialized_size(&message).unwrap() as u32 * 8,
+            serialized_size_bits: message.serialized_size_bytes() * 8,
             message,
             last_time_sent: None,
         }

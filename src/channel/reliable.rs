@@ -1,9 +1,38 @@
 use crate::channel::{Channel, ChannelConfig, Message, MessageSend, PacketSent};
 use crate::sequence_buffer::SequenceBuffer;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone)]
+pub struct ReliableOrderedChannelConfig {
+    pub sent_packet_buffer_size: usize,
+    pub message_send_queue_size: usize,
+    pub message_receive_queue_size: usize,
+    pub max_message_per_packet: u32,
+    pub packet_budget_bytes: Option<u32>,
+    pub message_resend_time: Duration,
+}
+
+impl Default for ReliableOrderedChannelConfig {
+    fn default() -> Self {
+        Self {
+            sent_packet_buffer_size: 1024,
+            message_send_queue_size: 1024,
+            message_receive_queue_size: 1024,
+            max_message_per_packet: 256,
+            packet_budget_bytes: None,
+            message_resend_time: Duration::from_millis(100),
+        }
+    }
+}
+
+impl ChannelConfig for ReliableOrderedChannelConfig {
+    fn new_channel(&self, current_time: Instant) -> Box<dyn Channel> {
+        Box::new(ReliableOrderedChannel::new(current_time, self.clone()))
+    }
+}
 
 pub struct ReliableOrderedChannel {
-    config: ChannelConfig,
+    config: ReliableOrderedChannelConfig,
     packets_sent: SequenceBuffer<PacketSent>,
     messages_send: SequenceBuffer<MessageSend>,
     messages_received: SequenceBuffer<Message>,
@@ -16,7 +45,7 @@ pub struct ReliableOrderedChannel {
 }
 
 impl ReliableOrderedChannel {
-    pub fn new(current_time: Instant, config: ChannelConfig) -> Self {
+    pub fn new(current_time: Instant, config: ReliableOrderedChannelConfig) -> Self {
         Self {
             current_time,
             packets_sent: SequenceBuffer::with_capacity(config.sent_packet_buffer_size),
@@ -210,7 +239,7 @@ mod tests {
 
     #[test]
     fn send_message() {
-        let config = ChannelConfig::default();
+        let config = ReliableOrderedChannelConfig::default();
         let mut channel: ReliableOrderedChannel =
             ReliableOrderedChannel::new(Instant::now(), config);
         let sequence = 0;
@@ -235,7 +264,7 @@ mod tests {
 
     #[test]
     fn receive_message() {
-        let config = ChannelConfig::default();
+        let config = ReliableOrderedChannelConfig::default();
         let mut channel: ReliableOrderedChannel =
             ReliableOrderedChannel::new(Instant::now(), config);
 
@@ -262,7 +291,7 @@ mod tests {
 
         let message = Message::new(0, first_message.serialize());
 
-        let mut config = ChannelConfig::default();
+        let mut config = ReliableOrderedChannelConfig::default();
         config.packet_budget_bytes = Some(bincode::serialized_size(&message).unwrap() as u32);
         let mut channel: ReliableOrderedChannel =
             ReliableOrderedChannel::new(Instant::now(), config);
@@ -290,7 +319,7 @@ mod tests {
 
     #[test]
     fn resend_message() {
-        let mut config = ChannelConfig::default();
+        let mut config = ReliableOrderedChannelConfig::default();
         let resend_time = 200;
         config.message_resend_time = Duration::from_millis(resend_time);
         let now = Instant::now();
