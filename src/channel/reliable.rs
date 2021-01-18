@@ -1,9 +1,8 @@
-use crate::channel::{Channel, ChannelConfig, ChannelPacketData, Message, MessageSend, PacketSent};
+use crate::channel::{Channel, ChannelConfig, Message, MessageSend, PacketSent};
 use crate::sequence_buffer::SequenceBuffer;
 use std::time::Instant;
 
 pub struct ReliableOrderedChannel {
-    id: u8,
     config: ChannelConfig,
     packets_sent: SequenceBuffer<PacketSent>,
     messages_send: SequenceBuffer<MessageSend>,
@@ -19,7 +18,6 @@ pub struct ReliableOrderedChannel {
 impl ReliableOrderedChannel {
     pub fn new(current_time: Instant, config: ChannelConfig) -> Self {
         Self {
-            id: 0,
             current_time,
             packets_sent: SequenceBuffer::with_capacity(config.sent_packet_buffer_size),
             messages_send: SequenceBuffer::with_capacity(config.message_send_queue_size),
@@ -38,7 +36,7 @@ impl ReliableOrderedChannel {
     }
 
     // TODO: use bits or bytes?
-    fn get_messages_to_send(&mut self, available_bits: Option<u32>) -> Option<Vec<u16>> {
+    fn get_messages_id_to_send(&mut self, available_bits: Option<u32>) -> Option<Vec<u16>> {
         if !self.has_messages_to_send() {
             return None;
         }
@@ -86,20 +84,6 @@ impl ReliableOrderedChannel {
         None
     }
 
-    fn get_messages_packet_data(&mut self, messages_id: &[u16]) -> ChannelPacketData {
-        let mut messages: Vec<Message> = Vec::with_capacity(messages_id.len());
-        for &message_id in messages_id.iter() {
-            let message_send = self
-                .messages_send
-                .get_mut(message_id)
-                .expect("Invalid message id when generating packet data");
-            message_send.last_time_sent = Some(self.current_time);
-            // TODO: can we remove this clone? and pass the reference
-            messages.push(message_send.message.clone());
-        }
-        ChannelPacketData::new(messages, self.id)
-    }
-
     fn add_messages_packet_entry(&mut self, messages_id: Vec<u16>, sequence: u16) {
         let packet_sent = PacketSent::new(messages_id);
         self.packets_sent.insert(sequence, packet_sent);
@@ -117,48 +101,42 @@ impl ReliableOrderedChannel {
 }
 
 impl Channel for ReliableOrderedChannel {
-    fn set_id(&mut self, id: u8) {
-        self.id = id;
-    }
-
-    fn id(&self) -> u8 {
-        self.id
-    }
-
     fn update_current_time(&mut self, time: Instant) {
         self.current_time = time;
     }
 
-    fn get_packet_data(
+    fn get_messages_to_send(
         &mut self,
         available_bits: Option<u32>,
         sequence: u16,
-    ) -> Option<ChannelPacketData> {
-        if let Some(messages_id) = self.get_messages_to_send(available_bits) {
-            let data = self.get_messages_packet_data(&messages_id);
+    ) -> Option<Vec<Message>> {
+        if let Some(messages_id) = self.get_messages_id_to_send(available_bits) {
+            let messages: Vec<Message> = messages_id
+                .iter()
+                .map(|m_id| {
+                    let message_send = self.messages_send.get_mut(*m_id).unwrap();
+                    message_send.last_time_sent = Some(self.current_time);
+                    message_send.message.clone()
+                })
+                .collect();
+
             self.add_messages_packet_entry(messages_id, sequence);
-            return Some(data);
+            return Some(messages);
         }
         None
     }
 
-    fn process_packet_data(&mut self, packet_data: &ChannelPacketData) {
-        if self.id() != packet_data.channel_id {
-            // TODO: add debug log here.
-            return;
-        }
-        for message in packet_data.messages.iter() {
+    fn process_messages(&mut self, mut messages: Vec<Message>) {
+        for message in messages.drain(..) {
             // TODO: validate min max message_id based on config queue size
-            let message_id = message.id;
-            if !self.messages_received.exists(message_id) {
-                self.messages_received.insert(message_id, message.clone());
+            if !self.messages_received.exists(message.id) {
+                self.messages_received.insert(message.id, message);
             }
         }
     }
 
     fn process_ack(&mut self, ack: u16) {
         if let Some(sent_packet) = self.packets_sent.get_mut(ack) {
-            // Should we assert already acked?
             if sent_packet.acked {
                 return;
             }
@@ -244,13 +222,10 @@ mod tests {
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
-        let packet_data = channel.get_packet_data(None, sequence).unwrap();
+        let messages = channel.get_messages_to_send(None, sequence).unwrap();
 
-        assert_eq!(packet_data.messages.len(), 1);
-        assert_eq!(
-            packet_data.messages[0].payload,
-            TestMessages::Second(0).serialize()
-        );
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, TestMessages::Second(0).serialize());
 
         assert!(channel.has_messages_to_send());
 
@@ -263,17 +238,13 @@ mod tests {
         let config = ChannelConfig::default();
         let mut channel: ReliableOrderedChannel =
             ReliableOrderedChannel::new(Instant::now(), config);
-        let sequence = 0;
 
-        let received_packet_data = ChannelPacketData::new(
-            vec![
-                Message::new(0, TestMessages::First.serialize()),
-                Message::new(1, TestMessages::Second(0).serialize()),
-            ],
-            sequence,
-        );
+        let messages = vec![
+            Message::new(0, TestMessages::First.serialize()),
+            Message::new(1, TestMessages::Second(0).serialize()),
+        ];
 
-        channel.process_packet_data(&received_packet_data);
+        channel.process_messages(messages);
 
         let message = channel.receive_message().unwrap();
         assert_eq!(message, TestMessages::First.serialize());
@@ -300,21 +271,21 @@ mod tests {
         channel.send_message(first_message.serialize());
         channel.send_message(second_message.serialize());
 
-        let packet_data = channel.get_packet_data(None, sequence);
-        assert!(packet_data.is_some());
-        let packet_data = packet_data.unwrap();
+        let messages = channel.get_messages_to_send(None, sequence);
+        assert!(messages.is_some());
+        let messages = messages.unwrap();
 
-        assert_eq!(packet_data.messages.len(), 1);
-        assert_eq!(packet_data.messages[0].payload, first_message.serialize());
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, first_message.serialize());
 
         channel.process_ack(0);
 
-        let packet_data = channel.get_packet_data(None, sequence + 1);
-        assert!(packet_data.is_some());
-        let packet_data = packet_data.unwrap();
+        let messages = channel.get_messages_to_send(None, sequence + 1);
+        assert!(messages.is_some());
+        let messages = messages.unwrap();
 
-        assert_eq!(packet_data.messages.len(), 1);
-        assert_eq!(packet_data.messages[0].payload, second_message.serialize());
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, second_message.serialize());
     }
 
     #[test]
@@ -328,30 +299,24 @@ mod tests {
 
         channel.send_message(TestMessages::First.serialize());
 
-        let packet_data = channel.get_packet_data(None, sequence).unwrap();
+        let messages = channel.get_messages_to_send(None, sequence).unwrap();
         sequence += 1;
 
-        assert_eq!(packet_data.messages.len(), 1);
-        assert_eq!(
-            packet_data.messages[0].payload,
-            TestMessages::First.serialize()
-        );
-        assert_eq!(packet_data.messages[0].id, 0);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, TestMessages::First.serialize());
+        assert_eq!(messages[0].id, 0);
 
-        let packet_data = channel.get_packet_data(None, sequence);
+        let messages = channel.get_messages_to_send(None, sequence);
         sequence += 1;
 
-        assert!(packet_data.is_none());
+        assert!(messages.is_none());
 
         channel.update_current_time(now + Duration::from_millis(resend_time));
 
-        let packet_data = channel.get_packet_data(None, sequence).unwrap();
+        let messages = channel.get_messages_to_send(None, sequence).unwrap();
 
-        assert_eq!(packet_data.messages.len(), 1);
-        assert_eq!(
-            packet_data.messages[0].payload,
-            TestMessages::First.serialize()
-        );
-        assert_eq!(packet_data.messages[0].id, 0);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, TestMessages::First.serialize());
+        assert_eq!(messages[0].id, 0);
     }
 }

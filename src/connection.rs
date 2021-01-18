@@ -36,8 +36,7 @@ impl Connection {
         }
     }
 
-    pub fn add_channel(&mut self, channel_id: u8, mut channel: Box<dyn Channel>) {
-        channel.set_id(channel_id);
+    pub fn add_channel(&mut self, channel_id: u8, channel: Box<dyn Channel>) {
         self.channels.insert(channel_id, channel);
     }
 
@@ -67,7 +66,7 @@ impl Connection {
             None => return Ok(()),
         };
 
-        let channel_packets = match bincode::deserialize::<Vec<ChannelPacketData>>(&payload) {
+        let mut channel_packets = match bincode::deserialize::<Vec<ChannelPacketData>>(&payload) {
             Ok(x) => x,
             Err(e) => {
                 error!("Failed to deserialize ChannelPacketData: {:?}", e);
@@ -76,18 +75,18 @@ impl Connection {
             }
         };
 
-        for channel_packet_data in channel_packets.iter() {
-            let channel = match self.channels.get_mut(&channel_packet_data.channel_id()) {
+        for channel_packet_data in channel_packets.drain(..) {
+            let channel = match self.channels.get_mut(&channel_packet_data.channel_id) {
                 Some(c) => c,
                 None => {
                     error!(
                         "Received channel packet with invalid id: {:?}",
-                        channel_packet_data.channel_id()
+                        channel_packet_data.channel_id
                     );
                     continue;
                 }
             };
-            channel.process_packet_data(channel_packet_data);
+            channel.process_messages(channel_packet_data.messages);
         }
 
         for ack in self.endpoint.get_acks().iter() {
@@ -112,12 +111,13 @@ impl Connection {
     pub fn get_packet(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
         let sequence = self.endpoint.sequence();
         let mut channel_packets: Vec<ChannelPacketData> = vec![];
-        for channel in self.channels.values_mut() {
-            let packet_data = channel.get_packet_data(
+        for (channel_id, channel) in self.channels.iter_mut() {
+            let messages = channel.get_messages_to_send(
                 Some(self.endpoint.config().max_packet_size as u32),
                 sequence,
             );
-            if let Some(packet_data) = packet_data {
+            if let Some(messages) = messages {
+                let packet_data = ChannelPacketData::new(messages, *channel_id);
                 channel_packets.push(packet_data);
             }
         }

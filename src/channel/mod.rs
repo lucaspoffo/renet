@@ -71,19 +71,18 @@ impl Default for Message {
 }
 
 pub trait Channel {
-    fn get_packet_data(
+    fn get_messages_to_send(
         &mut self,
         available_bits: Option<u32>,
         sequence: u16,
-    ) -> Option<ChannelPacketData>;
-    fn process_packet_data(&mut self, packet_data: &ChannelPacketData);
+    ) -> Option<Vec<Message>>;
+    fn process_messages(&mut self, messages: Vec<Message>);
     fn process_ack(&mut self, ack: u16);
     fn send_message(&mut self, message_payload: Box<[u8]>);
     fn receive_message(&mut self) -> Option<Box<[u8]>>;
+    // TODO: do we need reset at all?
     fn reset(&mut self);
     fn update_current_time(&mut self, time: Instant);
-    fn set_id(&mut self, id: u8);
-    fn id(&self) -> u8;
 }
 
 #[derive(Debug, Clone)]
@@ -142,8 +141,8 @@ impl Default for PacketSent {
 
 #[derive(Serialize, Deserialize)]
 pub struct ChannelPacketData {
-    messages: Vec<Message>,
-    channel_id: u8,
+    pub(crate) messages: Vec<Message>,
+    pub(crate) channel_id: u8,
 }
 
 impl ChannelPacketData {
@@ -152,9 +151,5 @@ impl ChannelPacketData {
             messages,
             channel_id,
         }
-    }
-
-    pub fn channel_id(&self) -> u8 {
-        self.channel_id
     }
 }

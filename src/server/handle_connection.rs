@@ -4,7 +4,7 @@ use crate::protocol::AuthenticationProtocol;
 use crate::Timer;
 
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub struct HandleConnection {
     pub(crate) addr: SocketAddr,
