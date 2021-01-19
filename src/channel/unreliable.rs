@@ -8,6 +8,15 @@ pub struct UnreliableUnorderedChannelConfig {
     max_message_per_packet: u32,
 }
 
+impl Default for UnreliableUnorderedChannelConfig {
+    fn default() -> Self {
+        Self {
+            packet_budget_bytes: None,
+            max_message_per_packet: 256,
+        }
+    }
+}
+
 pub struct UnreliableUnorderedChannel {
     send_message_id: u16,
     config: UnreliableUnorderedChannelConfig,
@@ -99,8 +108,7 @@ impl Channel for UnreliableUnorderedChannel {
 
     fn reset(&mut self) {}
 
-    fn process_ack(&mut self, _ack: u16) {
-        // Since this is an unreliable channel
-        // we do nothing with the ack.
-    }
+    // Since this is an unreliable channel
+    // we do nothing with the ack.
+    fn process_ack(&mut self, _ack: u16) {}
 }
