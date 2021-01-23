@@ -5,7 +5,8 @@ Built on top of UDP, it's designed for speed in mind, usefull for games with fas
 ### Features:
   - Client and Server connection management
   - Secured connections (TODO)
-  - Reliable and Unreliable communication channels
+  - Reliable and Ordered communication channel
+  - Unreliable and Unordered communication channel
   - Network Measurement
   - Network Simulation (simulate packet loss, corruption, latency) (TODO)
 
