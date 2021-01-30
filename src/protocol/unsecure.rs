@@ -164,12 +164,8 @@ impl SecurityService for UnsecureService {
     fn ss_unwrap(&mut self, data: &[u8]) -> Result<Box<[u8]>, RenetError> {
         let packet = Packet::decode(data)?;
         match packet {
-            Packet::Payload(payload) => {
-                return Ok(payload);
-            }
-            _ => {
-                return Err(ConnectionError::InvalidPacket.into());
-            }
+            Packet::Payload(payload) => Ok(payload),
+            _ => Err(ConnectionError::InvalidPacket.into()),
         }
     }
 }
@@ -209,11 +205,11 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
     }
 
     fn is_authenticated(&self) -> bool {
-        return self.state == ClientState::Accepted;
+        self.state == ClientState::Accepted
     }
 
     fn build_security_interface(&self) -> Box<dyn SecurityService> {
-        return Box::new(UnsecureService);
+        Box::new(UnsecureService)
     }
 }
 
@@ -266,11 +262,11 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
     }
 
     fn is_authenticated(&self) -> bool {
-        return self.state == ServerState::Accepted;
+        self.state == ServerState::Accepted
     }
 
     fn build_security_interface(&self) -> Box<dyn SecurityService> {
-        return Box::new(UnsecureService);
+        Box::new(UnsecureService)
     }
 }
 

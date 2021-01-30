@@ -1,7 +1,6 @@
-use std::time::{Duration, Instant};
-// TODO: Remove bincode and serde dependency
-use bincode;
 use dyn_clone::DynClone;
+use std::time::Instant;
+// TODO: Remove bincode and serde dependency
 use serde::{Deserialize, Serialize};
 
 mod reliable;

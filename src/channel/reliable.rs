@@ -107,7 +107,7 @@ impl ReliableOrderedChannel {
             }
         }
 
-        if messages_id.len() > 0 {
+        if !messages_id.is_empty() {
             return Some(messages_id);
         }
         None

@@ -99,7 +99,7 @@ impl Channel for UnreliableUnorderedChannel {
             }
         }
 
-        if messages.len() > 0 {
+        if !messages.is_empty() {
             Some(messages)
         } else {
             None

@@ -46,7 +46,7 @@ impl Connection {
 
     pub fn update_channels_current_time(&mut self, current_time: Instant) {
         for channel in self.channels.values_mut() {
-            channel.update_current_time(current_time.clone());
+            channel.update_current_time(current_time);
         }
     }
 
@@ -147,7 +147,7 @@ impl Connection {
             }
         };
 
-        return channel.receive_message();
+        channel.receive_message()
     }
 
     pub fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {

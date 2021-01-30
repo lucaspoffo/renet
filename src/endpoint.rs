@@ -23,8 +23,7 @@ impl ReassemblyFragment {
         fragment_max_size: usize,
     ) -> Self {
         let len = num_fragments_total * fragment_max_size;
-        let mut buffer = Vec::with_capacity(len);
-        buffer.resize(len, 0u8);
+        let buffer = vec![0; len];
 
         Self {
             sequence,
@@ -164,7 +163,7 @@ impl Endpoint {
     }
 
     pub fn sequence(&self) -> u16 {
-        self.sequence.into()
+        self.sequence
     }
 
     pub fn network_info(&self) -> &NetworkInfo {
@@ -195,12 +194,12 @@ impl Endpoint {
                 "[{}] sending fragmented packet {}.",
                 self.config.name, sequence
             );
-            return build_fragments(payload, sequence, ack, ack_bits, &self.config);
+            build_fragments(payload, sequence, ack, ack_bits, &self.config)
         } else {
             // Normal packet
             debug!("[{}] sending normal packet {}.", self.config.name, sequence);
             let packet = build_normal_packet(payload, sequence, ack, ack_bits)?;
-            return Ok(vec![packet]);
+            Ok(vec![packet])
         }
     }
 
@@ -248,7 +247,7 @@ impl Endpoint {
                 "[{}] successfuly processed packet {}.",
                 self.config.name, header.sequence
             );
-            return Ok(Some(payload.into()));
+            Ok(Some(payload.into()))
         } else {
             let fragment_header = FragmentHeader::parse(payload)?;
 
@@ -272,7 +271,7 @@ impl Endpoint {
             if let Some(payload) = payload {
                 return Ok(Some(payload));
             }
-            return Ok(None);
+            Ok(None)
         }
     }
 
@@ -545,13 +544,12 @@ impl SequenceBuffer<ReassemblyFragment> {
         cursor.write_all(payload)?;
 
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
-            drop(reassembly_fragment);
             if let Some(reassembly_fragment) = self.remove(header.sequence) {
                 debug!(
                     "[{}] completed the reassembly of packet {}.",
                     config.name, reassembly_fragment.sequence
                 );
-                return Ok(Some(reassembly_fragment.buffer.clone()));
+                return Ok(Some(reassembly_fragment.buffer));
             } else {
                 error!(
                     "[{}] failed to find reassembly fragment {}.",

@@ -1,7 +1,7 @@
 use alto_logger::TermLogger;
 use benchmark::{save_to_csv, save_to_csv_f64, Message, MICROS_PER_FRAME};
 use renet::{
-    channel::{ChannelConfig, ReliableOrderedChannel, ReliableOrderedChannelConfig},
+    channel::{ChannelConfig, ReliableOrderedChannelConfig},
     client::{ClientConnected, RequestConnection},
     endpoint::EndpointConfig,
     error::RenetError,
@@ -86,7 +86,9 @@ fn client(ip: String) -> Result<(), RenetError> {
     'outer: loop {
         count += 1;
         received_message = false;
-        connection.process_events(Instant::now())?;
+        if let Err(e) = connection.process_events(Instant::now()) {
+            println!("Error processing events: {}", e);
+        }
 
         for payload in connection.receive_all_messages_from_channel(0).iter() {
             received_message = true;

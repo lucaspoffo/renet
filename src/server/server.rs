@@ -3,8 +3,11 @@ use crate::connection::{ClientId, Connection};
 use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, ServerAuthenticationProtocol};
+
 use log::{debug, error, info};
+
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, UdpSocket};
@@ -27,7 +30,7 @@ pub struct Server<P> {
     connecting: HashMap<ClientId, HandleConnection>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     current_time: Instant,
-    events: Vec<ServerEvent>,
+    events: VecDeque<ServerEvent>,
     endpoint_config: EndpointConfig,
     _authentication_protocol: PhantomData<P>,
 }
@@ -51,7 +54,7 @@ where
             channels_config,
             endpoint_config,
             current_time: Instant::now(),
-            events: Vec::new(),
+            events: VecDeque::new(),
             _authentication_protocol: PhantomData,
         })
     }
@@ -61,7 +64,7 @@ where
     }
 
     pub fn get_event(&mut self) -> Option<ServerEvent> {
-        self.events.pop()
+        self.events.pop_front()
     }
 
     fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Connection> {
@@ -121,7 +124,7 @@ where
     }
 
     pub fn get_clients_id(&self) -> Vec<ClientId> {
-        self.clients.keys().map(|x| x.clone()).collect()
+        self.clients.keys().copied().collect()
     }
 
     pub fn update(&mut self, current_time: Instant) {
@@ -134,7 +137,8 @@ where
 
         for &client_id in timed_out_connections.iter() {
             self.clients.remove(&client_id).unwrap();
-            self.events.push(ServerEvent::ClientDisconnected(client_id));
+            self.events
+                .push_back(ServerEvent::ClientDisconnected(client_id));
             info!("Client {} disconnected.", client_id);
         }
 
@@ -185,7 +189,7 @@ where
                 info!("Created new protocol from payload with client id {}", id);
                 let new_connection = HandleConnection::new(
                     protocol.id(),
-                    addr.clone(),
+                    *addr,
                     protocol,
                     self.endpoint_config.timeout_duration,
                 );
@@ -228,11 +232,9 @@ where
 
             if handle_connection.protocol.is_authenticated() {
                 connected_clients.push(handle_connection.client_id);
-            } else {
-                if let Ok(Some(payload)) = handle_connection.protocol.create_payload() {
-                    if let Err(e) = self.socket.send_to(&payload, handle_connection.addr) {
-                        error!("Failed to send protocol packet {}", e);
-                    }
+            } else if let Ok(Some(payload)) = handle_connection.protocol.create_payload() {
+                if let Err(e) = self.socket.send_to(&payload, handle_connection.addr) {
+                    error!("Failed to send protocol packet {}", e);
                 }
             }
         }
@@ -272,7 +274,7 @@ where
             }
 
             self.events
-                .push(ServerEvent::ClientConnected(handle_connection.client_id));
+                .push_back(ServerEvent::ClientConnected(handle_connection.client_id));
             self.clients.insert(handle_connection.client_id, connection);
         }
     }
