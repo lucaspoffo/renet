@@ -158,9 +158,7 @@ impl ClientConnected {
     }
 
     pub fn send_packets(&mut self) -> Result<(), RenetError> {
-        if let Some(payload) = self.connection.get_packet()? {
-            self.connection.send_payload(&payload, &self.socket)?;
-        }
+        self.connection.send_packets(&self.socket)?;
         Ok(())
     }
 

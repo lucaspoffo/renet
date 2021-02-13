@@ -1,7 +1,7 @@
 use crate::error::{RenetError, Result};
 use crate::packet::{FragmentHeader, HeaderParser, PacketHeader, PacketType};
 use crate::sequence_buffer::SequenceBuffer;
-use log::{debug, error};
+use log::{debug, error, info};
 use std::io::{Cursor, Write};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
@@ -49,6 +49,7 @@ pub struct EndpointConfig {
     pub received_packets_buffer_size: usize,
     pub measure_smoothing_factor: f64,
     pub timeout_duration: Duration,
+    pub heartbeat_time: Duration,
 }
 
 impl Default for EndpointConfig {
@@ -66,6 +67,7 @@ impl Default for EndpointConfig {
             received_packets_buffer_size: 256,
             measure_smoothing_factor: 0.05,
             timeout_duration: Duration::from_secs(5),
+            heartbeat_time: Duration::from_millis(200),
         }
     }
 }
@@ -248,7 +250,7 @@ impl Endpoint {
                 self.config.name, header.sequence
             );
             Ok(Some(payload.into()))
-        } else {
+        } else if payload[0] == PacketType::Fragment as u8 {
             let fragment_header = FragmentHeader::parse(payload)?;
 
             if let Some(received_packet) = self.received_buffer.get_mut(fragment_header.sequence) {
@@ -272,6 +274,10 @@ impl Endpoint {
                 return Ok(Some(payload));
             }
             Ok(None)
+        } else if payload[0] == PacketType::Heartbeat as u8 {
+            return Ok(None);
+        } else {
+            return Err(RenetError::InvalidHeaderType);
         }
     }
 

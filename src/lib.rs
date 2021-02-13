@@ -10,6 +10,6 @@ mod packet;
 pub mod protocol;
 pub mod sequence_buffer;
 pub mod server;
-mod timer;
+pub mod timer;
 
 pub(crate) use timer::Timer;

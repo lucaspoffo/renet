@@ -71,7 +71,7 @@ where
         self.clients.values_mut().find(|c| c.addr == *addr)
     }
 
-    fn find_connection_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection> {
+    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection> {
         self.connecting.values_mut().find(|c| c.addr == *addr)
     }
 
@@ -150,14 +150,8 @@ where
 
     pub fn send_packets(&mut self) {
         for (client_id, connection) in self.clients.iter_mut() {
-            match connection.get_packet() {
-                Ok(Some(payload)) => {
-                    if let Err(e) = connection.send_payload(&payload, &self.socket) {
-                        error!("Failed to send payload for client {}: {:?}", client_id, e);
-                    }
-                }
-                Ok(None) => {}
-                Err(_) => error!("Failed to get packet for client {}.", client_id),
+            if let Err(e) = connection.send_packets(&self.socket) {
+                error!("Failed to send packet for client {}: {}", client_id, e);
             }
         }
     }
@@ -177,7 +171,7 @@ where
             return Ok(());
         }
 
-        match self.find_connection_by_addr(addr) {
+        match self.find_connecting_by_addr(addr) {
             Some(connection) => {
                 if let Err(e) = connection.process_payload(payload) {
                     error!("{}", e)

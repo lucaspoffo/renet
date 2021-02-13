@@ -1,10 +1,11 @@
 use crate::channel::{Channel, ChannelPacketData};
 use crate::endpoint::Endpoint;
 use crate::error::RenetError;
+use crate::packet::PacketType;
 use crate::protocol::SecurityService;
 use crate::Timer;
 
-use log::error;
+use log::{error, info};
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
@@ -17,6 +18,7 @@ pub struct Connection {
     pub(crate) addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
     security_service: Box<dyn SecurityService>,
+    heartbeat_timer: Timer,
     timeout_timer: Timer,
 }
 
@@ -27,12 +29,14 @@ impl Connection {
         security_service: Box<dyn SecurityService>,
     ) -> Self {
         let timeout_timer = Timer::new(endpoint.config().timeout_duration);
+        let heartbeat_timer = Timer::new(endpoint.config().heartbeat_time);
         Self {
             endpoint,
             channels: HashMap::new(),
             addr: server_addr,
             security_service,
             timeout_timer,
+            heartbeat_timer,
         }
     }
 
@@ -108,6 +112,19 @@ impl Connection {
         Ok(())
     }
 
+    pub fn send_packets(&mut self, socket: &UdpSocket) -> Result<(), RenetError> {
+        if let Some(payload) = self.get_packet()? {
+            self.heartbeat_timer.reset();
+            self.send_payload(&payload, socket)?;
+        } else if self.heartbeat_timer.is_finished() {
+            self.heartbeat_timer.reset();
+            let packet = PacketType::heartbeat_boxed_slices();
+            let payload = self.security_service.ss_wrap(&packet)?;
+            socket.send_to(&payload, self.addr)?;
+        }
+        Ok(())
+    }
+
     pub fn get_packet(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
         let sequence = self.endpoint.sequence();
         let mut channel_packets: Vec<ChannelPacketData> = vec![];
@@ -121,9 +138,11 @@ impl Connection {
                 channel_packets.push(packet_data);
             }
         }
+
         if channel_packets.is_empty() {
             return Ok(None);
         }
+
         let payload = match bincode::serialize(&channel_packets) {
             Ok(p) => p,
             Err(e) => {

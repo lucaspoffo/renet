@@ -5,6 +5,14 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 pub enum PacketType {
     Packet = 0,
     Fragment = 1,
+    Heartbeat = 2,
+}
+
+impl PacketType {
+    pub fn heartbeat_boxed_slices() -> Box<[u8]> {
+        let buffer = vec![PacketType::Heartbeat as u8; 1];
+        buffer.into_boxed_slice()
+    }
 }
 
 // TODO: implement prefix byte to accomodate 4 bits for the packet type
