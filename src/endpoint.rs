@@ -1,7 +1,7 @@
 use crate::error::{RenetError, Result};
 use crate::packet::{FragmentHeader, HeaderParser, PacketHeader, PacketType};
 use crate::sequence_buffer::SequenceBuffer;
-use log::{debug, error, info};
+use log::{debug, error};
 use std::io::{Cursor, Write};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
@@ -275,9 +275,9 @@ impl Endpoint {
             }
             Ok(None)
         } else if payload[0] == PacketType::Heartbeat as u8 {
-            return Ok(None);
+            Ok(None)
         } else {
-            return Err(RenetError::InvalidHeaderType);
+            Err(RenetError::InvalidHeaderType)
         }
     }
 

@@ -5,7 +5,7 @@ use crate::packet::PacketType;
 use crate::protocol::SecurityService;
 use crate::Timer;
 
-use log::{error, info};
+use log::error;
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
