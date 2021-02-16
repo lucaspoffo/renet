@@ -140,6 +140,17 @@ pub struct NetworkInfo {
     pub packet_loss: f64,
 }
 
+impl Default for NetworkInfo {
+    fn default() -> Self {
+        Self {
+            rtt: 0.,
+            sent_bandwidth_kbps: 0.,
+            received_bandwidth_kbps: 0.,
+            packet_loss: 0.,
+        }
+    }
+}
+
 impl Endpoint {
     pub fn new(config: EndpointConfig) -> Self {
         Self {

@@ -1,4 +1,5 @@
 use crate::channel::ChannelConfig;
+use crate::client::{HostClient, HostServer};
 use crate::connection::{ClientId, Connection};
 use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
@@ -32,6 +33,7 @@ pub struct Server<P> {
     current_time: Instant,
     events: VecDeque<ServerEvent>,
     endpoint_config: EndpointConfig,
+    host_server: Option<HostServer>,
     _authentication_protocol: PhantomData<P>,
 }
 
@@ -55,12 +57,22 @@ where
             endpoint_config,
             current_time: Instant::now(),
             events: VecDeque::new(),
+            host_server: None,
             _authentication_protocol: PhantomData,
         })
     }
 
+    pub fn create_host_client(&mut self, client_id: u64) -> HostClient {
+        let channels = self.channels_config.keys().copied().collect();
+        self.events
+            .push_back(ServerEvent::ClientConnected(client_id));
+        let (host_client, host_server) = HostClient::new(client_id, channels);
+        self.host_server = Some(host_server);
+        host_client
+    }
+
     pub fn has_clients(&self) -> bool {
-        !self.clients.is_empty()
+        !self.clients.is_empty() || self.host_server.is_some()
     }
 
     pub fn get_event(&mut self) -> Option<ServerEvent> {
@@ -88,6 +100,10 @@ where
         for connection in self.clients.values_mut() {
             connection.send_message(channel_id, message.clone());
         }
+
+        if let Some(host) = self.host_server.as_ref() {
+            host.send_message(channel_id, message);
+        }
     }
 
     pub fn send_message_to_client(
@@ -98,6 +114,10 @@ where
     ) {
         if let Some(connection) = self.clients.get_mut(&client_id) {
             connection.send_message(channel_id, message);
+        } else if let Some(host) = self.host_server.as_ref() {
+            if host.id == client_id {
+                host.send_message(channel_id, message);
+            }
         }
     }
 
@@ -108,6 +128,10 @@ where
     ) -> Option<Vec<Box<[u8]>>> {
         if let Some(client) = self.clients.get_mut(&client_id) {
             return Some(client.receive_all_messages_from_channel(channel_id));
+        } else if let Some(host) = self.host_server.as_ref() {
+            if host.id == client_id {
+                return host.receive_messages(channel_id);
+            }
         }
         None
     }
@@ -120,11 +144,20 @@ where
                 clients.push((*client_id, messages));
             }
         }
+        if let Some(host) = self.host_server.as_ref() {
+            if let Some(messages) = host.receive_messages(channel_id) {
+                clients.push((host.id, messages));
+            }
+        }
         clients
     }
 
     pub fn get_clients_id(&self) -> Vec<ClientId> {
-        self.clients.keys().copied().collect()
+        let mut clients: Vec<ClientId> = self.clients.keys().copied().collect();
+        if let Some(host) = self.host_server.as_ref() {
+            clients.push(host.id);
+        }
+        clients
     }
 
     pub fn update(&mut self, current_time: Instant) {

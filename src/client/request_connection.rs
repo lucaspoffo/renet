@@ -1,8 +1,8 @@
 use crate::channel::ChannelConfig;
-use crate::connection::{ClientId, Connection};
-use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
+use crate::connection::ClientId;
+use crate::endpoint::{Endpoint, EndpointConfig};
 use crate::error::RenetError;
-use crate::protocol::{AuthenticationProtocol, SecurityService};
+use crate::protocol::AuthenticationProtocol;
 use crate::Timer;
 
 use log::{debug, error, info};
@@ -10,7 +10,8 @@ use log::{debug, error, info};
 use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::time::Instant;
+
+use crate::client::ClientConnected;
 
 pub struct RequestConnection {
     socket: UdpSocket,
@@ -47,7 +48,7 @@ impl RequestConnection {
         })
     }
 
-    fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+    pub(crate) fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.timeout_timer.reset();
         self.protocol.read_payload(payload)?;
         Ok(())
@@ -86,7 +87,7 @@ impl RequestConnection {
         Ok(None)
     }
 
-    fn process_events(&mut self) -> Result<(), RenetError> {
+    pub(crate) fn process_events(&mut self) -> Result<(), RenetError> {
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
@@ -102,88 +103,6 @@ impl RequestConnection {
             };
 
             self.process_payload(&payload)?;
-        }
-    }
-}
-
-pub struct ClientConnected {
-    socket: UdpSocket,
-    id: ClientId,
-    connection: Connection,
-    buffer: Box<[u8]>,
-}
-
-impl ClientConnected {
-    pub(crate) fn new(
-        id: ClientId,
-        socket: UdpSocket,
-        server_addr: SocketAddr,
-        endpoint: Endpoint,
-        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-        security_service: Box<dyn SecurityService>,
-    ) -> Self {
-        let buffer = vec![0; endpoint.config().max_packet_size].into_boxed_slice();
-        let mut connection = Connection::new(server_addr, endpoint, security_service);
-
-        for (channel_id, channel_config) in channels_config.iter() {
-            let channel = channel_config.new_channel(Instant::now());
-            connection.add_channel(*channel_id, channel);
-        }
-
-        Self {
-            id,
-            socket,
-            connection,
-            buffer,
-        }
-    }
-
-    pub fn id(&self) -> ClientId {
-        self.id
-    }
-
-    pub fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
-        self.connection.send_message(channel_id, message);
-    }
-
-    pub fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {
-        self.connection
-            .receive_all_messages_from_channel(channel_id)
-    }
-
-    pub fn network_info(&mut self) -> &NetworkInfo {
-        self.connection.endpoint.update_sent_bandwidth();
-        self.connection.endpoint.update_received_bandwidth();
-        self.connection.endpoint.network_info()
-    }
-
-    pub fn send_packets(&mut self) -> Result<(), RenetError> {
-        self.connection.send_packets(&self.socket)?;
-        Ok(())
-    }
-
-    pub fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
-        if self.connection.has_timed_out() {
-            return Err(RenetError::ConnectionTimedOut);
-        }
-
-        self.connection.update_channels_current_time(current_time);
-        loop {
-            let payload = match self.socket.recv_from(&mut self.buffer) {
-                Ok((len, addr)) => {
-                    if addr == self.connection.addr {
-                        &self.buffer[..len]
-                    } else {
-                        debug!("Discarded packet from unknown server {:?}", addr);
-                        continue;
-                    }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
-                Err(e) => return Err(RenetError::IOError(e)),
-            };
-
-            // TODO: correctly handle error
-            self.connection.process_payload(payload)?;
         }
     }
 }
