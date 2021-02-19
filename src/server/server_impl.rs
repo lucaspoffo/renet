@@ -12,7 +12,6 @@ use std::collections::VecDeque;
 use std::io;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, UdpSocket};
-use std::time::Instant;
 
 use super::handle_connection::HandleConnection;
 use super::ServerConfig;
@@ -30,7 +29,6 @@ pub struct Server<P> {
     clients: HashMap<ClientId, Connection>,
     connecting: HashMap<ClientId, HandleConnection>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-    current_time: Instant,
     events: VecDeque<ServerEvent>,
     endpoint_config: EndpointConfig,
     host_server: Option<HostServer>,
@@ -55,7 +53,6 @@ where
             config,
             channels_config,
             endpoint_config,
-            current_time: Instant::now(),
             events: VecDeque::new(),
             host_server: None,
             _authentication_protocol: PhantomData,
@@ -160,7 +157,7 @@ where
         clients
     }
 
-    pub fn update(&mut self, current_time: Instant) {
+    pub fn update(&mut self) {
         let mut timed_out_connections: Vec<ClientId> = vec![];
         for (&client_id, connection) in self.clients.iter_mut() {
             if connection.has_timed_out() {
@@ -175,7 +172,7 @@ where
             info!("Client {} disconnected.", client_id);
         }
 
-        if let Err(e) = self.process_events(current_time) {
+        if let Err(e) = self.process_events() {
             error!("Error while processing events:\n{:?}", e);
         }
         self.update_pending_connections();
@@ -227,10 +224,7 @@ where
         Ok(())
     }
 
-    fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
-        for connection in self.clients.values_mut() {
-            connection.update_channels_current_time(current_time);
-        }
+    fn process_events(&mut self) -> Result<(), RenetError> {
         let mut buffer = vec![0u8; self.config.max_payload_size];
         loop {
             match self.socket.recv_from(&mut buffer) {
@@ -296,7 +290,7 @@ where
                 Connection::new(handle_connection.addr, endpoint, security_service);
 
             for (channel_id, channel_config) in self.channels_config.iter() {
-                let channel = channel_config.new_channel(self.current_time);
+                let channel = channel_config.new_channel();
                 connection.add_channel(*channel_id, channel);
             }
 

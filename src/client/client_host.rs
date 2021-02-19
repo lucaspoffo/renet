@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::Instant;
 
 use crate::client::Client;
 use crate::error::RenetError;
@@ -102,7 +101,7 @@ impl Client for HostClient {
         Ok(())
     }
 
-    fn process_events(&mut self, _current_time: Instant) -> Result<(), RenetError> {
+    fn process_events(&mut self) -> Result<(), RenetError> {
         Ok(())
     }
 }

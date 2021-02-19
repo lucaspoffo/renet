@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::error::RenetError;
 use crate::{connection::ClientId, endpoint::NetworkInfo};
 
@@ -23,5 +21,5 @@ pub trait Client {
 
     fn send_packets(&mut self) -> Result<(), RenetError>;
 
-    fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError>;
+    fn process_events(&mut self) -> Result<(), RenetError>;
 }

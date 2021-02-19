@@ -1,6 +1,5 @@
 use crate::channel::{Channel, ChannelConfig, Message};
 use std::collections::VecDeque;
-use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct UnreliableUnorderedChannelConfig {
@@ -25,7 +24,7 @@ pub struct UnreliableUnorderedChannel {
 }
 
 impl ChannelConfig for UnreliableUnorderedChannelConfig {
-    fn new_channel(&self, _current_time: Instant) -> Box<dyn Channel> {
+    fn new_channel(&self) -> Box<dyn Channel> {
         Box::new(UnreliableUnorderedChannel::new(self.clone()))
     }
 }
@@ -42,8 +41,6 @@ impl UnreliableUnorderedChannel {
 }
 
 impl Channel for UnreliableUnorderedChannel {
-    fn update_current_time(&mut self, _time: Instant) {}
-
     fn process_messages(&mut self, messages: Vec<Message>) {
         self.messages_received.extend(messages.into_iter());
     }

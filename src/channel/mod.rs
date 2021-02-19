@@ -10,7 +10,7 @@ mod unreliable;
 pub use unreliable::{UnreliableUnorderedChannel, UnreliableUnorderedChannelConfig};
 
 pub trait ChannelConfig: DynClone {
-    fn new_channel(&self, current_time: Instant) -> Box<dyn Channel>;
+    fn new_channel(&self) -> Box<dyn Channel>;
 }
 
 dyn_clone::clone_trait_object!(ChannelConfig);
@@ -52,8 +52,6 @@ pub trait Channel {
     fn receive_message(&mut self) -> Option<Box<[u8]>>;
     // TODO: do we need reset at all?
     fn reset(&mut self);
-    // TODO: remove current_time use wrapped Instant like tokio does.
-    fn update_current_time(&mut self, time: Instant);
 }
 
 #[derive(Debug, Clone)]

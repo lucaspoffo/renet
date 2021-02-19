@@ -9,7 +9,6 @@ use log::error;
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
-use std::time::Instant;
 
 pub type ClientId = u64;
 
@@ -46,12 +45,6 @@ impl Connection {
 
     pub fn has_timed_out(&mut self) -> bool {
         self.timeout_timer.is_finished()
-    }
-
-    pub fn update_channels_current_time(&mut self, current_time: Instant) {
-        for channel in self.channels.values_mut() {
-            channel.update_current_time(current_time);
-        }
     }
 
     pub fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {

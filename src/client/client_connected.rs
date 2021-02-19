@@ -10,7 +10,6 @@ use log::debug;
 use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::time::Instant;
 
 pub struct ClientConnected {
     socket: UdpSocket,
@@ -44,12 +43,11 @@ impl Client for ClientConnected {
         Ok(())
     }
 
-    fn process_events(&mut self, current_time: Instant) -> Result<(), RenetError> {
+    fn process_events(&mut self) -> Result<(), RenetError> {
         if self.connection.has_timed_out() {
             return Err(RenetError::ConnectionTimedOut);
         }
 
-        self.connection.update_channels_current_time(current_time);
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
@@ -83,7 +81,7 @@ impl ClientConnected {
         let mut connection = Connection::new(server_addr, endpoint, security_service);
 
         for (channel_id, channel_config) in channels_config.iter() {
-            let channel = channel_config.new_channel(Instant::now());
+            let channel = channel_config.new_channel();
             connection.add_channel(*channel_id, channel);
         }
 
