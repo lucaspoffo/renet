@@ -9,15 +9,17 @@ pub trait SecurityService {
 }
 
 pub trait AuthenticationProtocol {
+    type Service: SecurityService;
+
     fn create_payload(&mut self) -> Result<Option<Box<[u8]>>>;
     fn read_payload(&mut self, payload: &[u8]) -> Result<()>;
     fn is_authenticated(&self) -> bool;
-    fn build_security_interface(&self) -> Box<dyn SecurityService>;
+    fn build_security_interface(&self) -> Self::Service;
     fn id(&self) -> ClientId;
 }
 
 // TODO: review name
-pub trait ServerAuthenticationProtocol {
-    fn from_payload(payload: &[u8]) -> Result<Box<dyn AuthenticationProtocol>>;
+pub trait ServerAuthenticationProtocol: AuthenticationProtocol + Sized {
+    fn from_payload(payload: &[u8]) -> Result<Self>;
     // TODO: add deny connection fn
 }

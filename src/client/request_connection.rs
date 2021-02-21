@@ -7,35 +7,42 @@ use crate::Timer;
 
 use log::{debug, error, info};
 
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 
 use crate::client::ClientConnected;
 
-pub struct RequestConnection {
+pub struct RequestConnection<P, C> {
     socket: UdpSocket,
     server_addr: SocketAddr,
     id: ClientId,
-    protocol: Box<dyn AuthenticationProtocol>,
+    protocol: P,
     endpoint_config: EndpointConfig,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     buffer: Box<[u8]>,
     timeout_timer: Timer,
+    _channel: PhantomData<C>
 }
 
-impl RequestConnection {
+impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
     pub fn new(
         id: ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
-        protocol: Box<dyn AuthenticationProtocol>,
+        protocol: P,
         endpoint_config: EndpointConfig,
-        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
+        channels_config: HashMap<C, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         let buffer = vec![0; endpoint_config.max_packet_size].into_boxed_slice();
         let timeout_timer = Timer::new(endpoint_config.timeout_duration);
+        
+        let channels_config: HashMap<u8, Box<dyn ChannelConfig>> = channels_config
+            .into_iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect();
+
         Ok(Self {
             id,
             socket,
@@ -45,6 +52,7 @@ impl RequestConnection {
             endpoint_config,
             timeout_timer,
             buffer,
+            _channel: PhantomData
         })
     }
 
@@ -54,7 +62,7 @@ impl RequestConnection {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result<Option<ClientConnected>, RenetError> {
+    pub fn update(&mut self) -> Result<Option<ClientConnected<P::Service, C>>, RenetError> {
         self.process_events()?;
 
         if self.timeout_timer.is_finished() {

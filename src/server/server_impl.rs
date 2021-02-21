@@ -3,7 +3,7 @@ use crate::client::{HostClient, HostServer};
 use crate::connection::{ClientId, Connection};
 use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
 use crate::error::RenetError;
-use crate::protocol::{AuthenticationProtocol, ServerAuthenticationProtocol};
+use crate::protocol::ServerAuthenticationProtocol;
 
 use log::{debug, error, info};
 
@@ -23,29 +23,36 @@ pub enum ServerEvent {
 }
 
 // TODO: add internal buffer?
-pub struct Server<P> {
+pub struct Server<P: ServerAuthenticationProtocol, C> 
+{
     config: ServerConfig,
     socket: UdpSocket,
-    clients: HashMap<ClientId, Connection>,
-    connecting: HashMap<ClientId, HandleConnection>,
+    clients: HashMap<ClientId, Connection<P::Service>>,
+    connecting: HashMap<ClientId, HandleConnection<P>>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     events: VecDeque<ServerEvent>,
     endpoint_config: EndpointConfig,
     host_server: Option<HostServer>,
-    _authentication_protocol: PhantomData<P>,
+    _server_authentication_protocol: PhantomData<P>,
+    _channel_identifier: PhantomData<C>,
 }
 
-impl<P> Server<P>
+impl<P, C: Into<u8>> Server<P, C>
 where
-    P: AuthenticationProtocol + ServerAuthenticationProtocol,
+    P: ServerAuthenticationProtocol,
 {
     pub fn new(
         socket: UdpSocket,
         config: ServerConfig,
         endpoint_config: EndpointConfig,
-        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
+        channels_config: HashMap<C, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
+        let channels_config: HashMap<u8, Box<dyn ChannelConfig>> = channels_config
+            .into_iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect();
+
         Ok(Self {
             socket,
             clients: HashMap::new(),
@@ -55,11 +62,12 @@ where
             endpoint_config,
             events: VecDeque::new(),
             host_server: None,
-            _authentication_protocol: PhantomData,
+            _server_authentication_protocol: PhantomData,
+            _channel_identifier: PhantomData,
         })
     }
 
-    pub fn create_host_client(&mut self, client_id: u64) -> HostClient {
+    pub fn create_host_client(&mut self, client_id: u64) -> HostClient<C> {
         let channels = self.channels_config.keys().copied().collect();
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
@@ -76,11 +84,11 @@ where
         self.events.pop_front()
     }
 
-    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Connection> {
+    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Connection<P::Service>> {
         self.clients.values_mut().find(|c| c.addr == *addr)
     }
 
-    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection> {
+    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection<P>> {
         self.connecting.values_mut().find(|c| c.addr == *addr)
     }
 
@@ -93,7 +101,8 @@ where
         None
     }
 
-    pub fn send_message_to_all_clients(&mut self, channel_id: u8, message: Box<[u8]>) {
+    pub fn send_message_to_all_clients(&mut self, channel_id: C, message: Box<[u8]>) {
+        let channel_id = channel_id.into();
         for connection in self.clients.values_mut() {
             connection.send_message(channel_id, message.clone());
         }
@@ -106,9 +115,10 @@ where
     pub fn send_message_to_client(
         &mut self,
         client_id: ClientId,
-        channel_id: u8,
+        channel_id: C,
         message: Box<[u8]>,
     ) {
+        let channel_id = channel_id.into();
         if let Some(connection) = self.clients.get_mut(&client_id) {
             connection.send_message(channel_id, message);
         } else if let Some(host) = self.host_server.as_ref() {
@@ -121,8 +131,9 @@ where
     pub fn get_messages_from_client(
         &mut self,
         client_id: ClientId,
-        channel_id: u8,
+        channel_id: C,
     ) -> Option<Vec<Box<[u8]>>> {
+        let channel_id = channel_id.into();
         if let Some(client) = self.clients.get_mut(&client_id) {
             return Some(client.receive_all_messages_from_channel(channel_id));
         } else if let Some(host) = self.host_server.as_ref() {
@@ -133,7 +144,8 @@ where
         None
     }
 
-    pub fn get_messages_from_channel(&mut self, channel_id: u8) -> Vec<(ClientId, Vec<Box<[u8]>>)> {
+    pub fn get_messages_from_channel(&mut self, channel_id: C) -> Vec<(ClientId, Vec<Box<[u8]>>)> {
+        let channel_id = channel_id.into();
         let mut clients = Vec::new();
         for (client_id, connection) in self.clients.iter_mut() {
             let messages = connection.receive_all_messages_from_channel(channel_id);
@@ -181,7 +193,7 @@ where
     pub fn send_packets(&mut self) {
         for (client_id, connection) in self.clients.iter_mut() {
             if let Err(e) = connection.send_packets(&self.socket) {
-                error!("Failed to send packet for client {}: {}", client_id, e);
+                error!("Failed to send packet for client {}: {:?}", client_id, e);
             }
         }
     }

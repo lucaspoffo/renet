@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub const MICROS_PER_FRAME: u64 = 16666;
+pub const MICROS_PER_FRAME: u64 = 50000;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Message {

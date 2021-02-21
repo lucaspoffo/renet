@@ -171,6 +171,8 @@ impl SecurityService for UnsecureService {
 }
 
 impl AuthenticationProtocol for UnsecureClientProtocol {
+    type Service = UnsecureService;
+
     fn id(&self) -> ClientId {
         self.id
     }
@@ -208,8 +210,8 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         self.state == ClientState::Accepted
     }
 
-    fn build_security_interface(&self) -> Box<dyn SecurityService> {
-        Box::new(UnsecureService)
+    fn build_security_interface(&self) -> Self::Service {
+        UnsecureService
     }
 }
 
@@ -226,6 +228,8 @@ pub struct UnsecureServerProtocol {
 }
 
 impl AuthenticationProtocol for UnsecureServerProtocol {
+    type Service = UnsecureService;
+
     fn id(&self) -> ClientId {
         self.id
     }
@@ -265,19 +269,19 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         self.state == ServerState::Accepted
     }
 
-    fn build_security_interface(&self) -> Box<dyn SecurityService> {
-        Box::new(UnsecureService)
+    fn build_security_interface(&self) -> Self::Service {
+        UnsecureService
     }
 }
 
 impl ServerAuthenticationProtocol for UnsecureServerProtocol {
-    fn from_payload(payload: &[u8]) -> Result<Box<dyn AuthenticationProtocol>, RenetError> {
+    fn from_payload(payload: &[u8]) -> Result<Self, RenetError> {
         let packet = Packet::decode(payload)?;
         if let Packet::ConnectionRequest(client_id) = packet {
-            return Ok(Box::new(Self {
+            return Ok(Self {
                 id: client_id,
                 state: ServerState::SendingKeepAlive,
-            }));
+            });
         }
         Err(ConnectionError::InvalidPacket.into())
     }

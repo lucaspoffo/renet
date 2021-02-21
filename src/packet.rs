@@ -8,16 +8,6 @@ pub enum PacketType {
     Heartbeat = 2,
 }
 
-impl PacketType {
-    pub fn heartbeat_boxed_slices() -> Box<[u8]> {
-        let buffer = vec![PacketType::Heartbeat as u8; 1];
-        buffer.into_boxed_slice()
-    }
-}
-
-// TODO: implement prefix byte to accomodate 4 bits for the packet type
-// and 4 bits for the ack_bits enconding optimization
-// TODO: we can delta encode the sequence with the ack, but should we?
 pub trait HeaderParser {
     type Header;
 
@@ -27,6 +17,44 @@ pub trait HeaderParser {
     /// Header size in bytes
     fn size(&self) -> usize;
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatHeader {
+    pub ack: u16,
+    pub ack_bits: u32,
+}
+
+impl HeaderParser for HeartbeatHeader {
+    type Header = Self;
+
+    fn size(&self) -> usize {
+        7
+    }
+
+    fn write(&self, mut buffer: &mut [u8]) -> Result<()> {
+        buffer.write_u8(PacketType::Heartbeat as u8)?;
+        buffer.write_u16::<BigEndian>(self.ack)?;
+        buffer.write_u32::<BigEndian>(self.ack_bits)?;
+        Ok(())
+    }
+
+    fn parse(mut reader: &[u8]) -> Result<Self> {
+        let packet_type = reader.read_u8()?;
+        if packet_type != PacketType::Heartbeat as u8 {
+            return Err(RenetError::InvalidHeaderType);
+        }
+        let ack = reader.read_u16::<BigEndian>()?;
+        let ack_bits = reader.read_u32::<BigEndian>()?;
+
+        let header = HeartbeatHeader {
+            ack,
+            ack_bits,
+        };
+
+        Ok(header)
+    }
+}
+
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PacketHeader {

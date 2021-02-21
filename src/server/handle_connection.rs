@@ -6,18 +6,18 @@ use crate::Timer;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-pub struct HandleConnection {
+pub struct HandleConnection<P> {
     pub(crate) addr: SocketAddr,
     pub(crate) client_id: ClientId,
-    pub(crate) protocol: Box<dyn AuthenticationProtocol>,
+    pub(crate) protocol: P,
     timeout_timer: Timer,
 }
 
-impl HandleConnection {
+impl<P: AuthenticationProtocol> HandleConnection<P> {
     pub fn new(
         client_id: ClientId,
         addr: SocketAddr,
-        protocol: Box<dyn AuthenticationProtocol>,
+        protocol: P,
         timeout_duration: Duration,
     ) -> Self {
         let timeout_timer = Timer::new(timeout_duration);

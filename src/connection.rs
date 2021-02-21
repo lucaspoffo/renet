@@ -5,27 +5,27 @@ use crate::packet::PacketType;
 use crate::protocol::SecurityService;
 use crate::Timer;
 
-use log::error;
+use log::{error, debug};
 
-use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
+use std::collections::HashMap;
 
 pub type ClientId = u64;
 
-pub struct Connection {
+pub struct Connection<S> {
     pub(crate) endpoint: Endpoint,
     pub(crate) addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
-    security_service: Box<dyn SecurityService>,
+    security_service: S,
     heartbeat_timer: Timer,
     timeout_timer: Timer,
 }
 
-impl Connection {
+impl<S: SecurityService> Connection<S> {
     pub fn new(
         server_addr: SocketAddr,
         endpoint: Endpoint,
-        security_service: Box<dyn SecurityService>,
+        security_service: S,
     ) -> Self {
         let timeout_timer = Timer::new(endpoint.config().timeout_duration);
         let heartbeat_timer = Timer::new(endpoint.config().heartbeat_time);
@@ -58,7 +58,15 @@ impl Connection {
     pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.timeout_timer.reset();
         let payload = self.security_service.ss_unwrap(payload)?;
-        let payload = match self.endpoint.process_payload(&payload)? {
+        let payload = self.endpoint.process_payload(&payload)?;
+        for ack in self.endpoint.get_acks().iter() {
+            for channel in self.channels.values_mut() {
+                channel.process_ack(*ack);
+            }
+        }
+        self.endpoint.reset_acks();
+
+        let payload = match payload {
             Some(payload) => payload,
             None => return Ok(()),
         };
@@ -86,20 +94,13 @@ impl Connection {
             channel.process_messages(channel_packet_data.messages);
         }
 
-        for ack in self.endpoint.get_acks().iter() {
-            for channel in self.channels.values_mut() {
-                channel.process_ack(*ack);
-            }
-        }
-        self.endpoint.reset_acks();
         Ok(())
     }
 
     pub fn send_payload(&mut self, payload: &[u8], socket: &UdpSocket) -> Result<(), RenetError> {
         let reliable_packets = self.endpoint.generate_packets(payload)?;
         for reliable_packet in reliable_packets.iter() {
-            // TODO: remove clone
-            let payload = self.security_service.ss_wrap(&reliable_packet)?;
+            let payload = self.security_service.ss_wrap(&reliable_packet).unwrap();
             socket.send_to(&payload, self.addr)?;
         }
         Ok(())
@@ -108,12 +109,12 @@ impl Connection {
     pub fn send_packets(&mut self, socket: &UdpSocket) -> Result<(), RenetError> {
         if let Some(payload) = self.get_packet()? {
             self.heartbeat_timer.reset();
-            self.send_payload(&payload, socket)?;
+            self.send_payload(&payload, socket).unwrap();
         } else if self.heartbeat_timer.is_finished() {
             self.heartbeat_timer.reset();
-            let packet = PacketType::heartbeat_boxed_slices();
-            let payload = self.security_service.ss_wrap(&packet)?;
-            socket.send_to(&payload, self.addr)?;
+            let packet = self.endpoint.build_heartbeat_packet().unwrap();
+            let payload = self.security_service.ss_wrap(&packet).unwrap();
+            socket.send_to(&payload, self.addr).unwrap();
         }
         Ok(())
     }
@@ -127,6 +128,7 @@ impl Connection {
                 sequence,
             );
             if let Some(messages) = messages {
+                debug!("Sending {} messages.", messages.len());
                 let packet_data = ChannelPacketData::new(messages, *channel_id);
                 channel_packets.push(packet_data);
             }

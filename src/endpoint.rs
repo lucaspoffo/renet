@@ -1,6 +1,9 @@
-use crate::error::{RenetError, Result};
 use crate::packet::{FragmentHeader, HeaderParser, PacketHeader, PacketType};
 use crate::sequence_buffer::SequenceBuffer;
+use crate::{
+    error::{RenetError, Result},
+    packet::HeartbeatHeader,
+};
 use log::{debug, error};
 use std::io::{Cursor, Write};
 use std::net::{SocketAddr, UdpSocket};
@@ -67,7 +70,7 @@ impl Default for EndpointConfig {
             received_packets_buffer_size: 256,
             measure_smoothing_factor: 0.05,
             timeout_duration: Duration::from_secs(5),
-            heartbeat_time: Duration::from_millis(200),
+            heartbeat_time: Duration::from_millis(100),
         }
     }
 }
@@ -183,6 +186,15 @@ impl Endpoint {
         &self.network_info
     }
 
+    pub fn build_heartbeat_packet(&self) -> Result<Vec<u8>> {
+        let (ack, ack_bits) = self.received_buffer.ack_bits();
+        let header = HeartbeatHeader { ack, ack_bits };
+        let mut buffer = vec![0u8; header.size()];
+        header.write(&mut buffer)?;
+
+        Ok(buffer)
+    }
+
     pub fn generate_packets(&mut self, payload: &[u8]) -> Result<Vec<Vec<u8>>> {
         if payload.len() > self.config.max_packet_size {
             error!(
@@ -286,6 +298,9 @@ impl Endpoint {
             }
             Ok(None)
         } else if payload[0] == PacketType::Heartbeat as u8 {
+            let heartbeat = HeartbeatHeader::parse(payload)?;
+            self.update_acket_packets(heartbeat.ack, heartbeat.ack_bits);
+
             Ok(None)
         } else {
             Err(RenetError::InvalidHeaderType)
@@ -387,7 +402,6 @@ impl Endpoint {
 
     fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {
         let mut ack_bits = ack_bits;
-        // TODO: should we put the current time inside the endpoint?
         let now = Instant::now();
         for i in 0..32 {
             if ack_bits & 1 != 0 {
