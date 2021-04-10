@@ -23,8 +23,7 @@ pub enum ServerEvent {
 }
 
 // TODO: add internal buffer?
-pub struct Server<P: ServerAuthenticationProtocol, C> 
-{
+pub struct Server<P: ServerAuthenticationProtocol, C> {
     config: ServerConfig,
     socket: UdpSocket,
     clients: HashMap<ClientId, Connection<P::Service>>,
@@ -67,6 +66,8 @@ where
         })
     }
 
+    // TODO: Remove host_client and create an trait for the Client Connection,
+    // Impl trait for RemoteConnection and LocalConnection. Save connected clients in same list.
     pub fn create_host_client(&mut self, client_id: u64) -> HostClient<C> {
         let channels = self.channels_config.keys().copied().collect();
         self.events

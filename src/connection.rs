@@ -1,14 +1,13 @@
 use crate::channel::{Channel, ChannelPacketData};
 use crate::endpoint::Endpoint;
 use crate::error::RenetError;
-use crate::packet::PacketType;
 use crate::protocol::SecurityService;
 use crate::Timer;
 
-use log::{error, debug};
+use log::{debug, error};
 
-use std::net::{SocketAddr, UdpSocket};
 use std::collections::HashMap;
+use std::net::{SocketAddr, UdpSocket};
 
 pub type ClientId = u64;
 
@@ -22,11 +21,7 @@ pub struct Connection<S> {
 }
 
 impl<S: SecurityService> Connection<S> {
-    pub fn new(
-        server_addr: SocketAddr,
-        endpoint: Endpoint,
-        security_service: S,
-    ) -> Self {
+    pub fn new(server_addr: SocketAddr, endpoint: Endpoint, security_service: S) -> Self {
         let timeout_timer = Timer::new(endpoint.config().timeout_duration);
         let heartbeat_timer = Timer::new(endpoint.config().heartbeat_time);
         Self {
@@ -164,6 +159,7 @@ impl<S: SecurityService> Connection<S> {
         channel.receive_message()
     }
 
+    // TODO should return invalid channel error
     pub fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {
         let mut messages = vec![];
         let channel = match self.channels.get_mut(&channel_id) {

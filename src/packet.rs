@@ -46,15 +46,11 @@ impl HeaderParser for HeartbeatHeader {
         let ack = reader.read_u16::<BigEndian>()?;
         let ack_bits = reader.read_u32::<BigEndian>()?;
 
-        let header = HeartbeatHeader {
-            ack,
-            ack_bits,
-        };
+        let header = HeartbeatHeader { ack, ack_bits };
 
         Ok(header)
     }
 }
-
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PacketHeader {

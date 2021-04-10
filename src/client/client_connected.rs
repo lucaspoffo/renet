@@ -41,7 +41,7 @@ impl<S: SecurityService, C: Into<u8>> ClientConnected<S, C> {
             socket,
             connection,
             buffer,
-            _channel: PhantomData
+            _channel: PhantomData,
         }
     }
 }
@@ -95,4 +95,3 @@ impl<S: SecurityService, C: Into<u8>> Client<C> for ClientConnected<S, C> {
         }
     }
 }
-

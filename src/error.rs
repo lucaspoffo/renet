@@ -1,3 +1,5 @@
+use crate::reassembly_fragment::FragmentError;
+
 use std::fmt::{self, Display, Formatter};
 use std::{io, result};
 
@@ -16,11 +18,18 @@ pub enum RenetError {
     SerializationFailed,
     AuthenticationError(Box<dyn std::error::Error>),
     ConnectionTimedOut,
+    FragmentError(FragmentError),
 }
 
 impl From<io::Error> for RenetError {
     fn from(inner: io::Error) -> RenetError {
         RenetError::IOError(inner)
+    }
+}
+
+impl From<FragmentError> for RenetError {
+    fn from(inner: FragmentError) -> RenetError {
+        RenetError::FragmentError(inner)
     }
 }
 

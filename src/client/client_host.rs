@@ -67,7 +67,7 @@ impl<C: Into<u8>> HostClient<C> {
             sender: client_channels_send,
             receiver: client_channels_recv,
             network_info: NetworkInfo::default(),
-            _channel: PhantomData
+            _channel: PhantomData,
         };
 
         (host_client, host_server)
