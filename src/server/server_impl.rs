@@ -1,7 +1,6 @@
 use crate::channel::ChannelConfig;
 use crate::client::{HostClient, HostServer};
-use crate::connection::{ClientId, Connection};
-use crate::endpoint::{Endpoint, EndpointConfig, NetworkInfo};
+use crate::connection::{ClientId, Connection, ConnectionConfig, NetworkInfo};
 use crate::error::RenetError;
 use crate::protocol::ServerAuthenticationProtocol;
 
@@ -30,7 +29,7 @@ pub struct Server<P: ServerAuthenticationProtocol, C> {
     connecting: HashMap<ClientId, HandleConnection<P>>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     events: VecDeque<ServerEvent>,
-    endpoint_config: EndpointConfig,
+    connection_config: ConnectionConfig,
     host_server: Option<HostServer>,
     _server_authentication_protocol: PhantomData<P>,
     _channel_identifier: PhantomData<C>,
@@ -43,7 +42,7 @@ where
     pub fn new(
         socket: UdpSocket,
         config: ServerConfig,
-        endpoint_config: EndpointConfig,
+        connection_config: ConnectionConfig,
         channels_config: HashMap<C, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
@@ -58,7 +57,7 @@ where
             connecting: HashMap::new(),
             config,
             channels_config,
-            endpoint_config,
+            connection_config,
             events: VecDeque::new(),
             host_server: None,
             _server_authentication_protocol: PhantomData,
@@ -86,7 +85,7 @@ where
     }
 
     fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut Connection<P::Service>> {
-        self.clients.values_mut().find(|c| c.addr == *addr)
+        self.clients.values_mut().find(|c| *c.addr() == *addr)
     }
 
     fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection<P>> {
@@ -95,9 +94,7 @@ where
 
     pub fn get_client_network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
         if let Some(connection) = self.clients.get_mut(&client_id) {
-            connection.endpoint.update_sent_bandwidth();
-            connection.endpoint.update_received_bandwidth();
-            return Some(connection.endpoint.network_info());
+            return Some(connection.network_info());
         }
         None
     }
@@ -228,7 +225,7 @@ where
                     protocol.id(),
                     *addr,
                     protocol,
-                    self.endpoint_config.timeout_duration,
+                    self.connection_config.timeout_duration,
                 );
                 self.connecting.insert(id, new_connection);
             }
@@ -297,10 +294,12 @@ where
                 handle_connection.client_id, handle_connection.addr,
             );
 
-            let endpoint: Endpoint = Endpoint::new(self.endpoint_config.clone());
             let security_service = handle_connection.protocol.build_security_interface();
-            let mut connection =
-                Connection::new(handle_connection.addr, endpoint, security_service);
+            let mut connection = Connection::new(
+                handle_connection.addr,
+                self.connection_config.clone(),
+                security_service,
+            );
 
             for (channel_id, channel_config) in self.channels_config.iter() {
                 let channel = channel_config.new_channel();

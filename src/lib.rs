@@ -1,10 +1,8 @@
-pub use self::endpoint::{Endpoint, EndpointConfig};
 pub use error::RenetError;
 
 pub mod channel;
 pub mod client;
 pub mod connection;
-pub mod endpoint;
 pub mod error;
 mod packet;
 pub mod protocol;

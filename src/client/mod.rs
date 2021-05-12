@@ -1,5 +1,5 @@
+use crate::connection::{ClientId, NetworkInfo};
 use crate::error::RenetError;
-use crate::{connection::ClientId, endpoint::NetworkInfo};
 
 mod client_connected;
 mod client_host;

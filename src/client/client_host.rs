@@ -1,8 +1,8 @@
 use std::{collections::HashMap, marker::PhantomData};
 
 use crate::client::Client;
+use crate::connection::{ClientId, NetworkInfo};
 use crate::error::RenetError;
-use crate::{connection::ClientId, endpoint::NetworkInfo};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 

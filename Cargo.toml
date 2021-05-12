@@ -5,25 +5,6 @@ authors = ["Lucas Poffo <lucas.poffo@magrathealabs.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[workspace]
-members = ["benchmark"]
-
-[[bin]]
-name = "client"
-path = "examples/client.rs"
-
-[[bin]]
-name = "server"
-path = "examples/server.rs"
-
-[[bin]]
-name = "connection_client"
-path = "examples/connection_client.rs"
-
-[[bin]]
-name = "connection_server"
-path = "examples/connection_server.rs"
-
 [dependencies]
 # crc = "1.8.1"
 log = "0.4.11"

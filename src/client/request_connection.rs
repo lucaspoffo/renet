@@ -1,6 +1,5 @@
 use crate::channel::ChannelConfig;
-use crate::connection::ClientId;
-use crate::endpoint::{Endpoint, EndpointConfig};
+use crate::connection::{ClientId, ConnectionConfig};
 use crate::error::RenetError;
 use crate::protocol::AuthenticationProtocol;
 use crate::Timer;
@@ -18,7 +17,7 @@ pub struct RequestConnection<P, C> {
     server_addr: SocketAddr,
     id: ClientId,
     protocol: P,
-    endpoint_config: EndpointConfig,
+    connection_config: ConnectionConfig,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     buffer: Box<[u8]>,
     timeout_timer: Timer,
@@ -31,12 +30,12 @@ impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
         socket: UdpSocket,
         server_addr: SocketAddr,
         protocol: P,
-        endpoint_config: EndpointConfig,
+        connection_config: ConnectionConfig,
         channels_config: HashMap<C, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
-        let buffer = vec![0; endpoint_config.max_packet_size].into_boxed_slice();
-        let timeout_timer = Timer::new(endpoint_config.timeout_duration);
+        let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
+        let timeout_timer = Timer::new(connection_config.timeout_duration);
 
         let channels_config: HashMap<u8, Box<dyn ChannelConfig>> = channels_config
             .into_iter()
@@ -49,7 +48,7 @@ impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
             server_addr,
             protocol,
             channels_config,
-            endpoint_config,
+            connection_config,
             timeout_timer,
             buffer,
             _channel: PhantomData,
@@ -71,15 +70,14 @@ impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
         }
 
         if self.protocol.is_authenticated() {
-            let endpoint = Endpoint::new(self.endpoint_config.clone());
             let security_service = self.protocol.build_security_interface();
             return Ok(Some(ClientConnected::new(
                 self.id,
                 self.socket.try_clone()?,
                 self.server_addr,
-                endpoint,
                 self.channels_config.clone(),
                 security_service,
+                self.connection_config.clone(),
             )));
         }
 
