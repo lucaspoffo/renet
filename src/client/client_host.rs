@@ -18,16 +18,12 @@ impl HostServer {
         channel_sender.send(message).unwrap();
     }
 
-    pub fn receive_messages(&self, channel_id: u8) -> Option<Vec<Box<[u8]>>> {
-        let mut messages = vec![];
-        let channel_sender = self.receiver.get(&channel_id).unwrap();
-        while let Ok(message) = channel_sender.try_recv() {
-            messages.push(message);
+    pub fn receive_message(&self, channel_id: u8) -> Option<Box<[u8]>> {
+        if let Some(channel_sender) = self.receiver.get(&channel_id) {
+            channel_sender.try_recv().ok()
+        } else {
+            None
         }
-        if messages.is_empty() {
-            return None;
-        }
-        Some(messages)
     }
 }
 
@@ -85,14 +81,12 @@ impl<C: Into<u8>> Client<C> for HostClient<C> {
         }
     }
 
-    fn receive_all_messages_from_channel(&mut self, channel_id: C) -> Vec<Box<[u8]>> {
-        let mut messages = vec![];
+    fn receive_message(&mut self, channel_id: C) -> Option<Box<[u8]>> {
         if let Some(receiver) = self.receiver.get(&channel_id.into()) {
-            while let Ok(message) = receiver.try_recv() {
-                messages.push(message);
-            }
+            receiver.try_recv().ok()
+        } else {
+            None
         }
-        messages
     }
 
     fn network_info(&mut self) -> &NetworkInfo {

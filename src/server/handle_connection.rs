@@ -22,8 +22,8 @@ impl<P: AuthenticationProtocol> HandleConnection<P> {
     ) -> Self {
         let timeout_timer = Timer::new(timeout_duration);
         Self {
-            client_id,
             addr,
+            client_id,
             protocol,
             timeout_timer,
         }

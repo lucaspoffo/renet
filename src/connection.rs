@@ -186,13 +186,11 @@ impl<S: SecurityService> Connection<S> {
             }
 
             let payload = &payload[fragment_header.size()..];
-            let payload = self.reassembly_buffer.handle_fragment(
+            self.reassembly_buffer.handle_fragment(
                 fragment_header,
                 payload,
                 &self.config.fragment_config,
-            )?;
-
-            payload
+            )?
         } else if payload[0] == PacketType::Heartbeat as u8 {
             let heartbeat = HeartbeatHeader::parse(&payload)?;
             self.update_acket_packets(heartbeat.ack, heartbeat.ack_bits);
@@ -351,7 +349,7 @@ impl<S: SecurityService> Connection<S> {
         Ok(Some(payload.into_boxed_slice()))
     }
 
-    pub fn receive_message_from_channel(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
+    pub fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
         let channel = match self.channels.get_mut(&channel_id) {
             Some(c) => c,
             None => {
@@ -466,27 +464,6 @@ impl<S: SecurityService> Connection<S> {
         } else {
             self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }
-    }
-
-    // TODO should return invalid channel error
-    pub fn receive_all_messages_from_channel(&mut self, channel_id: u8) -> Vec<Box<[u8]>> {
-        let mut messages = vec![];
-        let channel = match self.channels.get_mut(&channel_id) {
-            Some(c) => c,
-            None => {
-                error!(
-                    "Tried to receive message from invalid channel {}.",
-                    channel_id
-                );
-                return messages;
-            }
-        };
-
-        while let Some(message) = channel.receive_message() {
-            messages.push(message);
-        }
-
-        messages
     }
 }
 

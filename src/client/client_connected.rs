@@ -54,9 +54,8 @@ impl<S: SecurityService, C: Into<u8>> Client<C> for ClientConnected<S, C> {
         self.connection.send_message(channel_id.into(), message);
     }
 
-    fn receive_all_messages_from_channel(&mut self, channel_id: C) -> Vec<Box<[u8]>> {
-        self.connection
-            .receive_all_messages_from_channel(channel_id.into())
+    fn receive_message(&mut self, channel_id: C) -> Option<Box<[u8]>> {
+        self.connection.receive_message(channel_id.into())
     }
 
     fn network_info(&mut self) -> &NetworkInfo {

@@ -15,7 +15,7 @@ pub trait Client<C> {
 
     fn send_message(&mut self, channel_id: C, message: Box<[u8]>);
 
-    fn receive_all_messages_from_channel(&mut self, channel_id: C) -> Vec<Box<[u8]>>;
+    fn receive_message(&mut self, channel_id: C) -> Option<Box<[u8]>>;
 
     fn network_info(&mut self) -> &NetworkInfo;
 

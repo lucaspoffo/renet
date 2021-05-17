@@ -126,37 +126,16 @@ where
         }
     }
 
-    pub fn get_messages_from_client(
-        &mut self,
-        client_id: ClientId,
-        channel_id: C,
-    ) -> Option<Vec<Box<[u8]>>> {
+    pub fn receive_message(&mut self, client_id: ClientId, channel_id: C) -> Option<Box<[u8]>> {
         let channel_id = channel_id.into();
         if let Some(client) = self.clients.get_mut(&client_id) {
-            return Some(client.receive_all_messages_from_channel(channel_id));
+            return client.receive_message(channel_id);
         } else if let Some(host) = self.host_server.as_ref() {
             if host.id == client_id {
-                return host.receive_messages(channel_id);
+                return host.receive_message(channel_id);
             }
         }
         None
-    }
-
-    pub fn get_messages_from_channel(&mut self, channel_id: C) -> Vec<(ClientId, Vec<Box<[u8]>>)> {
-        let channel_id = channel_id.into();
-        let mut clients = Vec::new();
-        for (client_id, connection) in self.clients.iter_mut() {
-            let messages = connection.receive_all_messages_from_channel(channel_id);
-            if !messages.is_empty() {
-                clients.push((*client_id, messages));
-            }
-        }
-        if let Some(host) = self.host_server.as_ref() {
-            if let Some(messages) = host.receive_messages(channel_id) {
-                clients.push((host.id, messages));
-            }
-        }
-        clients
     }
 
     pub fn get_clients_id(&self) -> Vec<ClientId> {
