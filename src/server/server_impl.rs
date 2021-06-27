@@ -9,7 +9,6 @@ use log::{debug, error, info};
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io;
-use std::marker::PhantomData;
 use std::net::{SocketAddr, UdpSocket};
 
 use super::handle_connection::HandleConnection;
@@ -31,7 +30,6 @@ pub struct Server<P: ServerAuthenticationProtocol> {
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     events: VecDeque<ServerEvent>,
     connection_config: ConnectionConfig,
-    _server_authentication_protocol: PhantomData<P>,
 }
 
 impl<P> Server<P>
@@ -55,7 +53,6 @@ where
             channels_config,
             connection_config,
             events: VecDeque::new(),
-            _server_authentication_protocol: PhantomData,
         })
     }
 
@@ -249,10 +246,7 @@ where
 
         for client_id in disconnected_clients {
             let handle_connection = self.connecting.remove(&client_id).unwrap();
-            info!(
-                "Request connection {} disconnected.",
-                handle_connection.client_id
-            );
+            info!("Request connection {} failed.", handle_connection.client_id);
         }
 
         for client_id in connected_clients {
@@ -262,7 +256,7 @@ where
                     "Connection from {} successfuly stablished but server was full.",
                     handle_connection.addr
                 );
-                // TODO: deny connection, max player
+                // TODO: add deny connection error, max player
                 continue;
             }
 
