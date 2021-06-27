@@ -8,11 +8,11 @@ use log::{debug, error, info};
 
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
 
 use crate::client::ClientConnected;
 
-pub struct RequestConnection<P, C> {
+pub struct RequestConnection<P> {
     socket: UdpSocket,
     server_addr: SocketAddr,
     id: ClientId,
@@ -21,17 +21,16 @@ pub struct RequestConnection<P, C> {
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     buffer: Box<[u8]>,
     timeout_timer: Timer,
-    _channel: PhantomData<C>,
 }
 
-impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
+impl<P: AuthenticationProtocol> RequestConnection<P> {
     pub fn new(
         id: ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
         protocol: P,
         connection_config: ConnectionConfig,
-        channels_config: HashMap<C, Box<dyn ChannelConfig>>,
+        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
@@ -51,7 +50,6 @@ impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
             connection_config,
             timeout_timer,
             buffer,
-            _channel: PhantomData,
         })
     }
 
@@ -61,7 +59,7 @@ impl<P: AuthenticationProtocol, C: Into<u8>> RequestConnection<P, C> {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result<Option<ClientConnected<P::Service, C>>, RenetError> {
+    pub fn update(&mut self) -> Result<Option<ClientConnected<P::Service>>, RenetError> {
         self.process_events()?;
 
         if self.timeout_timer.is_finished() {

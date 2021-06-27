@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
 
 use crate::client::Client;
 use crate::connection::{ClientId, NetworkInfo};
@@ -27,16 +27,15 @@ impl HostServer {
     }
 }
 
-pub struct HostClient<C> {
+pub struct HostClient {
     id: ClientId,
     sender: HashMap<u8, Sender<Box<[u8]>>>,
     receiver: HashMap<u8, Receiver<Box<[u8]>>>,
     network_info: NetworkInfo,
-    _channel: PhantomData<C>,
 }
 
-impl<C: Into<u8>> HostClient<C> {
-    pub fn new(client_id: u64, channels: Vec<u8>) -> (HostClient<C>, HostServer) {
+impl HostClient {
+    pub fn new(client_id: u64, channels: Vec<u8>) -> (HostClient, HostServer) {
         let mut client_channels_send = HashMap::new();
         let mut host_channels_send = HashMap::new();
         let mut client_channels_recv = HashMap::new();
@@ -63,26 +62,25 @@ impl<C: Into<u8>> HostClient<C> {
             sender: client_channels_send,
             receiver: client_channels_recv,
             network_info: NetworkInfo::default(),
-            _channel: PhantomData,
         };
 
         (host_client, host_server)
     }
 }
 
-impl<C: Into<u8>> Client<C> for HostClient<C> {
+impl Client for HostClient {
     fn id(&self) -> ClientId {
         self.id
     }
 
-    fn send_message(&mut self, channel_id: C, message: Box<[u8]>) {
-        if let Some(sender) = self.sender.get(&channel_id.into()) {
+    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
+        if let Some(sender) = self.sender.get(&channel_id) {
             sender.try_send(message).unwrap();
         }
     }
 
-    fn receive_message(&mut self, channel_id: C) -> Option<Box<[u8]>> {
-        if let Some(receiver) = self.receiver.get(&channel_id.into()) {
+    fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
+        if let Some(receiver) = self.receiver.get(&channel_id) {
             receiver.try_recv().ok()
         } else {
             None

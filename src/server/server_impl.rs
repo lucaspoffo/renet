@@ -22,7 +22,7 @@ pub enum ServerEvent {
 }
 
 // TODO: add internal buffer?
-pub struct Server<P: ServerAuthenticationProtocol, C> {
+pub struct Server<P: ServerAuthenticationProtocol> {
     config: ServerConfig,
     socket: UdpSocket,
     clients: HashMap<ClientId, Connection<P::Service>>,
@@ -32,24 +32,19 @@ pub struct Server<P: ServerAuthenticationProtocol, C> {
     connection_config: ConnectionConfig,
     host_server: Option<HostServer>,
     _server_authentication_protocol: PhantomData<P>,
-    _channel_identifier: PhantomData<C>,
 }
 
-impl<P, C: Into<u8>> Server<P, C>
+impl<P> Server<P>
 where
-    P: ServerAuthenticationProtocol,
+    P: ServerAuthenticationProtocol
 {
     pub fn new(
         socket: UdpSocket,
         config: ServerConfig,
         connection_config: ConnectionConfig,
-        channels_config: HashMap<C, Box<dyn ChannelConfig>>,
+        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
-        let channels_config: HashMap<u8, Box<dyn ChannelConfig>> = channels_config
-            .into_iter()
-            .map(|(k, v)| (k.into(), v))
-            .collect();
 
         Ok(Self {
             socket,
@@ -61,13 +56,12 @@ where
             events: VecDeque::new(),
             host_server: None,
             _server_authentication_protocol: PhantomData,
-            _channel_identifier: PhantomData,
         })
     }
 
     // TODO: Remove host_client and create an trait for the Client Connection,
     // Impl trait for RemoteConnection and LocalConnection. Save connected clients in same list.
-    pub fn create_host_client(&mut self, client_id: u64) -> HostClient<C> {
+    pub fn create_host_client(&mut self, client_id: u64) -> HostClient {
         let channels = self.channels_config.keys().copied().collect();
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
@@ -99,7 +93,7 @@ where
         None
     }
 
-    pub fn send_message_to_all_clients(&mut self, channel_id: C, message: Box<[u8]>) {
+    pub fn send_message_to_all_clients<C: Into<u8>>(&mut self, channel_id: C, message: Box<[u8]>) {
         let channel_id = channel_id.into();
         for connection in self.clients.values_mut() {
             connection.send_message(channel_id, message.clone());
@@ -110,7 +104,7 @@ where
         }
     }
 
-    pub fn send_message_to_client(
+    pub fn send_message_to_client<C: Into<u8>>(
         &mut self,
         client_id: ClientId,
         channel_id: C,
@@ -126,7 +120,7 @@ where
         }
     }
 
-    pub fn receive_message(&mut self, client_id: ClientId, channel_id: C) -> Option<Box<[u8]>> {
+    pub fn receive_message<C: Into<u8>>(&mut self, client_id: ClientId, channel_id: C) -> Option<Box<[u8]>> {
         let channel_id = channel_id.into();
         if let Some(client) = self.clients.get_mut(&client_id) {
             return client.receive_message(channel_id);

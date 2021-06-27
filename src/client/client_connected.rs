@@ -8,17 +8,16 @@ use log::debug;
 
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
 
-pub struct ClientConnected<S, C> {
+pub struct ClientConnected<S> {
     socket: UdpSocket,
     id: ClientId,
     connection: Connection<S>,
     buffer: Box<[u8]>,
-    _channel: PhantomData<C>,
 }
 
-impl<S: SecurityService, C: Into<u8>> ClientConnected<S, C> {
+impl<S: SecurityService> ClientConnected<S> {
     pub(crate) fn new(
         id: ClientId,
         socket: UdpSocket,
@@ -40,21 +39,20 @@ impl<S: SecurityService, C: Into<u8>> ClientConnected<S, C> {
             socket,
             connection,
             buffer,
-            _channel: PhantomData,
         }
     }
 }
 
-impl<S: SecurityService, C: Into<u8>> Client<C> for ClientConnected<S, C> {
+impl<S: SecurityService> Client for ClientConnected<S> {
     fn id(&self) -> ClientId {
         self.id
     }
 
-    fn send_message(&mut self, channel_id: C, message: Box<[u8]>) {
+    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
         self.connection.send_message(channel_id.into(), message);
     }
 
-    fn receive_message(&mut self, channel_id: C) -> Option<Box<[u8]>> {
+    fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
         self.connection.receive_message(channel_id.into())
     }
 
