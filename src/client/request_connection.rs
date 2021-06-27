@@ -1,16 +1,16 @@
 use crate::channel::ChannelConfig;
-use crate::connection::{ClientId, ConnectionConfig};
 use crate::error::RenetError;
 use crate::protocol::AuthenticationProtocol;
+use crate::remote_connection::{ClientId, ConnectionConfig};
 use crate::Timer;
 
 use log::{debug, error, info};
 
+use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::collections::HashMap;
 
-use crate::client::ClientConnected;
+use crate::client::RemoteClientConnected;
 
 pub struct RequestConnection<P> {
     socket: UdpSocket,
@@ -59,7 +59,7 @@ impl<P: AuthenticationProtocol> RequestConnection<P> {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result<Option<ClientConnected<P::Service>>, RenetError> {
+    pub fn update(&mut self) -> Result<Option<RemoteClientConnected<P::Service>>, RenetError> {
         self.process_events()?;
 
         if self.timeout_timer.is_finished() {
@@ -69,7 +69,7 @@ impl<P: AuthenticationProtocol> RequestConnection<P> {
 
         if self.protocol.is_authenticated() {
             let security_service = self.protocol.build_security_interface();
-            return Ok(Some(ClientConnected::new(
+            return Ok(Some(RemoteClientConnected::new(
                 self.id,
                 self.socket.try_clone()?,
                 self.server_addr,

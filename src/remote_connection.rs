@@ -87,7 +87,7 @@ impl Default for ConnectionConfig {
     }
 }
 
-pub struct Connection<S> {
+pub struct RemoteConnection<S> {
     sequence: u16,
     addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
@@ -102,7 +102,7 @@ pub struct Connection<S> {
     network_info: NetworkInfo,
 }
 
-impl<S: SecurityService> Connection<S> {
+impl<S: SecurityService> RemoteConnection<S> {
     pub fn new(server_addr: SocketAddr, config: ConnectionConfig, security_service: S) -> Self {
         let timeout_timer = Timer::new(config.timeout_duration);
         let heartbeat_timer = Timer::new(config.heartbeat_time);

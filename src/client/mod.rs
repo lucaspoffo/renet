@@ -1,13 +1,13 @@
-use crate::connection::{ClientId, NetworkInfo};
 use crate::error::RenetError;
+use crate::remote_connection::{ClientId, NetworkInfo};
 
 mod client_connected;
 mod client_host;
 mod request_connection;
 
-pub use client_connected::ClientConnected;
-pub use client_host::HostClient;
-pub(crate) use client_host::HostServer;
+pub use client_connected::RemoteClientConnected;
+pub(crate) use client_host::LocalClient;
+pub use client_host::LocalClientConnected;
 pub use request_connection::RequestConnection;
 
 pub trait Client {

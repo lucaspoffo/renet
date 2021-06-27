@@ -1,6 +1,6 @@
-use crate::connection::ClientId;
 use crate::error::Result;
 use crate::protocol::AuthenticationProtocol;
+use crate::remote_connection::ClientId;
 use crate::Timer;
 
 use std::net::SocketAddr;

@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 
 use crate::client::Client;
-use crate::connection::{ClientId, NetworkInfo};
 use crate::error::RenetError;
+use crate::remote_connection::{ClientId, NetworkInfo};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
-pub struct HostServer {
+pub struct LocalClient {
     pub id: u64,
     sender: HashMap<u8, Sender<Box<[u8]>>>,
     receiver: HashMap<u8, Receiver<Box<[u8]>>>,
 }
 
-impl HostServer {
+impl LocalClient {
     pub fn send_message(&self, channel_id: u8, message: Box<[u8]>) {
         let channel_sender = self.sender.get(&channel_id).unwrap();
         channel_sender.send(message).unwrap();
@@ -27,15 +27,15 @@ impl HostServer {
     }
 }
 
-pub struct HostClient {
+pub struct LocalClientConnected {
     id: ClientId,
     sender: HashMap<u8, Sender<Box<[u8]>>>,
     receiver: HashMap<u8, Receiver<Box<[u8]>>>,
     network_info: NetworkInfo,
 }
 
-impl HostClient {
-    pub fn new(client_id: u64, channels: Vec<u8>) -> (HostClient, HostServer) {
+impl LocalClientConnected {
+    pub fn new(client_id: u64, channels: Vec<u8>) -> (LocalClientConnected, LocalClient) {
         let mut client_channels_send = HashMap::new();
         let mut host_channels_send = HashMap::new();
         let mut client_channels_recv = HashMap::new();
@@ -51,13 +51,13 @@ impl HostClient {
             host_channels_send.insert(channel, host_send);
         }
 
-        let host_server = HostServer {
+        let host_server = LocalClient {
             id: client_id,
             sender: host_channels_send,
             receiver: host_channels_recv,
         };
 
-        let host_client = HostClient {
+        let host_client = LocalClientConnected {
             id: client_id,
             sender: client_channels_send,
             receiver: client_channels_recv,
@@ -68,7 +68,7 @@ impl HostClient {
     }
 }
 
-impl Client for HostClient {
+impl Client for LocalClientConnected {
     fn id(&self) -> ClientId {
         self.id
     }

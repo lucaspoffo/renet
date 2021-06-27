@@ -1,5 +1,5 @@
-use crate::connection::ClientId;
 use crate::error::Result;
+use crate::remote_connection::ClientId;
 
 pub mod unsecure;
 

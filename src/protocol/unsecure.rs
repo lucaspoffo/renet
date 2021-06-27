@@ -1,6 +1,6 @@
-use crate::connection::ClientId;
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
+use crate::remote_connection::ClientId;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use log::debug;
 use std::io;

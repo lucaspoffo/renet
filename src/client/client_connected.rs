@@ -1,23 +1,23 @@
+use crate::channel::ChannelConfig;
 use crate::client::Client;
-use crate::connection::{ClientId, Connection, NetworkInfo};
 use crate::error::RenetError;
 use crate::protocol::SecurityService;
-use crate::{channel::ChannelConfig, connection::ConnectionConfig};
+use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::debug;
 
+use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-use std::collections::HashMap;
 
-pub struct ClientConnected<S> {
+pub struct RemoteClientConnected<S> {
     socket: UdpSocket,
     id: ClientId,
-    connection: Connection<S>,
+    connection: RemoteConnection<S>,
     buffer: Box<[u8]>,
 }
 
-impl<S: SecurityService> ClientConnected<S> {
+impl<S: SecurityService> RemoteClientConnected<S> {
     pub(crate) fn new(
         id: ClientId,
         socket: UdpSocket,
@@ -27,7 +27,8 @@ impl<S: SecurityService> ClientConnected<S> {
         connection_config: ConnectionConfig,
     ) -> Self {
         let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
-        let mut connection = Connection::new(server_addr, connection_config, security_service);
+        let mut connection =
+            RemoteConnection::new(server_addr, connection_config, security_service);
 
         for (channel_id, channel_config) in channels_config.iter() {
             let channel = channel_config.new_channel();
@@ -43,7 +44,7 @@ impl<S: SecurityService> ClientConnected<S> {
     }
 }
 
-impl<S: SecurityService> Client for ClientConnected<S> {
+impl<S: SecurityService> Client for RemoteClientConnected<S> {
     fn id(&self) -> ClientId {
         self.id
     }
