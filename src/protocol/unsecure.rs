@@ -132,6 +132,7 @@ impl Packet {
 #[derive(Debug, Eq, PartialEq)]
 enum ClientState {
     Accepted,
+    Confirmed,
     Denied,
     SendingConnectionRequest,
     // TimedOut,
@@ -180,9 +181,14 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
     fn create_payload(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
         let packet = match self.state {
             ClientState::SendingConnectionRequest => Packet::ConnectionRequest(self.id),
-            ClientState::Accepted => Packet::KeepAlive,
+            ClientState::Accepted => {
+                // Send one confirmation KeepAlive packet always
+                self.state = ClientState::Confirmed;
+                Packet::KeepAlive
+            }
             _ => return Ok(None),
         };
+
         // TODO: create buffer inside struct
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
@@ -197,6 +203,9 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
                 debug!("Received KeepAlive, moving to State Accepted");
                 self.state = ClientState::Accepted;
             }
+            (Packet::KeepAlive, ClientState::Accepted) => {
+                debug!("Received KeepAlive, but state is already Accepted");
+            }
             (Packet::ConnectionDenied, _) => {
                 debug!("Received ConnectionDenied Package");
                 self.state = ClientState::Denied;
@@ -207,7 +216,7 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
     }
 
     fn is_authenticated(&self) -> bool {
-        self.state == ClientState::Accepted
+        self.state == ClientState::Confirmed
     }
 
     fn build_security_interface(&self) -> Self::Service {
@@ -306,11 +315,12 @@ mod tests {
             .read_payload(&server_keep_alive_payload)
             .unwrap();
 
+        let client_keep_alive_payload = client_protocol.create_payload().unwrap().unwrap();
+
         assert!(
             client_protocol.is_authenticated(),
             "Client protocol should be authenticated!"
         );
-        let client_keep_alive_payload = client_protocol.create_payload().unwrap().unwrap();
 
         server_protocol
             .read_payload(&client_keep_alive_payload)
