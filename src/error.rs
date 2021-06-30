@@ -5,6 +5,22 @@ use std::{io, result};
 
 pub type Result<T> = result::Result<T, RenetError>;
 
+#[derive(Clone, Debug)]
+pub enum ConnectionError {
+    Denied = 1,
+    MaxPlayer = 2,
+}
+
+impl ConnectionError {
+    pub fn from_u8(code: u8) -> Result<Self> {
+        match code {
+            1 => Ok(ConnectionError::Denied),
+            2 => Ok(ConnectionError::MaxPlayer),
+            _ => Err(RenetError::InvalidConnectionError)
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum RenetError {
     MaximumFragmentsExceeded,
@@ -13,12 +29,14 @@ pub enum RenetError {
     InvalidNumberFragment,
     FragmentAlreadyProcessed,
     InvalidHeaderType,
+    InvalidConnectionError,
     FragmentMissingPacketHeader,
     IOError(io::Error),
     SerializationFailed,
     AuthenticationError(Box<dyn std::error::Error>),
     ConnectionTimedOut,
     FragmentError(FragmentError),
+    ConnectionError(ConnectionError),
 }
 
 impl From<io::Error> for RenetError {

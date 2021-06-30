@@ -1,3 +1,5 @@
+use crate::error::ConnectionError;
+
 use super::error::{RenetError, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
@@ -16,6 +18,48 @@ pub trait HeaderParser {
 
     /// Header size in bytes
     fn size(&self) -> usize;
+}
+
+#[derive(Debug)]
+pub struct ConnectionHeader {
+    pub error: Option<ConnectionError>,
+}
+
+impl ConnectionHeader {
+    pub fn ok() -> ConnectionHeader {
+        Self { error: None }
+    }
+
+    pub fn new(error: ConnectionError) -> Self {
+        Self { error: Some(error) }
+    }
+}
+
+impl HeaderParser for ConnectionHeader {
+    type Header = Self;
+
+    fn size(&self) -> usize {
+        1
+    }
+
+    fn write(&self, mut buffer: &mut [u8]) -> Result<()> {
+        // TODO: Is this clone necessary?
+        match self.error.clone() {
+            Some(e) => { buffer.write_u8(e as u8)?; },
+            None => { buffer.write_u8(0)?; }
+        }
+        Ok(())
+    }
+
+    fn parse(mut reader: &[u8]) -> Result<Self> {
+        let error_code = reader.read_u8()?;
+        let mut error = None;
+        if error_code != 0 {
+           error = Some(ConnectionError::from_u8(error_code)?);
+        }
+        
+        Ok(ConnectionHeader { error })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -1,10 +1,17 @@
-use std::{collections::HashMap, net::{SocketAddr, ToSocketAddrs, UdpSocket}};
+use std::{
+    collections::HashMap,
+    net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    time::Duration,
+};
 
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannelConfig, UnreliableUnorderedChannelConfig},
     client::{Client, RemoteClientConnected, RequestConnection},
+    error::ConnectionError,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol, UnsecureService},
-    server::Server,
+    remote_connection::ConnectionConfig,
+    server::{Server, ServerConfig},
+    RenetError,
 };
 
 use bincode;
@@ -40,15 +47,20 @@ fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
 }
 
 fn setup_server<A: ToSocketAddrs>(addr: A) -> Server<UnsecureServerProtocol> {
-    let socket = UdpSocket::bind(addr).unwrap();
+    setup_server_with_config(addr, Default::default())
+}
 
-    let server: Server<UnsecureServerProtocol> = Server::new(
-        socket,
-        Default::default(),
-        Default::default(),
-        channels_config(),
-    )
-    .unwrap();
+fn setup_server_with_config<A: ToSocketAddrs>(
+    addr: A,
+    server_config: ServerConfig,
+) -> Server<UnsecureServerProtocol> {
+    let socket = UdpSocket::bind(addr).unwrap();
+    let connection_config: ConnectionConfig = ConnectionConfig {
+        timeout_duration: Duration::from_millis(100),
+        ..Default::default()
+    };
+    let server: Server<UnsecureServerProtocol> =
+        Server::new(socket, server_config, connection_config, channels_config()).unwrap();
 
     server
 }
@@ -59,12 +71,16 @@ fn request_remote_connection<A: ToSocketAddrs>(
     server_addr: SocketAddr,
 ) -> RequestConnection<UnsecureClientProtocol> {
     let socket = UdpSocket::bind(addr).unwrap();
+    let connection_config: ConnectionConfig = ConnectionConfig {
+        timeout_duration: Duration::from_millis(100),
+        ..Default::default()
+    };
     let request_connection = RequestConnection::new(
         id,
         socket,
         server_addr,
         UnsecureClientProtocol::new(id),
-        Default::default(),
+        connection_config,
         channels_config(),
     )
     .unwrap();
@@ -75,16 +91,16 @@ fn request_remote_connection<A: ToSocketAddrs>(
 fn connect_to_server(
     server: &mut Server<UnsecureServerProtocol>,
     mut request: RequestConnection<UnsecureClientProtocol>,
-) -> RemoteClientConnected<UnsecureService> {
+) -> Result<RemoteClientConnected<UnsecureService>, RenetError> {
     // TODO: setup max iterations to try to connect
     loop {
         match request.update() {
             Ok(Some(connection)) => {
-                return connection;
+                return Ok(connection);
             }
             Ok(None) => {}
-            Err(_) => {
-                panic!("Failed to connect!");
+            Err(e) => {
+                return Err(e);
             }
         }
 
@@ -96,9 +112,9 @@ fn connect_to_server(
 #[test]
 fn test_remote_connection_reliable_channel() {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let mut server = setup_server("127.0.0.1:5000");
+    let mut server = setup_server(server_addr);
     let request_connection = request_remote_connection(0, "127.0.0.1:6000", server_addr);
-    let mut remote_connection = connect_to_server(&mut server, request_connection);
+    let mut remote_connection = connect_to_server(&mut server, request_connection).unwrap();
 
     let number_messages = 64;
     let mut current_message_number = 0;
@@ -111,7 +127,7 @@ fn test_remote_connection_reliable_channel() {
 
     server.update();
     server.send_packets();
-    
+
     loop {
         remote_connection.process_events().unwrap();
         while let Some(message) = remote_connection.receive_message(Channels::Reliable.into()) {
@@ -133,7 +149,7 @@ fn test_remote_connection_unreliable_channel() {
     let server_addr = "127.0.0.1:5001".parse().unwrap();
     let mut server = setup_server(server_addr);
     let request_connection = request_remote_connection(0, "127.0.0.1:6001", server_addr);
-    let mut remote_connection = connect_to_server(&mut server, request_connection);
+    let mut remote_connection = connect_to_server(&mut server, request_connection).unwrap();
 
     let number_messages = 64;
     let mut current_message_number = 0;
@@ -146,7 +162,7 @@ fn test_remote_connection_unreliable_channel() {
 
     server.update();
     server.send_packets();
-    
+
     loop {
         remote_connection.process_events().unwrap();
         while let Some(message) = remote_connection.receive_message(Channels::Unreliable.into()) {
@@ -161,4 +177,21 @@ fn test_remote_connection_unreliable_channel() {
     }
 
     assert_eq!(number_messages, current_message_number);
+}
+
+#[test]
+fn test_max_players_connected() {
+    let server_addr = "127.0.0.1:5002".parse().unwrap();
+    let server_config = ServerConfig {
+        max_clients: 0,
+        ..Default::default()
+    };
+    let mut server = setup_server_with_config(server_addr, server_config);
+    let request_connection = request_remote_connection(0, "127.0.0.1:6002", server_addr);
+    let error = connect_to_server(&mut server, request_connection);
+    assert!(error.is_err());
+    match error {
+        Err(RenetError::ConnectionError(ConnectionError::MaxPlayer)) => {}
+        _ => unreachable!("ConnectionError::MaxPlayer error not occurred."),
+    }
 }
