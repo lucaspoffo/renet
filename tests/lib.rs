@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    net::{ToSocketAddrs, UdpSocket},
-};
+use std::{collections::HashMap, net::{SocketAddr, ToSocketAddrs, UdpSocket}};
 
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannelConfig, UnreliableUnorderedChannelConfig},
@@ -42,8 +39,8 @@ fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
     channels_config
 }
 
-fn setup_server() -> Server<UnsecureServerProtocol> {
-    let socket = UdpSocket::bind("127.0.0.1:5000").unwrap();
+fn setup_server<A: ToSocketAddrs>(addr: A) -> Server<UnsecureServerProtocol> {
+    let socket = UdpSocket::bind(addr).unwrap();
 
     let server: Server<UnsecureServerProtocol> = Server::new(
         socket,
@@ -59,12 +56,13 @@ fn setup_server() -> Server<UnsecureServerProtocol> {
 fn request_remote_connection<A: ToSocketAddrs>(
     id: u64,
     addr: A,
+    server_addr: SocketAddr,
 ) -> RequestConnection<UnsecureClientProtocol> {
     let socket = UdpSocket::bind(addr).unwrap();
     let request_connection = RequestConnection::new(
         id,
         socket,
-        "127.0.0.1:5000".parse().unwrap(),
+        server_addr,
         UnsecureClientProtocol::new(id),
         Default::default(),
         channels_config(),
@@ -96,13 +94,13 @@ fn connect_to_server(
 }
 
 #[test]
-fn run() {
-    let mut server = setup_server();
-    let request_connection = request_remote_connection(333, "127.0.0.1:5001");
-
+fn test_remote_connection_reliable_channel() {
+    let server_addr = "127.0.0.1:5000".parse().unwrap();
+    let mut server = setup_server("127.0.0.1:5000");
+    let request_connection = request_remote_connection(0, "127.0.0.1:6000", server_addr);
     let mut remote_connection = connect_to_server(&mut server, request_connection);
 
-    let number_messages = 8;
+    let number_messages = 64;
     let mut current_message_number = 0;
 
     for i in 0..number_messages {
@@ -111,11 +109,47 @@ fn run() {
         server.send_message_to_all_clients(Channels::Reliable, message.into_boxed_slice());
     }
 
+    server.update();
+    server.send_packets();
+    
     loop {
-        server.update();
-        server.send_packets();
         remote_connection.process_events().unwrap();
         while let Some(message) = remote_connection.receive_message(Channels::Reliable.into()) {
+            let message: TestMessage = bincode::deserialize(&message).unwrap();
+            assert_eq!(current_message_number, message.value);
+            current_message_number += 1;
+        }
+
+        if current_message_number == number_messages {
+            break;
+        }
+    }
+
+    assert_eq!(number_messages, current_message_number);
+}
+
+#[test]
+fn test_remote_connection_unreliable_channel() {
+    let server_addr = "127.0.0.1:5001".parse().unwrap();
+    let mut server = setup_server(server_addr);
+    let request_connection = request_remote_connection(0, "127.0.0.1:6001", server_addr);
+    let mut remote_connection = connect_to_server(&mut server, request_connection);
+
+    let number_messages = 64;
+    let mut current_message_number = 0;
+
+    for i in 0..number_messages {
+        let message = TestMessage { value: i };
+        let message = bincode::serialize(&message).unwrap();
+        server.send_message_to_all_clients(Channels::Unreliable, message.into_boxed_slice());
+    }
+
+    server.update();
+    server.send_packets();
+    
+    loop {
+        remote_connection.process_events().unwrap();
+        while let Some(message) = remote_connection.receive_message(Channels::Unreliable.into()) {
             let message: TestMessage = bincode::deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;
