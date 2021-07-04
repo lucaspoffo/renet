@@ -1,6 +1,6 @@
 use crate::channel::ChannelConfig;
 use crate::error::RenetError;
-use crate::packet::{ConnectionHeader, HeaderParser};
+use crate::packet::{Connection, Packet};
 use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig};
 use crate::Timer;
@@ -56,12 +56,22 @@ impl<P: AuthenticationProtocol> RequestConnection<P> {
 
     pub(crate) fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.timeout_timer.reset();
-        let connection_header = ConnectionHeader::parse(&payload[..1])?;
-        if let Some(e) = connection_header.error {
-            return Err(RenetError::ConnectionError(e));
+        let packet: Packet =
+            bincode::deserialize(payload).map_err(|_| RenetError::SerializationFailed)?;
+        match packet {
+            Packet::Connection(Connection {
+                payload,
+                error: None,
+            }) => {
+                self.protocol.read_payload(&payload)?;
+            }
+            Packet::Connection(Connection { error: Some(e), .. }) => {
+                return Err(RenetError::ConnectionError(e));
+            }
+            _ => {
+                return Ok(());
+            }
         }
-        let payload = &payload[1..];
-        self.protocol.read_payload(payload)?;
         Ok(())
     }
 

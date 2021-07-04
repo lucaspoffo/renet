@@ -178,7 +178,7 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         self.id
     }
 
-    fn create_payload(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
+    fn create_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
         let packet = match self.state {
             ClientState::SendingConnectionRequest => Packet::ConnectionRequest(self.id),
             ClientState::Accepted => {
@@ -192,7 +192,7 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         // TODO: create buffer inside struct
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
-        Ok(Some(buffer.into_boxed_slice()))
+        Ok(Some(buffer))
     }
 
     fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
@@ -243,7 +243,7 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         self.id
     }
 
-    fn create_payload(&mut self) -> Result<Option<Box<[u8]>>, RenetError> {
+    fn create_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
         let packet = match self.state {
             ServerState::SendingKeepAlive => Packet::KeepAlive,
             _ => return Ok(None),
@@ -252,7 +252,7 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         // TODO: create buffer inside struct
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
-        Ok(Some(buffer.into_boxed_slice()))
+        Ok(Some(buffer))
     }
 
     fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {

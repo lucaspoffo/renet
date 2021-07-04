@@ -108,7 +108,8 @@ impl Default for PacketSent {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+// TODO: Change Vec<Message> -> Vec<Vec<u8>> only reliable message uses Message for the message_id
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChannelPacketData {
     pub(crate) messages: Vec<Message>,
     pub(crate) channel_id: u8,

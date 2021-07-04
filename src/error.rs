@@ -2,13 +2,14 @@ use crate::reassembly_fragment::FragmentError;
 
 use std::fmt::{self, Display, Formatter};
 use std::{io, result};
+use serde::{Serialize, Deserialize};
 
 pub type Result<T> = result::Result<T, RenetError>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ConnectionError {
-    Denied = 1,
-    MaxPlayer = 2,
+    Denied,
+    MaxPlayer,
 }
 
 impl ConnectionError {

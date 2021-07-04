@@ -1,6 +1,6 @@
 use crate::channel::{Channel, ChannelPacketData};
 use crate::error::RenetError;
-use crate::packet::{FragmentHeader, HeaderParser, HeartbeatHeader, PacketHeader, PacketType};
+use crate::packet::{AckData, Connection, HeartBeat, Normal, Packet};
 use crate::protocol::SecurityService;
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
@@ -150,54 +150,53 @@ impl<S: SecurityService> RemoteConnection<S> {
     // TODO: Make into_bytes for packets
     pub fn build_heartbeat_packet(&self) -> Result<Vec<u8>, RenetError> {
         let (ack, ack_bits) = self.received_buffer.ack_bits();
-        let header = HeartbeatHeader { ack, ack_bits };
-        let mut buffer = vec![0u8; header.size()];
-        header.write(&mut buffer)?;
+        let packet = Packet::Heartbeat(HeartBeat {
+            ack_data: AckData { ack, ack_bits },
+        });
 
-        Ok(buffer)
+        let packet = bincode::serialize(&packet).map_err(|_| RenetError::SerializationFailed)?;
+        Ok(packet)
     }
 
     pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.timeout_timer.reset();
         let payload = self.security_service.ss_unwrap(payload)?;
-        let payload = if payload[0] == PacketType::Packet as u8 {
-            let header = PacketHeader::parse(&payload)?;
-            let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
-            self.received_buffer
-                .insert(header.sequence, received_packet);
-            self.update_acket_packets(header.ack, header.ack_bits);
-            let payload = &payload[header.size()..];
-            debug!("Successfuly processed packet {}.", header.sequence);
-
-            Some(payload.into())
-        } else if payload[0] == PacketType::Fragment as u8 {
-            let fragment_header = FragmentHeader::parse(&payload)?;
-
-            if let Some(received_packet) = self.received_buffer.get_mut(fragment_header.sequence) {
-                received_packet.size_bytes += payload.len();
-            } else {
-                let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
-                self.received_buffer
-                    .insert(fragment_header.sequence, received_packet);
-            }
-
-            if let Some(ref packet_header) = fragment_header.packet_header {
-                self.update_acket_packets(packet_header.ack, packet_header.ack_bits)
-            }
-
-            let payload = &payload[fragment_header.size()..];
-            self.reassembly_buffer.handle_fragment(
-                fragment_header,
+        let packet = bincode::deserialize(&payload).map_err(|_| RenetError::SerializationFailed)?;
+        let payload = match packet {
+            Packet::Normal(Normal {
+                sequence,
+                ack_data,
                 payload,
-                &self.config.fragment_config,
-            )?
-        } else if payload[0] == PacketType::Heartbeat as u8 {
-            let heartbeat = HeartbeatHeader::parse(&payload)?;
-            self.update_acket_packets(heartbeat.ack, heartbeat.ack_bits);
+            }) => {
+                let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
+                self.received_buffer.insert(sequence, received_packet);
+                self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+                Some(payload)
+            }
+            Packet::Fragment(fragment) => {
+                if let Some(received_packet) = self.received_buffer.get_mut(fragment.sequence) {
+                    received_packet.size_bytes += payload.len();
+                } else {
+                    let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
+                    self.received_buffer
+                        .insert(fragment.sequence, received_packet);
+                }
 
-            None
-        } else {
-            return Err(RenetError::InvalidHeaderType);
+                self.update_acket_packets(fragment.ack_data.ack, fragment.ack_data.ack_bits);
+
+                self.reassembly_buffer
+                    .handle_fragment(fragment, &self.config.fragment_config)?
+            }
+            Packet::Heartbeat(HeartBeat { ack_data }) => {
+                self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+                None
+            }
+            Packet::Connection(Connection { error, .. }) => {
+                if let Some(error) = error {
+                    return Err(RenetError::ConnectionError(error));
+                }
+                None
+            }
         };
 
         for ack in self.acks.drain(..) {
@@ -211,11 +210,11 @@ impl<S: SecurityService> RemoteConnection<S> {
             None => return Ok(()),
         };
 
+        // TODO: should Vec<ChannelPacketData> be inside packet instead of payload?
         let mut channel_packets = match bincode::deserialize::<Vec<ChannelPacketData>>(&payload) {
             Ok(x) => x,
             Err(e) => {
                 error!("Failed to deserialize ChannelPacketData: {:?}", e);
-                // TODO: remove bincode and serde, update serialize errors
                 return Err(RenetError::SerializationFailed);
             }
         };
@@ -269,14 +268,19 @@ impl<S: SecurityService> RemoteConnection<S> {
             Ok(build_fragments(
                 payload,
                 sequence,
-                ack,
-                ack_bits,
+                AckData { ack, ack_bits },
                 &self.config.fragment_config,
             )?)
         } else {
             // Normal packet
             debug!("Sending normal packet {}.", sequence);
-            let packet = build_normal_packet(payload, sequence, ack, ack_bits)?;
+            let packet = Packet::Normal(Normal {
+                payload: payload.to_vec(),
+                sequence,
+                ack_data: AckData { ack, ack_bits },
+            });
+            let packet =
+                bincode::serialize(&packet).map_err(|_| RenetError::SerializationFailed)?;
             Ok(vec![packet])
         }
     }
@@ -465,23 +469,4 @@ impl<S: SecurityService> RemoteConnection<S> {
             self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }
     }
-}
-
-fn build_normal_packet(
-    payload: &[u8],
-    sequence: u16,
-    ack: u16,
-    ack_bits: u32,
-) -> Result<Vec<u8>, RenetError> {
-    let header = PacketHeader {
-        sequence,
-        ack,
-        ack_bits,
-    };
-
-    let mut buffer = vec![0u8; header.size()];
-    header.write(&mut buffer)?;
-    buffer.extend_from_slice(&payload);
-
-    Ok(buffer)
 }

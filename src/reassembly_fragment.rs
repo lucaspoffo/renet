@@ -1,19 +1,10 @@
-use crate::packet::{FragmentHeader, HeaderParser, PacketHeader};
+use crate::packet::{AckData, Fragment, Packet};
 use crate::sequence_buffer::SequenceBuffer;
 
 use log::{error, trace};
 
 use std::io;
 use std::io::{Cursor, Write};
-
-#[derive(Clone)]
-pub struct ReassemblyFragment {
-    sequence: u16,
-    num_fragments_received: usize,
-    num_fragments_total: usize,
-    buffer: Vec<u8>,
-    fragments_received: Vec<bool>,
-}
 
 #[derive(Debug, Clone)]
 pub struct FragmentConfig {
@@ -22,6 +13,15 @@ pub struct FragmentConfig {
     pub fragment_size: usize,
     pub max_count: usize,
     pub reassembly_buffer_size: usize,
+}
+
+#[derive(Clone)]
+pub struct ReassemblyFragment {
+    sequence: u16,
+    num_fragments_received: usize,
+    num_fragments_total: usize,
+    buffer: Vec<u8>,
+    fragments_received: Vec<bool>,
 }
 
 impl Default for FragmentConfig {
@@ -60,6 +60,7 @@ pub enum FragmentError {
     AlreadyProcessed,
     IOError(io::Error),
     ExceededMaxFragmentCount,
+    SerializeFragment,
 }
 
 impl From<io::Error> for FragmentError {
@@ -71,75 +72,79 @@ impl From<io::Error> for FragmentError {
 impl SequenceBuffer<ReassemblyFragment> {
     pub fn handle_fragment(
         &mut self,
-        header: FragmentHeader,
-        payload: &[u8],
+        fragment: Fragment,
         config: &FragmentConfig,
     ) -> Result<Option<Vec<u8>>, FragmentError> {
-        if !self.exists(header.sequence) {
-            let reassembly_fragment = ReassemblyFragment::new(
-                header.sequence,
-                header.num_fragments as usize,
-                config.fragment_size,
-            );
-            self.insert(header.sequence, reassembly_fragment);
+        let Fragment {
+            sequence,
+            num_fragments,
+            payload,
+            fragment_id,
+            ..
+        } = fragment;
+
+        if !self.exists(sequence) {
+            let reassembly_fragment =
+                ReassemblyFragment::new(sequence, num_fragments as usize, config.fragment_size);
+            self.insert(sequence, reassembly_fragment);
         }
 
-        let reassembly_fragment = match self.get_mut(header.sequence) {
+        let reassembly_fragment = match self.get_mut(sequence) {
             Some(x) => x,
             None => {
-                error!("Could not find fragment reassembler {}", header.sequence);
+                error!("Could not find fragment reassembler {}", sequence);
                 return Err(FragmentError::ReassemblerNotFound);
             }
         };
 
-        if reassembly_fragment.num_fragments_total != header.num_fragments as usize {
+        if reassembly_fragment.num_fragments_total != num_fragments as usize {
             error!(
                 "Ignoring packet with invalid number of fragments, expected {}, got {}.",
-                reassembly_fragment.num_fragments_total, header.num_fragments
+                reassembly_fragment.num_fragments_total, num_fragments
             );
             return Err(FragmentError::InvalidTotalFragment);
         }
 
-        if header.fragment_id as usize >= reassembly_fragment.num_fragments_total {
+        if fragment_id as usize >= reassembly_fragment.num_fragments_total {
             error!(
                 "Ignoring fragment {} of packet {} with invalid fragment id",
-                header.fragment_id, header.sequence
+                fragment_id, sequence
             );
             return Err(FragmentError::InvalidFragmentId);
         }
 
-        if reassembly_fragment.fragments_received[header.fragment_id as usize] {
+        if reassembly_fragment.fragments_received[fragment_id as usize] {
             error!(
                 "Ignoring fragment {} of packet {}, fragment already processed.",
-                header.fragment_id, header.sequence
+                fragment_id, sequence
             );
             return Err(FragmentError::AlreadyProcessed);
         }
 
         reassembly_fragment.num_fragments_received += 1;
-        reassembly_fragment.fragments_received[header.fragment_id as usize] = true;
+        reassembly_fragment.fragments_received[fragment_id as usize] = true;
 
         trace!(
             "Received fragment {} of packet {} ({}/{})",
-            header.fragment_id,
-            header.sequence,
+            fragment_id,
+            sequence,
             reassembly_fragment.num_fragments_received,
             reassembly_fragment.num_fragments_total
         );
 
         // Resize buffer to fit the last fragment size
-        if header.fragment_id == header.num_fragments - 1 {
+        if fragment_id == num_fragments - 1 {
             let len = (reassembly_fragment.num_fragments_total - 1) * config.fragment_size
                 + payload.len();
             reassembly_fragment.buffer.resize(len, 0);
         }
 
         let mut cursor = Cursor::new(reassembly_fragment.buffer.as_mut_slice());
-        cursor.set_position(header.fragment_id as u64 * config.fragment_size as u64);
-        cursor.write_all(payload)?;
+        cursor.set_position(fragment_id as u64 * config.fragment_size as u64);
+        cursor.write_all(&payload)?;
 
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
-            let reassembly_fragment = self.remove(header.sequence).unwrap();
+            let reassembly_fragment = self.remove(sequence).unwrap();
             trace!(
                 "Completed the reassembly of packet {}.",
                 reassembly_fragment.sequence
@@ -154,8 +159,7 @@ impl SequenceBuffer<ReassemblyFragment> {
 pub fn build_fragments(
     payload: &[u8],
     sequence: u16,
-    ack: u16,
-    ack_bits: u32,
+    ack_data: AckData,
     config: &FragmentConfig,
 ) -> Result<Vec<Vec<u8>>, FragmentError> {
     let packet_bytes = payload.len();
@@ -171,30 +175,18 @@ pub fn build_fragments(
     }
 
     let mut fragments = Vec::with_capacity(num_fragments);
-    for id in 0..num_fragments {
-        let start = config.fragment_size * id;
-        let mut end = config.fragment_size * (id + 1);
-        if packet_bytes < end {
-            end = packet_bytes;
-        }
-        let mut packet_header = None;
-        if id == 0 {
-            packet_header = Some(PacketHeader {
-                sequence,
-                ack,
-                ack_bits,
-            });
-        }
-        let fragment_header = FragmentHeader {
+    for (id, chunk) in payload.chunks(config.fragment_size).enumerate() {
+        let fragment: Packet = Fragment {
             fragment_id: id as u8,
             sequence,
             num_fragments: num_fragments as u8,
-            packet_header,
-        };
-        let mut buffer = vec![0u8; fragment_header.size()];
-        fragment_header.write(&mut buffer).unwrap();
-        buffer.extend_from_slice(&payload[start..end]);
-        fragments.push(buffer);
+            ack_data,
+            payload: chunk.into(),
+        }
+        .into();
+        let fragment =
+            bincode::serialize(&fragment).map_err(|_| FragmentError::SerializeFragment)?;
+        fragments.push(fragment);
     }
 
     Ok(fragments)
@@ -206,38 +198,38 @@ mod tests {
 
     #[test]
     fn fragment() {
-        let payload = [1u8; 2500];
+        let payload = vec![1u8; 2500];
         let config = FragmentConfig::default();
-        let fragments = build_fragments(&payload, 0, 0, 0, &config).unwrap();
+        let ack_data = AckData {
+            ack: 0,
+            ack_bits: 0,
+        };
+        let fragments = build_fragments(&payload, 0, ack_data, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
             SequenceBuffer::with_capacity(256);
         assert_eq!(3, fragments.len());
 
-        let mut fragments: Vec<&[u8]> = fragments.iter().map(|x| &x[..]).collect();
-
-        let header = FragmentHeader::parse(&fragments[0]).unwrap();
-        fragments[0] = &fragments[0][header.size()..];
-        assert!(fragments_reassembly
-            .handle_fragment(header, &fragments[0], &config)
-            .unwrap()
-            .is_none());
-        let header = FragmentHeader::parse(&fragments[1]).unwrap();
-        fragments[1] = &fragments[1][header.size()..];
-        assert!(fragments_reassembly
-            .handle_fragment(header, &fragments[1], &config)
-            .unwrap()
-            .is_none());
-        let header = FragmentHeader::parse(&fragments[2]).unwrap();
-        fragments[2] = &fragments[2][header.size()..];
-        let reassembly_payload = fragments_reassembly
-            .handle_fragment(header, &fragments[2], &config)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(reassembly_payload.len(), payload.len());
-        assert!(reassembly_payload
+        let fragments: Vec<Fragment> = fragments
             .iter()
-            .zip(payload.iter())
-            .all(|(a, b)| a == b));
+            .map(|payload| {
+                let fragment: Packet = bincode::deserialize(payload).unwrap();
+                match fragment {
+                    Packet::Fragment(f) => f,
+                    _ => panic!(),
+                }
+            })
+            .collect();
+
+        let result = fragments_reassembly.handle_fragment(fragments[0].clone(), &config);
+        assert!(matches!(result, Ok(None)));
+
+         let result = fragments_reassembly.handle_fragment(fragments[1].clone(), &config);
+        assert!(matches!(result, Ok(None)));
+
+
+        let result = fragments_reassembly.handle_fragment(fragments[2].clone(), &config);
+        let result = result.unwrap().unwrap();
+
+        assert_eq!(result, payload);
     }
 }

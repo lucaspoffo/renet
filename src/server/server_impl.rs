@@ -1,7 +1,7 @@
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
 use crate::error::{ConnectionError, RenetError};
-use crate::packet::{ConnectionHeader, HeaderParser};
+use crate::packet::{Connection, Packet};
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
 
@@ -181,8 +181,10 @@ where
         }
 
         if self.remote_clients.len() >= self.config.max_clients {
-            let payload = build_connection_error_packet(ConnectionError::MaxPlayer).unwrap();
-            if let Err(e) = self.socket.send_to(&payload, addr) {
+            let packet = Packet::connection_error(ConnectionError::MaxPlayer);
+            let packet = bincode::serialize(&packet).unwrap();
+
+            if let Err(e) = self.socket.send_to(&packet, addr) {
                 error!("Failed to send protocol packet {}", e);
             }
             debug!("Connection Denied to addr {}, server is full.", addr);
@@ -242,8 +244,12 @@ where
             if handle_connection.protocol.is_authenticated() {
                 connected_clients.push(handle_connection.client_id);
             } else if let Ok(Some(payload)) = handle_connection.protocol.create_payload() {
-                let payload = build_connection_packet(&payload).unwrap();
-                if let Err(e) = self.socket.send_to(&payload, handle_connection.addr) {
+                let packet = Packet::Connection(Connection {
+                    payload,
+                    error: None,
+                });
+                let packet = bincode::serialize(&packet).unwrap();
+                if let Err(e) = self.socket.send_to(&packet, handle_connection.addr) {
                     error!("Failed to send protocol packet {}", e);
                 }
             }
@@ -261,8 +267,11 @@ where
                     "Connection from {} successfuly stablished but server was full.",
                     handle_connection.addr
                 );
-                let payload = build_connection_error_packet(ConnectionError::MaxPlayer).unwrap();
-                if let Err(e) = self.socket.send_to(&payload, handle_connection.addr) {
+                let packet = Packet::connection_error(ConnectionError::MaxPlayer);
+                let packet = bincode::serialize(&packet)
+                    .map_err(|_| RenetError::SerializationFailed)
+                    .unwrap();
+                if let Err(e) = self.socket.send_to(&packet, handle_connection.addr) {
                     error!("Failed to send protocol packet {}", e);
                 }
 
@@ -292,21 +301,4 @@ where
                 .insert(handle_connection.client_id, connection);
         }
     }
-}
-
-fn build_connection_packet(payload: &[u8]) -> Result<Vec<u8>, RenetError> {
-    let header = ConnectionHeader::ok();
-    let mut buffer = vec![0u8; header.size()];
-    header.write(&mut buffer)?;
-    buffer.extend_from_slice(&payload);
-
-    Ok(buffer)
-}
-
-fn build_connection_error_packet(error: ConnectionError) -> Result<Vec<u8>, RenetError> {
-    let header = ConnectionHeader::new(error);
-    let mut buffer = vec![0u8; header.size()];
-    header.write(&mut buffer)?;
-
-    Ok(buffer)
 }

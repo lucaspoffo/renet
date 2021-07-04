@@ -11,7 +11,7 @@ pub trait SecurityService {
 pub trait AuthenticationProtocol {
     type Service: SecurityService;
 
-    fn create_payload(&mut self) -> Result<Option<Box<[u8]>>>;
+    fn create_payload(&mut self) -> Result<Option<Vec<u8>>>;
     fn read_payload(&mut self, payload: &[u8]) -> Result<()>;
     fn is_authenticated(&self) -> bool;
     fn build_security_interface(&self) -> Self::Service;
