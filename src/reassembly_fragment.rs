@@ -1,4 +1,4 @@
-use crate::packet::{AckData, Fragment, Packet};
+use crate::packet::{AckData, Fragment, Message};
 use crate::sequence_buffer::SequenceBuffer;
 
 use log::{error, trace};
@@ -176,7 +176,7 @@ pub fn build_fragments(
 
     let mut fragments = Vec::with_capacity(num_fragments);
     for (id, chunk) in payload.chunks(config.fragment_size).enumerate() {
-        let fragment: Packet = Fragment {
+        let fragment: Message = Fragment {
             fragment_id: id as u8,
             sequence,
             num_fragments: num_fragments as u8,
@@ -212,9 +212,9 @@ mod tests {
         let fragments: Vec<Fragment> = fragments
             .iter()
             .map(|payload| {
-                let fragment: Packet = bincode::deserialize(payload).unwrap();
+                let fragment: Message = bincode::deserialize(payload).unwrap();
                 match fragment {
-                    Packet::Fragment(f) => f,
+                    Message::Fragment(f) => f,
                     _ => panic!(),
                 }
             })
@@ -223,9 +223,8 @@ mod tests {
         let result = fragments_reassembly.handle_fragment(fragments[0].clone(), &config);
         assert!(matches!(result, Ok(None)));
 
-         let result = fragments_reassembly.handle_fragment(fragments[1].clone(), &config);
+        let result = fragments_reassembly.handle_fragment(fragments[1].clone(), &config);
         assert!(matches!(result, Ok(None)));
-
 
         let result = fragments_reassembly.handle_fragment(fragments[2].clone(), &config);
         let result = result.unwrap().unwrap();

@@ -10,16 +10,39 @@ pub struct AckData {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Packet {
+    Unauthenticaded(Unauthenticaded),
+    Authenticated(Authenticated),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Unauthenticaded {
+    ConnectionError(ConnectionError),
+    Protocol { payload: Vec<u8> },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Authenticated {
+    pub payload: Vec<u8>,
+}
+
+impl From<Authenticated> for Packet {
+    fn from(value: Authenticated) -> Self {
+        Self::Authenticated(value)
+    }
+}
+
+impl From<Unauthenticaded> for Packet {
+    fn from(value: Unauthenticaded) -> Self {
+        Self::Unauthenticaded(value)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Message {
     Normal(Normal),
     Fragment(Fragment),
     Heartbeat(HeartBeat),
-    Connection(Connection),
-}
-
-impl Packet {
-    pub fn connection_error(error: ConnectionError) -> Self {
-        return Packet::Connection(Connection { error: Some(error), payload: vec![] });
-    }
+    ConnectionError(ConnectionError),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,32 +66,26 @@ pub struct HeartBeat {
     pub ack_data: AckData,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Connection {
-    pub error: Option<ConnectionError>,
-    pub payload: Vec<u8>,
-}
-
-impl From<Normal> for Packet {
+impl From<Normal> for Message {
     fn from(value: Normal) -> Self {
         Self::Normal(value)
     }
 }
 
-impl From<Fragment> for Packet {
+impl From<Fragment> for Message {
     fn from(value: Fragment) -> Self {
         Self::Fragment(value)
     }
 }
 
-impl From<HeartBeat> for Packet {
+impl From<HeartBeat> for Message {
     fn from(value: HeartBeat) -> Self {
         Self::Heartbeat(value)
     }
 }
 
-impl From<Connection> for Packet {
-    fn from(value: Connection) -> Self {
-        Self::Connection(value)
+impl From<ConnectionError> for Message {
+    fn from(value: ConnectionError) -> Self {
+        Self::ConnectionError(value)
     }
 }

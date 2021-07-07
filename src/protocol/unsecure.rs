@@ -11,7 +11,7 @@ enum Packet {
     ConnectionRequest(ClientId),
     ConnectionDenied,
     KeepAlive,
-    Payload(Box<[u8]>),
+    Payload(Vec<u8>),
     Disconnect,
 }
 
@@ -119,7 +119,7 @@ impl Packet {
                 Ok(Packet::ConnectionRequest(client_id))
             }
             PacketId::Payload => {
-                let payload = buffer[..buffer.len()].to_vec().into_boxed_slice();
+                let payload = buffer[..buffer.len()].to_vec();
                 Ok(Packet::Payload(payload))
             }
             PacketId::Disconnect => Ok(Packet::Disconnect),
@@ -135,7 +135,6 @@ enum ClientState {
     Confirmed,
     Denied,
     SendingConnectionRequest,
-    // TimedOut,
 }
 
 pub struct UnsecureClientProtocol {
@@ -155,14 +154,14 @@ impl UnsecureClientProtocol {
 }
 
 impl SecurityService for UnsecureService {
-    fn ss_wrap(&mut self, data: &[u8]) -> Result<Box<[u8]>, RenetError> {
+    fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>, RenetError> {
         let packet = Packet::Payload(data.into());
         let mut buffer = vec![0u8; packet.size()];
         packet.encode(&mut buffer)?;
-        Ok(buffer.into_boxed_slice())
+        Ok(buffer)
     }
 
-    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Box<[u8]>, RenetError> {
+    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>, RenetError> {
         let packet = Packet::decode(data)?;
         match packet {
             Packet::Payload(payload) => Ok(payload),
@@ -339,6 +338,6 @@ mod tests {
 
         let unwrapped_payload = client_ss.ss_unwrap(&wrapped_payload).unwrap();
 
-        assert_eq!(unwrapped_payload, payload.into_boxed_slice());
+        assert_eq!(unwrapped_payload, payload);
     }
 }

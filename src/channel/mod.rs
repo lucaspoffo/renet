@@ -1,4 +1,3 @@
-use dyn_clone::DynClone;
 use std::time::Instant;
 // TODO: Remove bincode and serde dependency
 use serde::{Deserialize, Serialize};
@@ -9,11 +8,10 @@ pub use reliable::{ReliableOrderedChannel, ReliableOrderedChannelConfig};
 mod unreliable;
 pub use unreliable::{UnreliableUnorderedChannel, UnreliableUnorderedChannelConfig};
 
-pub trait ChannelConfig: DynClone {
+pub trait ChannelConfig {
     fn new_channel(&self) -> Box<dyn Channel>;
 }
 
-dyn_clone::clone_trait_object!(ChannelConfig);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {

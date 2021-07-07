@@ -73,6 +73,10 @@ impl Client for LocalClientConnected {
         self.id
     }
 
+    fn is_connected(&self) -> bool {
+        true
+    }
+
     fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
         if let Some(sender) = self.sender.get(&channel_id) {
             sender.try_send(message).unwrap();

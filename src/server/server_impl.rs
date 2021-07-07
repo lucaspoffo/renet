@@ -1,9 +1,11 @@
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
 use crate::error::{ConnectionError, RenetError};
-use crate::packet::{Connection, Packet};
+use crate::packet::{Packet, Unauthenticaded};
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
+
+use super::ServerConfig;
 
 use log::{debug, error, info};
 
@@ -11,9 +13,6 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
-
-use super::handle_connection::HandleConnection;
-use super::ServerConfig;
 
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
@@ -25,9 +24,9 @@ pub enum ServerEvent {
 pub struct Server<P: ServerAuthenticationProtocol> {
     config: ServerConfig,
     socket: UdpSocket,
-    remote_clients: HashMap<ClientId, RemoteConnection<P::Service>>,
+    remote_clients: HashMap<ClientId, RemoteConnection<P>>,
     locale_clients: HashMap<ClientId, LocalClient>,
-    connecting: HashMap<ClientId, HandleConnection<P>>,
+    connecting: HashMap<ClientId, RemoteConnection<P>>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     events: VecDeque<ServerEvent>,
     connection_config: ConnectionConfig,
@@ -74,17 +73,14 @@ where
         self.events.pop_front()
     }
 
-    fn find_client_by_addr(
-        &mut self,
-        addr: &SocketAddr,
-    ) -> Option<&mut RemoteConnection<P::Service>> {
+    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P>> {
         self.remote_clients
             .values_mut()
             .find(|c| *c.addr() == *addr)
     }
 
-    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut HandleConnection<P>> {
-        self.connecting.values_mut().find(|c| c.addr == *addr)
+    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P>> {
+        self.connecting.values_mut().find(|c| c.addr() == addr)
     }
 
     pub fn get_client_network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
@@ -94,6 +90,7 @@ where
         None
     }
 
+    // TODO: Add method _to_all_remote/ _to_all_local
     pub fn send_message_to_all_clients<C: Into<u8>>(&mut self, channel_id: C, message: Box<[u8]>) {
         let channel_id = channel_id.into();
         for remote_connection in self.remote_clients.values_mut() {
@@ -145,6 +142,7 @@ where
     pub fn update(&mut self) {
         let mut timed_out_connections: Vec<ClientId> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
+            connection.update();
             if connection.has_timed_out() {
                 timed_out_connections.push(client_id);
             }
@@ -181,12 +179,8 @@ where
         }
 
         if self.remote_clients.len() >= self.config.max_clients {
-            let packet = Packet::connection_error(ConnectionError::MaxPlayer);
-            let packet = bincode::serialize(&packet).unwrap();
-
-            if let Err(e) = self.socket.send_to(&packet, addr) {
-                error!("Failed to send protocol packet {}", e);
-            }
+            let packet = Unauthenticaded::ConnectionError(ConnectionError::MaxPlayer);
+            self.send_packet(packet, addr).unwrap();
             debug!("Connection Denied to addr {}, server is full.", addr);
             return Ok(());
         }
@@ -198,16 +192,19 @@ where
                 }
             }
             None => {
-                let protocol = P::from_payload(payload)?;
-                let id = protocol.id();
-                info!("Created new protocol from payload with client id {}", id);
-                let new_connection = HandleConnection::new(
-                    protocol.id(),
-                    *addr,
-                    protocol,
-                    self.connection_config.timeout_duration,
-                );
-                self.connecting.insert(id, new_connection);
+                let packet = bincode::deserialize::<Packet>(payload).unwrap();
+                if let Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) = packet {
+                    let protocol = P::from_payload(&payload)?;
+                    let id = protocol.id();
+                    info!("Created new protocol from payload with client id {}", id);
+                    let new_connection = RemoteConnection::new(
+                        protocol.id(),
+                        *addr,
+                        self.connection_config.clone(),
+                        protocol,
+                    );
+                    self.connecting.insert(id, new_connection);
+                }
             }
         };
 
@@ -235,43 +232,41 @@ where
     fn update_pending_connections(&mut self) {
         let mut connected_clients = vec![];
         let mut disconnected_clients = vec![];
-        for handle_connection in self.connecting.values_mut() {
-            if handle_connection.has_timed_out() {
-                disconnected_clients.push(handle_connection.client_id);
+        for connection in self.connecting.values_mut() {
+            connection.update();
+            if connection.has_timed_out() {
+                disconnected_clients.push(connection.client_id());
                 continue;
             }
 
-            if handle_connection.protocol.is_authenticated() {
-                connected_clients.push(handle_connection.client_id);
-            } else if let Ok(Some(payload)) = handle_connection.protocol.create_payload() {
-                let packet = Packet::Connection(Connection {
-                    payload,
-                    error: None,
-                });
+            if connection.is_connected() {
+                connected_clients.push(connection.client_id());
+            } else if let Ok(Some(payload)) = connection.create_protocol_payload() {
+                let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
                 let packet = bincode::serialize(&packet).unwrap();
-                if let Err(e) = self.socket.send_to(&packet, handle_connection.addr) {
+                if let Err(e) = self.socket.send_to(&packet, connection.addr()) {
                     error!("Failed to send protocol packet {}", e);
                 }
             }
         }
 
         for client_id in disconnected_clients {
-            let handle_connection = self.connecting.remove(&client_id).unwrap();
-            info!("Request connection {} failed.", handle_connection.client_id);
+            let connection = self.connecting.remove(&client_id).unwrap();
+            info!("Request connection {} failed.", connection.client_id());
         }
 
         for client_id in connected_clients {
-            let handle_connection = self.connecting.remove(&client_id).unwrap();
+            let mut connection = self.connecting.remove(&client_id).unwrap();
             if self.remote_clients.len() >= self.config.max_clients {
                 info!(
                     "Connection from {} successfuly stablished but server was full.",
-                    handle_connection.addr
+                    connection.addr()
                 );
-                let packet = Packet::connection_error(ConnectionError::MaxPlayer);
-                let packet = bincode::serialize(&packet)
-                    .map_err(|_| RenetError::SerializationFailed)
-                    .unwrap();
-                if let Err(e) = self.socket.send_to(&packet, handle_connection.addr) {
+                let packet = Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
+                    ConnectionError::MaxPlayer,
+                ));
+                let packet = bincode::serialize(&packet).unwrap();
+                if let Err(e) = self.socket.send_to(&packet, connection.addr()) {
                     error!("Failed to send protocol packet {}", e);
                 }
 
@@ -280,14 +275,8 @@ where
 
             info!(
                 "Connection stablished with client {} ({}).",
-                handle_connection.client_id, handle_connection.addr,
-            );
-
-            let security_service = handle_connection.protocol.build_security_interface();
-            let mut connection = RemoteConnection::new(
-                handle_connection.addr,
-                self.connection_config.clone(),
-                security_service,
+                connection.client_id(),
+                connection.addr(),
             );
 
             for (channel_id, channel_config) in self.channels_config.iter() {
@@ -296,9 +285,20 @@ where
             }
 
             self.events
-                .push_back(ServerEvent::ClientConnected(handle_connection.client_id));
+                .push_back(ServerEvent::ClientConnected(connection.client_id()));
             self.remote_clients
-                .insert(handle_connection.client_id, connection);
+                .insert(connection.client_id(), connection);
         }
+    }
+
+    pub fn send_packet(
+        &self,
+        packet: impl Into<Packet>,
+        addr: &SocketAddr,
+    ) -> Result<(), RenetError> {
+        let packet: Packet = packet.into();
+        let packet = bincode::serialize(&packet).unwrap();
+        self.socket.send_to(&packet, addr).unwrap();
+        Ok(())
     }
 }

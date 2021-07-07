@@ -37,6 +37,7 @@ pub enum RenetError {
     AuthenticationError(Box<dyn std::error::Error>),
     ConnectionTimedOut,
     FragmentError(FragmentError),
+    InvalidPacket,
     ConnectionError(ConnectionError),
 }
 

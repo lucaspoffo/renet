@@ -3,15 +3,15 @@ use crate::remote_connection::{ClientId, NetworkInfo};
 
 mod local_client;
 mod remote_client;
-mod request_connection;
 
 pub(crate) use local_client::LocalClient;
 pub use local_client::LocalClientConnected;
-pub use remote_client::RemoteClientConnected;
-pub use request_connection::RequestConnection;
+pub use remote_client::RemoteClient;
 
 pub trait Client {
     fn id(&self) -> ClientId;
+    
+    fn is_connected(&self) -> bool;
 
     fn send_message(&mut self, channel_id: u8, message: Box<[u8]>);
 

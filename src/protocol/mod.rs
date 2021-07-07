@@ -4,8 +4,8 @@ use crate::remote_connection::ClientId;
 pub mod unsecure;
 
 pub trait SecurityService {
-    fn ss_wrap(&mut self, data: &[u8]) -> Result<Box<[u8]>>;
-    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Box<[u8]>>;
+    fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>>;
+    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>>;
 }
 
 pub trait AuthenticationProtocol {

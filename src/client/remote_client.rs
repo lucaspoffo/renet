@@ -1,7 +1,7 @@
 use crate::channel::ChannelConfig;
 use crate::client::Client;
 use crate::error::RenetError;
-use crate::protocol::SecurityService;
+use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::debug;
@@ -10,41 +10,41 @@ use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 
-pub struct RemoteClientConnected<S> {
+pub struct RemoteClient<A: AuthenticationProtocol> {
     socket: UdpSocket,
     id: ClientId,
-    connection: RemoteConnection<S>,
+    connection: RemoteConnection<A>,
     buffer: Box<[u8]>,
 }
 
-impl<S: SecurityService> RemoteClientConnected<S> {
-    pub(crate) fn new(
+impl<A: AuthenticationProtocol> RemoteClient<A> {
+    pub fn new(
         id: ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-        security_service: S,
+        protocol: A,
         connection_config: ConnectionConfig,
-    ) -> Self {
+    ) -> Result<Self, std::io::Error> {
+        socket.set_nonblocking(true)?;
         let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
-        let mut connection =
-            RemoteConnection::new(server_addr, connection_config, security_service);
+        let mut connection = RemoteConnection::new(id, server_addr, connection_config, protocol);
 
         for (channel_id, channel_config) in channels_config.iter() {
             let channel = channel_config.new_channel();
             connection.add_channel(*channel_id, channel);
         }
 
-        Self {
+        Ok(Self {
             id,
             socket,
             connection,
             buffer,
-        }
+        })
     }
 }
 
-impl<S: SecurityService> Client for RemoteClientConnected<S> {
+impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
     fn id(&self) -> ClientId {
         self.id
     }
@@ -66,10 +66,15 @@ impl<S: SecurityService> Client for RemoteClientConnected<S> {
         Ok(())
     }
 
+    fn is_connected(&self) -> bool {
+        self.connection.is_connected()
+    }
+
     fn process_events(&mut self) -> Result<(), RenetError> {
         if self.connection.has_timed_out() {
             return Err(RenetError::ConnectionTimedOut);
         }
+        self.connection.update();
 
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
