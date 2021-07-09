@@ -205,8 +205,6 @@ impl Channel for ReliableOrderedChannel {
         }
         None
     }
-
-    fn reset(&mut self) {}
 }
 
 #[cfg(test)]

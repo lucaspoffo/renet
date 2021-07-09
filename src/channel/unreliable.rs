@@ -103,8 +103,6 @@ impl Channel for UnreliableUnorderedChannel {
         }
     }
 
-    fn reset(&mut self) {}
-
     // Since this is an unreliable channel
     // we do nothing with the ack.
     fn process_ack(&mut self, _ack: u16) {}

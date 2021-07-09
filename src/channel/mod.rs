@@ -47,8 +47,6 @@ pub trait Channel {
     fn process_ack(&mut self, ack: u16);
     fn send_message(&mut self, message_payload: Box<[u8]>);
     fn receive_message(&mut self) -> Option<Box<[u8]>>;
-    // TODO: do we need reset at all?
-    fn reset(&mut self);
 }
 
 #[derive(Debug, Clone)]
