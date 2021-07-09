@@ -32,7 +32,7 @@ impl<T: Clone> SequenceBuffer<T> {
     pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: u16, f: F) -> Option<&mut T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
-            return self.entries[index].as_mut();
+            self.entries[index].as_mut()
         } else {
             self.insert(sequence, f())
         }

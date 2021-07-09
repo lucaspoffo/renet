@@ -36,8 +36,8 @@ impl<A: AuthenticationProtocol> RemoteClient<A> {
         }
 
         Ok(Self {
-            id,
             socket,
+            id,
             connection,
             buffer,
         })
@@ -50,11 +50,11 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
     }
 
     fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
-        self.connection.send_message(channel_id.into(), message);
+        self.connection.send_message(channel_id, message);
     }
 
     fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
-        self.connection.receive_message(channel_id.into())
+        self.connection.receive_message(channel_id)
     }
 
     fn network_info(&mut self) -> &NetworkInfo {

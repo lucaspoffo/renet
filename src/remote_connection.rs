@@ -182,14 +182,11 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
     }
 
     pub fn update(&mut self) {
-        match self.state {
-            ConnectionState::Connecting { ref mut protocol } => {
-                if protocol.is_authenticated() {
-                    let security_service = protocol.build_security_interface();
-                    self.state = ConnectionState::Connected { security_service };
-                }
+        if let ConnectionState::Connecting { ref mut protocol } = self.state {
+            if protocol.is_authenticated() {
+                let security_service = protocol.build_security_interface();
+                self.state = ConnectionState::Connected { security_service };
             }
-            _ => {}
         }
     }
 
@@ -281,10 +278,10 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 channel.process_ack(ack);
             }
         }
-        
+
         let payload = match payload {
             None => return Ok(()),
-            Some(p) => p
+            Some(p) => p,
         };
 
         // TODO: should Vec<ChannelPacketData> be inside packet instead of payload?
@@ -329,7 +326,10 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 self.config.max_packet_size,
                 payload.len()
             );
-            return Err(RenetError::MaximumPacketSizeExceeded { expected: self.config.max_packet_size, got: payload.len() });
+            return Err(RenetError::MaximumPacketSizeExceeded {
+                expected: self.config.max_packet_size,
+                got: payload.len(),
+            });
         }
 
         let sequence = self.sequence;
