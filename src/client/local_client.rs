@@ -13,17 +13,23 @@ pub struct LocalClient {
 }
 
 impl LocalClient {
-    pub fn send_message(&self, channel_id: u8, message: Box<[u8]>) {
-        let channel_sender = self.sender.get(&channel_id).unwrap();
+    pub fn send_message(&self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+        let channel_sender = self
+            .sender
+            .get(&channel_id)
+            .ok_or(RenetError::InvalidChannel { channel_id })?;
+        // TODO: handle TrySendError
         channel_sender.send(message).unwrap();
+        Ok(())
     }
 
-    pub fn receive_message(&self, channel_id: u8) -> Option<Box<[u8]>> {
-        if let Some(channel_sender) = self.receiver.get(&channel_id) {
-            channel_sender.try_recv().ok()
-        } else {
-            None
-        }
+    pub fn receive_message(&self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
+        let channel_sender = self
+            .receiver
+            .get(&channel_id)
+            .ok_or(RenetError::InvalidChannel { channel_id })?;
+        // TODO: handle TryRecvError
+        Ok(channel_sender.try_recv().ok())
     }
 }
 
@@ -77,18 +83,23 @@ impl Client for LocalClientConnected {
         true
     }
 
-    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
-        if let Some(sender) = self.sender.get(&channel_id) {
-            sender.try_send(message).unwrap();
-        }
+    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+        let sender = self
+            .sender
+            .get(&channel_id)
+            .ok_or(RenetError::InvalidChannel { channel_id })?;
+        // TODO: handle TrySendError
+        sender.try_send(message).unwrap();
+        Ok(())
     }
 
-    fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
-        if let Some(receiver) = self.receiver.get(&channel_id) {
-            receiver.try_recv().ok()
-        } else {
-            None
-        }
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
+        let receiver = self
+            .receiver
+            .get(&channel_id)
+            .ok_or(RenetError::InvalidChannel { channel_id })?;
+        // TODO: handle TryRecvError
+        Ok(receiver.try_recv().ok())
     }
 
     fn network_info(&mut self) -> &NetworkInfo {

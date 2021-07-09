@@ -49,11 +49,11 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         self.id
     }
 
-    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) {
-        self.connection.send_message(channel_id, message);
+    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+        self.connection.send_message(channel_id, message)
     }
 
-    fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>> {
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
         self.connection.receive_message(channel_id)
     }
 

@@ -124,7 +124,7 @@ fn test_remote_connection_reliable_channel() {
 
     loop {
         remote_connection.process_events().unwrap();
-        while let Some(message) = remote_connection.receive_message(Channels::Reliable.into()) {
+        while let Ok(Some(message)) = remote_connection.receive_message(Channels::Reliable.into()) {
             let message: TestMessage = bincode::deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;
@@ -159,7 +159,8 @@ fn test_remote_connection_unreliable_channel() {
 
     loop {
         remote_connection.process_events().unwrap();
-        while let Some(message) = remote_connection.receive_message(Channels::Unreliable.into()) {
+        while let Ok(Some(message)) = remote_connection.receive_message(Channels::Unreliable.into())
+        {
             let message: TestMessage = bincode::deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;

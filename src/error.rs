@@ -14,7 +14,6 @@ pub enum ConnectionError {
     MaxPlayer,
 }
 
-// TODO: Add InvalidChannel Error
 #[derive(Debug, Error)]
 pub enum RenetError {
     #[error("packet size {got} above the limit, expected < {expected}")]
@@ -31,4 +30,12 @@ pub enum RenetError {
     FragmentError(#[from] FragmentError),
     #[error("connection error: {0}")]
     ConnectionError(ConnectionError),
+    #[error("client is disconnected")]
+    ClientDisconnected,
+    #[error("connection is not established")]
+    NotAuthenticated,
+    #[error("invalid channel {channel_id}")]
+    InvalidChannel { channel_id: u8 },
+    #[error("client not found")]
+    ClientNotFound,
 }

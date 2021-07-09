@@ -13,11 +13,9 @@ pub trait Client {
 
     fn is_connected(&self) -> bool;
 
-    // TODO: Should return Result
-    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>);
+    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError>;
 
-    // TODO: Should return Result
-    fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>>;
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError>;
 
     fn network_info(&mut self) -> &NetworkInfo;
 

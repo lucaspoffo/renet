@@ -90,29 +90,36 @@ where
         None
     }
 
-    // TODO: Add method _to_all_remote/ _to_all_local
+    // TODO: rename to broadcast_message
     pub fn send_message_to_all_clients<C: Into<u8>>(&mut self, channel_id: C, message: Box<[u8]>) {
         let channel_id = channel_id.into();
         for remote_connection in self.remote_clients.values_mut() {
-            remote_connection.send_message(channel_id, message.clone());
+            if let Err(e) = remote_connection.send_message(channel_id, message.clone()) {
+                error!("{}", e);
+            }
         }
 
         for local_connection in self.locale_clients.values_mut() {
-            local_connection.send_message(channel_id, message.clone());
+            if let Err(e) = local_connection.send_message(channel_id, message.clone()) {
+                error!("{}", e);
+            }
         }
     }
 
+    // TODO: rename to send_message
     pub fn send_message_to_client<C: Into<u8>>(
         &mut self,
         client_id: ClientId,
         channel_id: C,
         message: Box<[u8]>,
-    ) {
+    ) -> Result<(), RenetError> {
         let channel_id = channel_id.into();
         if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
-            remote_connection.send_message(channel_id, message);
+            remote_connection.send_message(channel_id, message)
         } else if let Some(local_connection) = self.locale_clients.get_mut(&client_id) {
-            local_connection.send_message(channel_id, message);
+            local_connection.send_message(channel_id, message)
+        } else {
+            Err(RenetError::ClientNotFound)
         }
     }
 
@@ -120,15 +127,15 @@ where
         &mut self,
         client_id: ClientId,
         channel_id: C,
-    ) -> Option<Box<[u8]>> {
+    ) -> Result<Option<Box<[u8]>>, RenetError> {
         let channel_id = channel_id.into();
         if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
-            return remote_client.receive_message(channel_id);
+            remote_client.receive_message(channel_id)
         } else if let Some(local_client) = self.locale_clients.get_mut(&client_id) {
-            return local_client.receive_message(channel_id);
+            local_client.receive_message(channel_id)
+        } else {
+            Err(RenetError::ClientNotFound)
         }
-
-        None
     }
 
     pub fn get_clients_id(&self) -> Vec<ClientId> {
