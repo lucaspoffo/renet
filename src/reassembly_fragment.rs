@@ -1,10 +1,11 @@
 use crate::packet::{AckData, Fragment, Message};
 use crate::sequence_buffer::SequenceBuffer;
+use crate::RenetError;
 
 use log::{error, trace};
-
 use std::io;
 use std::io::{Cursor, Write};
+use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct FragmentConfig {
@@ -18,8 +19,8 @@ pub struct FragmentConfig {
 #[derive(Clone)]
 pub struct ReassemblyFragment {
     sequence: u16,
-    num_fragments_received: usize,
-    num_fragments_total: usize,
+    num_fragments_received: u32,
+    num_fragments_total: u32,
     buffer: Vec<u8>,
     fragments_received: Vec<bool>,
 }
@@ -37,8 +38,8 @@ impl Default for FragmentConfig {
 }
 
 impl ReassemblyFragment {
-    pub fn new(sequence: u16, num_fragments_total: usize, fragment_size: usize) -> Self {
-        let len = num_fragments_total * fragment_size;
+    pub fn new(sequence: u16, num_fragments_total: u32, fragment_size: usize) -> Self {
+        let len = (num_fragments_total as usize * fragment_size) as usize;
         let buffer = vec![0; len];
 
         Self {
@@ -46,21 +47,31 @@ impl ReassemblyFragment {
             num_fragments_received: 0,
             num_fragments_total,
             buffer,
-            fragments_received: vec![false; num_fragments_total],
+            fragments_received: vec![false; num_fragments_total as usize],
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum FragmentError {
-    /// Current header fragment count does not match others fragments.
-    InvalidTotalFragment,
-    InvalidFragmentId,
-    ReassemblerNotFound,
-    AlreadyProcessed,
+    #[error("fragment with sequence {sequence} has invalid number of fragments, expected {expected}, got {got}.")]
+    InvalidTotalFragment {
+        sequence: u16,
+        expected: u32,
+        got: u8,
+    },
+    #[error("fragment with sequence {sequence} has invalid id {id}, expected < {total}. ")]
+    InvalidFragmentId { sequence: u16, id: u8, total: u32 },
+    #[error("fragment with sequence {sequence} and id {id} fragment already processed.")]
+    AlreadyProcessed { sequence: u16, id: u8 },
+    #[error("writing fragment failed: {0}")]
     IOError(io::Error),
-    ExceededMaxFragmentCount,
-    SerializeFragment,
+    #[error("fragmentation with sequence {sequence} exceeded maximum count, got {got}, expected < {expected}")]
+    ExceededMaxFragmentCount {
+        sequence: u16,
+        expected: usize,
+        got: usize,
+    },
 }
 
 impl From<io::Error> for FragmentError {
@@ -85,40 +96,34 @@ impl SequenceBuffer<ReassemblyFragment> {
 
         if !self.exists(sequence) {
             let reassembly_fragment =
-                ReassemblyFragment::new(sequence, num_fragments as usize, config.fragment_size);
+                ReassemblyFragment::new(sequence, num_fragments as u32, config.fragment_size);
             self.insert(sequence, reassembly_fragment);
         }
 
-        let reassembly_fragment = match self.get_mut(sequence) {
-            Some(x) => x,
-            None => {
-                error!("Could not find fragment reassembler {}", sequence);
-                return Err(FragmentError::ReassemblerNotFound);
-            }
-        };
+        // TODO: Maybe add get_or_insert
+        let reassembly_fragment = self.get_mut(sequence).unwrap();
 
-        if reassembly_fragment.num_fragments_total != num_fragments as usize {
-            error!(
-                "Ignoring packet with invalid number of fragments, expected {}, got {}.",
-                reassembly_fragment.num_fragments_total, num_fragments
-            );
-            return Err(FragmentError::InvalidTotalFragment);
+        if reassembly_fragment.num_fragments_total != num_fragments as u32 {
+            return Err(FragmentError::InvalidTotalFragment {
+                sequence,
+                expected: reassembly_fragment.num_fragments_total,
+                got: num_fragments,
+            });
         }
 
-        if fragment_id as usize >= reassembly_fragment.num_fragments_total {
-            error!(
-                "Ignoring fragment {} of packet {} with invalid fragment id",
-                fragment_id, sequence
-            );
-            return Err(FragmentError::InvalidFragmentId);
+        if fragment_id as u32 >= reassembly_fragment.num_fragments_total {
+            return Err(FragmentError::InvalidFragmentId {
+                sequence,
+                id: fragment_id,
+                total: reassembly_fragment.num_fragments_total,
+            });
         }
 
         if reassembly_fragment.fragments_received[fragment_id as usize] {
-            error!(
-                "Ignoring fragment {} of packet {}, fragment already processed.",
-                fragment_id, sequence
-            );
-            return Err(FragmentError::AlreadyProcessed);
+            return Err(FragmentError::AlreadyProcessed {
+                sequence,
+                id: fragment_id,
+            });
         }
 
         reassembly_fragment.num_fragments_received += 1;
@@ -134,7 +139,7 @@ impl SequenceBuffer<ReassemblyFragment> {
 
         // Resize buffer to fit the last fragment size
         if fragment_id == num_fragments - 1 {
-            let len = (reassembly_fragment.num_fragments_total - 1) * config.fragment_size
+            let len = (reassembly_fragment.num_fragments_total - 1) as usize * config.fragment_size
                 + payload.len();
             reassembly_fragment.buffer.resize(len, 0);
         }
@@ -161,7 +166,7 @@ pub fn build_fragments(
     sequence: u16,
     ack_data: AckData,
     config: &FragmentConfig,
-) -> Result<Vec<Vec<u8>>, FragmentError> {
+) -> Result<Vec<Vec<u8>>, RenetError> {
     let packet_bytes = payload.len();
     let exact_division = ((packet_bytes % config.fragment_size) != 0) as usize;
     let num_fragments = packet_bytes / config.fragment_size + exact_division;
@@ -171,7 +176,13 @@ pub fn build_fragments(
             "Fragmentation exceeded maximum number of fragments, got {}, maximum is {}.",
             num_fragments, config.max_fragments
         );
-        return Err(FragmentError::ExceededMaxFragmentCount);
+        return Err(RenetError::FragmentError(
+            FragmentError::ExceededMaxFragmentCount {
+                sequence,
+                expected: config.max_fragments,
+                got: num_fragments,
+            },
+        ));
     }
 
     let mut fragments = Vec::with_capacity(num_fragments);
@@ -184,8 +195,7 @@ pub fn build_fragments(
             payload: chunk.into(),
         }
         .into();
-        let fragment =
-            bincode::serialize(&fragment).map_err(|_| FragmentError::SerializeFragment)?;
+        let fragment = bincode::serialize(&fragment)?;
         fragments.push(fragment);
     }
 

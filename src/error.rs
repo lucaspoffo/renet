@@ -1,61 +1,34 @@
 use crate::reassembly_fragment::FragmentError;
 
-use std::fmt::{self, Display, Formatter};
 use std::{io, result};
 use serde::{Serialize, Deserialize};
+use thiserror::Error;
 
 pub type Result<T> = result::Result<T, RenetError>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Error)]
 pub enum ConnectionError {
+    #[error("connection denied.")]
     Denied,
+    #[error("server has exceeded maximum players capacity")]
     MaxPlayer,
 }
 
-impl ConnectionError {
-    pub fn from_u8(code: u8) -> Result<Self> {
-        match code {
-            1 => Ok(ConnectionError::Denied),
-            2 => Ok(ConnectionError::MaxPlayer),
-            _ => Err(RenetError::InvalidConnectionError)
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum RenetError {
-    MaximumFragmentsExceeded,
-    MaximumPacketSizeExceeded,
-    CouldNotFindFragment,
-    InvalidNumberFragment,
-    FragmentAlreadyProcessed,
-    InvalidHeaderType,
-    InvalidConnectionError,
-    FragmentMissingPacketHeader,
-    IOError(io::Error),
-    SerializationFailed,
+    #[error("packet size {got} above the limit, expected < {expected}")]
+    MaximumPacketSizeExceeded { expected: usize, got: usize },
+    #[error("socket disconnected: {0}")]
+    IOError(#[from] io::Error),
+    #[error("bincode failed to (de)serialize: {0}")]
+    BincodeError(#[from] bincode::Error),
+    #[error("error during protocol exchange: {0}")]
     AuthenticationError(Box<dyn std::error::Error>),
+    #[error("connection timed out.")]
     ConnectionTimedOut,
-    FragmentError(FragmentError),
-    InvalidPacket,
+    #[error("packet fragmentation error: {0}")]
+    FragmentError(#[from] FragmentError),
+    #[error("connection error: {0}")]
     ConnectionError(ConnectionError),
 }
 
-impl From<io::Error> for RenetError {
-    fn from(inner: io::Error) -> RenetError {
-        RenetError::IOError(inner)
-    }
-}
-
-impl From<FragmentError> for RenetError {
-    fn from(inner: FragmentError) -> RenetError {
-        RenetError::FragmentError(inner)
-    }
-}
-
-// TODO: add comments and impl error display correctly
-impl Display for RenetError {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
-        write!(fmt, "RenetError")
-    }
-}

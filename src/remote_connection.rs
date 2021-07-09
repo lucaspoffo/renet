@@ -204,12 +204,12 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             return Err(RenetError::ConnectionError(error));
         }
 
-        // TODO: Review this logic, could be separeted
+        // TODO: match packet and inside each type, match state
         let payload = match self.state {
             ConnectionState::Connecting { ref mut protocol } => {
                 let payload = match packet {
                     Packet::Authenticated(_) => {
-                        return Err(RenetError::InvalidPacket);
+                        return Ok(());
                     }
                     Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) => payload,
                     _ => unreachable!(),
@@ -222,7 +222,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             } => {
                 let payload = match packet {
                     Packet::Authenticated(Authenticated { payload }) => payload,
-                    Packet::Unauthenticaded(_) => return Err(RenetError::InvalidPacket),
+                    Packet::Unauthenticaded(_) => return Ok(()),
                 };
                 let payload = security_service.ss_unwrap(&payload)?;
                 let packet = bincode::deserialize(&payload).unwrap();
@@ -288,13 +288,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         let payload = payload.unwrap();
 
         // TODO: should Vec<ChannelPacketData> be inside packet instead of payload?
-        let mut channel_packets = match bincode::deserialize::<Vec<ChannelPacketData>>(&payload) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("Failed to deserialize ChannelPacketData: {:?}", e);
-                return Err(RenetError::SerializationFailed);
-            }
-        };
+        let mut channel_packets = bincode::deserialize::<Vec<ChannelPacketData>>(&payload)?;
 
         for channel_packet_data in channel_packets.drain(..) {
             let channel = match self.channels.get_mut(&channel_packet_data.channel_id) {
@@ -335,7 +329,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 self.config.max_packet_size,
                 payload.len()
             );
-            return Err(RenetError::MaximumPacketSizeExceeded);
+            return Err(RenetError::MaximumPacketSizeExceeded { expected: self.config.max_packet_size, got: payload.len() });
         }
 
         let sequence = self.sequence;
@@ -422,13 +416,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
 
                 if !channel_packets.is_empty() {
                     // TODO: Add bincode error for now in Renet
-                    let payload = match bincode::serialize(&channel_packets) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            error!("Failed to serialize Vec<ChannelPacketData>: {:?}", e);
-                            return Err(RenetError::SerializationFailed);
-                        }
-                    };
+                    let payload = bincode::serialize(&channel_packets)?;
                     self.send_payload(&payload, socket).unwrap();
                     self.heartbeat_timer.reset();
                 } else if self.heartbeat_timer.is_finished() {
