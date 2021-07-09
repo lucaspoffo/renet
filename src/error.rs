@@ -14,6 +14,7 @@ pub enum ConnectionError {
     MaxPlayer,
 }
 
+// TODO: Add InvalidChannel Error
 #[derive(Debug, Error)]
 pub enum RenetError {
     #[error("packet size {got} above the limit, expected < {expected}")]

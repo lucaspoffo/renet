@@ -12,9 +12,11 @@ pub trait Client {
     fn id(&self) -> ClientId;
     
     fn is_connected(&self) -> bool;
-
+    
+    // TODO: Should return Result
     fn send_message(&mut self, channel_id: u8, message: Box<[u8]>);
 
+    // TODO: Should return Result
     fn receive_message(&mut self, channel_id: u8) -> Option<Box<[u8]>>;
 
     fn network_info(&mut self) -> &NetworkInfo;

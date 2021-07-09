@@ -29,6 +29,15 @@ impl<T: Clone> SequenceBuffer<T> {
         None
     }
 
+    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: u16, f: F) -> Option<&mut T> {
+        if self.exists(sequence) {
+            let index = self.index(sequence);
+            return self.entries[index].as_mut();
+        } else {
+            self.insert(sequence, f())
+        }
+    }
+
     #[inline]
     pub fn index(&self, sequence: u16) -> usize {
         sequence as usize % self.entries.len()

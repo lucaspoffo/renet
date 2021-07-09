@@ -195,7 +195,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
 
     pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.timeout_timer.reset();
-        let packet: Packet = bincode::deserialize(&payload).unwrap();
+        let packet: Packet = bincode::deserialize(&payload)?;
 
         if let Packet::Unauthenticaded(Unauthenticaded::ConnectionError(error)) = packet {
             self.state = ConnectionState::Disconnected {
@@ -225,7 +225,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                     Packet::Unauthenticaded(_) => return Ok(()),
                 };
                 let payload = security_service.ss_unwrap(&payload)?;
-                let packet = bincode::deserialize(&payload).unwrap();
+                let packet = bincode::deserialize(&payload)?;
                 match packet {
                     Message::Normal(Normal {
                         sequence,
@@ -275,17 +275,17 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             }
         };
 
-        // TODO: move to update?
+        // TODO: move to update? if we do we can return earlier instead of an optional payload
         for ack in self.acks.drain(..) {
             for channel in self.channels.values_mut() {
                 channel.process_ack(ack);
             }
         }
-
-        if payload.is_none() {
-            return Ok(());
-        }
-        let payload = payload.unwrap();
+        
+        let payload = match payload {
+            None => return Ok(()),
+            Some(p) => p
+        };
 
         // TODO: should Vec<ChannelPacketData> be inside packet instead of payload?
         let mut channel_packets = bincode::deserialize::<Vec<ChannelPacketData>>(&payload)?;
@@ -357,14 +357,14 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 sequence,
                 ack_data: AckData { ack, ack_bits },
             });
-            let packet = bincode::serialize(&packet).unwrap();
+            let packet = bincode::serialize(&packet)?;
             vec![packet]
         };
 
         for packet in payload.iter() {
-            let packet = security_service.ss_wrap(packet).unwrap();
+            let packet = security_service.ss_wrap(packet)?;
             let packet = Packet::Authenticated(Authenticated { payload: packet });
-            let packet = bincode::serialize(&packet).unwrap();
+            let packet = bincode::serialize(&packet)?;
             socket.send_to(&packet, self.addr)?;
         }
         Ok(())
@@ -417,7 +417,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 if !channel_packets.is_empty() {
                     // TODO: Add bincode error for now in Renet
                     let payload = bincode::serialize(&channel_packets)?;
-                    self.send_payload(&payload, socket).unwrap();
+                    self.send_payload(&payload, socket)?;
                     self.heartbeat_timer.reset();
                 } else if self.heartbeat_timer.is_finished() {
                     let (ack, ack_bits) = self.received_buffer.ack_bits();
@@ -425,20 +425,20 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                         ack_data: AckData { ack, ack_bits },
                     });
 
-                    let message = bincode::serialize(&message).unwrap();
+                    let message = bincode::serialize(&message)?;
 
-                    let payload = security_service.ss_wrap(&message).unwrap();
+                    let payload = security_service.ss_wrap(&message)?;
                     let packet = Packet::Authenticated(Authenticated { payload });
-                    let packet = bincode::serialize(&packet).unwrap();
-                    socket.send_to(&packet, self.addr).unwrap();
+                    let packet = bincode::serialize(&packet)?;
+                    socket.send_to(&packet, self.addr)?;
                     self.heartbeat_timer.reset();
                 }
             }
             ConnectionState::Connecting { ref mut protocol } => {
                 if let Some(payload) = protocol.create_payload()? {
                     let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                    let packet = bincode::serialize(&packet).unwrap();
-                    socket.send_to(&packet, self.addr).unwrap();
+                    let packet = bincode::serialize(&packet)?;
+                    socket.send_to(&packet, self.addr)?;
                     self.heartbeat_timer.reset();
                 }
             }

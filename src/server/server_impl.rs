@@ -149,7 +149,7 @@ where
         }
 
         for &client_id in timed_out_connections.iter() {
-            self.remote_clients.remove(&client_id).unwrap();
+            self.remote_clients.remove(&client_id);
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id));
             info!("Client {} disconnected.", client_id);
@@ -180,7 +180,7 @@ where
 
         if self.remote_clients.len() >= self.config.max_clients {
             let packet = Unauthenticaded::ConnectionError(ConnectionError::MaxPlayer);
-            self.send_packet(packet, addr).unwrap();
+            try_send_packet(&self.socket, packet, addr)?;
             debug!("Connection Denied to addr {}, server is full.", addr);
             return Ok(());
         }
@@ -192,7 +192,7 @@ where
                 }
             }
             None => {
-                let packet = bincode::deserialize::<Packet>(payload).unwrap();
+                let packet = bincode::deserialize::<Packet>(payload)?;
                 if let Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) = packet {
                     let protocol = P::from_payload(&payload)?;
                     let id = protocol.id();
@@ -243,32 +243,30 @@ where
                 connected_clients.push(connection.client_id());
             } else if let Ok(Some(payload)) = connection.create_protocol_payload() {
                 let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                let packet = bincode::serialize(&packet).unwrap();
-                if let Err(e) = self.socket.send_to(&packet, connection.addr()) {
-                    error!("Failed to send protocol packet {}", e);
-                }
+                send_packet(&self.socket, packet, connection.addr());
             }
         }
 
         for client_id in disconnected_clients {
-            let connection = self.connecting.remove(&client_id).unwrap();
+            let connection = self
+                .connecting
+                .remove(&client_id)
+                .expect("Disconnected Clients always exists");
             info!("Request connection {} failed.", connection.client_id());
         }
 
         for client_id in connected_clients {
-            let mut connection = self.connecting.remove(&client_id).unwrap();
+            let mut connection = self
+                .connecting
+                .remove(&client_id)
+                .expect("Connected Client always exist");
             if self.remote_clients.len() >= self.config.max_clients {
                 info!(
                     "Connection from {} successfuly stablished but server was full.",
                     connection.addr()
                 );
-                let packet = Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
-                    ConnectionError::MaxPlayer,
-                ));
-                let packet = bincode::serialize(&packet).unwrap();
-                if let Err(e) = self.socket.send_to(&packet, connection.addr()) {
-                    error!("Failed to send protocol packet {}", e);
-                }
+                let packet = Unauthenticaded::ConnectionError(ConnectionError::MaxPlayer);
+                send_packet(&self.socket, packet, connection.addr());
 
                 continue;
             }
@@ -290,15 +288,25 @@ where
                 .insert(connection.client_id(), connection);
         }
     }
+}
 
-    pub fn send_packet(
-        &self,
-        packet: impl Into<Packet>,
-        addr: &SocketAddr,
-    ) -> Result<(), RenetError> {
-        let packet: Packet = packet.into();
-        let packet = bincode::serialize(&packet).unwrap();
-        self.socket.send_to(&packet, addr).unwrap();
-        Ok(())
+fn try_send_packet(socket: &UdpSocket, packet: impl Into<Packet>, addr: &SocketAddr) -> Result<(), RenetError> {
+    let packet: Packet = packet.into();
+    let packet = bincode::serialize(&packet)?;
+    socket.send_to(&packet, addr)?;
+    Ok(())
+}
+
+fn send_packet(socket: &UdpSocket, packet: impl Into<Packet>, addr: &SocketAddr) {
+    let packet: Packet = packet.into();
+    let packet = match bincode::serialize(&packet) {
+        Err(e) => {
+            error!("Failed to serialize packet {}", e);
+            return;
+        }
+        Ok(p) => p,
+    };
+    if let Err(e) = socket.send_to(&packet, addr) {
+        error!("Failed to serialize packet {}", e);
     }
 }

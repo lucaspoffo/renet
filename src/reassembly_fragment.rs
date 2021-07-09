@@ -72,6 +72,8 @@ pub enum FragmentError {
         expected: usize,
         got: usize,
     },
+    #[error("fragment with sequence {sequence} is too old")]
+    OldSequence { sequence: u16 },
 }
 
 impl From<io::Error> for FragmentError {
@@ -94,14 +96,11 @@ impl SequenceBuffer<ReassemblyFragment> {
             ..
         } = fragment;
 
-        if !self.exists(sequence) {
-            let reassembly_fragment =
-                ReassemblyFragment::new(sequence, num_fragments as u32, config.fragment_size);
-            self.insert(sequence, reassembly_fragment);
-        }
-
-        // TODO: Maybe add get_or_insert
-        let reassembly_fragment = self.get_mut(sequence).unwrap();
+        let reassembly_fragment = self
+            .get_or_insert_with(sequence, || {
+                ReassemblyFragment::new(sequence, num_fragments as u32, config.fragment_size)
+            })
+            .ok_or(FragmentError::OldSequence { sequence })?;
 
         if reassembly_fragment.num_fragments_total != num_fragments as u32 {
             return Err(FragmentError::InvalidTotalFragment {
@@ -149,7 +148,9 @@ impl SequenceBuffer<ReassemblyFragment> {
         cursor.write_all(&payload)?;
 
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
-            let reassembly_fragment = self.remove(sequence).unwrap();
+            let reassembly_fragment = self
+                .remove(sequence)
+                .expect("ReassemblyFragment always exists here");
             trace!(
                 "Completed the reassembly of packet {}.",
                 reassembly_fragment.sequence

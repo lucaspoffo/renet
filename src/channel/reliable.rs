@@ -138,7 +138,10 @@ impl Channel for ReliableOrderedChannel {
             let messages: Vec<Message> = messages_id
                 .iter()
                 .map(|m_id| {
-                    let message_send = self.messages_send.get_mut(*m_id).unwrap();
+                    let message_send = self
+                        .messages_send
+                        .get_mut(*m_id)
+                        .expect("Message to send always exists");
                     message_send.last_time_sent = Some(now);
                     message_send.message.clone()
                 })
@@ -329,17 +332,5 @@ mod tests {
         let messages = channel.get_messages_to_send(None, sequence);
 
         assert!(messages.is_none());
-
-        /* FIXME: Create Instant wrapper so we can mock pass of time
-         * Tokio does it.
-        sequence += 1;
-        channel.update_current_time(now + Duration::from_millis(resend_time));
-
-        let messages = channel.get_messages_to_send(None, sequence).unwrap();
-
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].payload, TestMessages::First.serialize());
-        assert_eq!(messages[0].id, 0);
-        */
     }
 }
