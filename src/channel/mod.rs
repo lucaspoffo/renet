@@ -12,7 +12,6 @@ pub trait ChannelConfig {
     fn new_channel(&self) -> Box<dyn Channel>;
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     id: u16,

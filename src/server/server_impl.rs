@@ -290,7 +290,11 @@ where
     }
 }
 
-fn try_send_packet(socket: &UdpSocket, packet: impl Into<Packet>, addr: &SocketAddr) -> Result<(), RenetError> {
+fn try_send_packet(
+    socket: &UdpSocket,
+    packet: impl Into<Packet>,
+    addr: &SocketAddr,
+) -> Result<(), RenetError> {
     let packet: Packet = packet.into();
     let packet = bincode::serialize(&packet)?;
     socket.send_to(&packet, addr)?;

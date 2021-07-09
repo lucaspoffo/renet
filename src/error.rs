@@ -1,7 +1,7 @@
 use crate::reassembly_fragment::FragmentError;
 
+use serde::{Deserialize, Serialize};
 use std::{io, result};
-use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 pub type Result<T> = result::Result<T, RenetError>;
@@ -32,4 +32,3 @@ pub enum RenetError {
     #[error("connection error: {0}")]
     ConnectionError(ConnectionError),
 }
-

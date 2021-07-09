@@ -10,9 +10,9 @@ pub use remote_client::RemoteClient;
 
 pub trait Client {
     fn id(&self) -> ClientId;
-    
+
     fn is_connected(&self) -> bool;
-    
+
     // TODO: Should return Result
     fn send_message(&mut self, channel_id: u8, message: Box<[u8]>);
 
