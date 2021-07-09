@@ -110,8 +110,7 @@ where
         None
     }
 
-    // TODO: rename to broadcast_message
-    pub fn send_message_to_all_clients<C: Into<u8>>(&mut self, channel_id: C, message: Box<[u8]>) {
+    pub fn broadcast_message<C: Into<u8>>(&mut self, channel_id: C, message: Box<[u8]>) {
         let channel_id = channel_id.into();
         for remote_connection in self.remote_clients.values_mut() {
             if let Err(e) = remote_connection.send_message(channel_id, message.clone()) {
@@ -126,8 +125,7 @@ where
         }
     }
 
-    // TODO: rename to send_message
-    pub fn send_message_to_client<C: Into<u8>>(
+    pub fn send_message<C: Into<u8>>(
         &mut self,
         client_id: ClientId,
         channel_id: C,
