@@ -1,12 +1,13 @@
 use crate::error::RenetError;
 use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
 use crate::remote_connection::ClientId;
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+
 use log::debug;
-use std::io;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 // TODO: Add version verification
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 enum Packet {
     ConnectionRequest(ClientId),
     ConnectionDenied,
@@ -15,118 +16,10 @@ enum Packet {
     Disconnect,
 }
 
-#[repr(C)]
-enum PacketId {
-    ConnectionRequest = 1,
-    ConnectionDenied = 2,
-    KeepAlive = 3,
-    Payload = 4,
-    Disconnect = 5,
-}
-
-impl PacketId {
-    fn from_u8(id: u8) -> Result<Self, ConnectionError> {
-        let packet_id = match id {
-            1 => Self::ConnectionRequest,
-            2 => Self::ConnectionDenied,
-            3 => Self::KeepAlive,
-            4 => Self::Payload,
-            5 => Self::Disconnect,
-            _ => return Err(ConnectionError::InvalidPacket),
-        };
-
-        Ok(packet_id)
-    }
-}
-
-// TODO: Refactor with error crate
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ConnectionError {
-    Denied,
-    IOError(io::Error),
+    #[error("received invalid protocol packet")]
     InvalidPacket,
-    ClientAlreadyConnected,
-    ClientDisconnected,
-}
-
-impl std::fmt::Display for ConnectionError {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(())
-    }
-}
-
-impl std::error::Error for ConnectionError {
-    fn description(&self) -> &str {
-        "Connection Error"
-    }
-}
-
-impl From<io::Error> for ConnectionError {
-    fn from(inner: io::Error) -> ConnectionError {
-        ConnectionError::IOError(inner)
-    }
-}
-
-impl From<ConnectionError> for RenetError {
-    fn from(err: ConnectionError) -> Self {
-        RenetError::AuthenticationError(Box::new(err))
-    }
-}
-
-impl Packet {
-    pub fn id(&self) -> PacketId {
-        match *self {
-            Packet::ConnectionRequest(_) => PacketId::ConnectionRequest,
-            Packet::ConnectionDenied => PacketId::ConnectionDenied,
-            Packet::KeepAlive => PacketId::KeepAlive,
-            Packet::Disconnect => PacketId::Disconnect,
-            Packet::Payload(_) => PacketId::Payload,
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        match self {
-            Packet::ConnectionRequest(_) => 9,
-            Packet::Payload(ref p) => 1 + p.len(),
-            _ => 1,
-        }
-    }
-
-    fn write<W>(&self, out: &mut W) -> Result<(), io::Error>
-    where
-        W: io::Write,
-    {
-        match *self {
-            Packet::ConnectionRequest(p) => out.write_u64::<BigEndian>(p),
-            Packet::Payload(ref p) => out.write_all(p),
-            _ => Ok(()),
-        }
-    }
-
-    pub fn encode(&self, mut buffer: &mut [u8]) -> Result<(), ConnectionError> {
-        buffer.write_u8(self.id() as u8)?;
-        self.write(&mut buffer)?;
-        Ok(())
-    }
-
-    pub fn decode(mut buffer: &[u8]) -> Result<Packet, ConnectionError> {
-        let packet_type = buffer.read_u8()?;
-        let packet_type = PacketId::from_u8(packet_type)?;
-
-        match packet_type {
-            PacketId::ConnectionRequest => {
-                let client_id = buffer.read_u64::<BigEndian>()?;
-                Ok(Packet::ConnectionRequest(client_id))
-            }
-            PacketId::Payload => {
-                let payload = buffer[..buffer.len()].to_vec();
-                Ok(Packet::Payload(payload))
-            }
-            PacketId::Disconnect => Ok(Packet::Disconnect),
-            PacketId::KeepAlive => Ok(Packet::KeepAlive),
-            PacketId::ConnectionDenied => Ok(Packet::ConnectionDenied),
-        }
-    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -156,16 +49,16 @@ impl UnsecureClientProtocol {
 impl SecurityService for UnsecureService {
     fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>, RenetError> {
         let packet = Packet::Payload(data.into());
-        let mut buffer = vec![0u8; packet.size()];
-        packet.encode(&mut buffer)?;
-        Ok(buffer)
+        Ok(bincode::serialize(&packet)?)
     }
 
     fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>, RenetError> {
-        let packet = Packet::decode(data)?;
+        let packet = bincode::deserialize(data)?;
         match packet {
             Packet::Payload(payload) => Ok(payload),
-            _ => Err(ConnectionError::InvalidPacket.into()),
+            _ => Err(RenetError::AuthenticationError(Box::new(
+                ConnectionError::InvalidPacket,
+            ))),
         }
     }
 }
@@ -188,15 +81,12 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
             _ => return Ok(None),
         };
 
-        // TODO: create buffer inside struct
-        let mut buffer = vec![0u8; packet.size()];
-        packet.encode(&mut buffer)?;
-        Ok(Some(buffer))
+        let packet = bincode::serialize(&packet)?;
+        Ok(Some(packet))
     }
 
     fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
-        let packet = Packet::decode(payload)?;
-        // TODO: better debug logs
+        let packet = bincode::deserialize(payload)?;
         match (packet, &self.state) {
             (Packet::KeepAlive, ClientState::SendingConnectionRequest) => {
                 debug!("Received KeepAlive, moving to State Accepted");
@@ -227,7 +117,6 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
 enum ServerState {
     SendingKeepAlive,
     Accepted,
-    // TimedOut,
 }
 
 pub struct UnsecureServerProtocol {
@@ -248,15 +137,11 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
             _ => return Ok(None),
         };
 
-        // TODO: create buffer inside struct
-        let mut buffer = vec![0u8; packet.size()];
-        packet.encode(&mut buffer)?;
-        Ok(Some(buffer))
+        Ok(Some(bincode::serialize(&packet)?))
     }
 
     fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
-        let packet = Packet::decode(payload)?;
-        // TODO: better debug logs
+        let packet = bincode::deserialize(payload)?;
         match (packet, &self.state) {
             (Packet::ConnectionRequest(_), _) => {}
             (Packet::KeepAlive, ServerState::SendingKeepAlive) => {
@@ -284,14 +169,17 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
 
 impl ServerAuthenticationProtocol for UnsecureServerProtocol {
     fn from_payload(payload: &[u8]) -> Result<Self, RenetError> {
-        let packet = Packet::decode(payload)?;
+        let packet = bincode::deserialize(payload)?;
         if let Packet::ConnectionRequest(client_id) = packet {
-            return Ok(Self {
+            Ok(Self {
                 id: client_id,
                 state: ServerState::SendingKeepAlive,
-            });
+            })
+        } else {
+            Err(RenetError::AuthenticationError(Box::new(
+                ConnectionError::InvalidPacket,
+            )))
         }
-        Err(ConnectionError::InvalidPacket.into())
     }
 }
 
