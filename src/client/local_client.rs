@@ -2,18 +2,19 @@ use std::collections::HashMap;
 
 use crate::client::Client;
 use crate::error::RenetError;
+use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
 pub struct LocalClient {
     pub id: u64,
-    sender: HashMap<u8, Sender<Box<[u8]>>>,
-    receiver: HashMap<u8, Receiver<Box<[u8]>>>,
+    sender: HashMap<u8, Sender<Payload>>,
+    receiver: HashMap<u8, Receiver<Payload>>,
 }
 
 impl LocalClient {
-    pub fn send_message(&self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+    pub fn send_message(&self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         let channel_sender = self
             .sender
             .get(&channel_id)
@@ -23,7 +24,7 @@ impl LocalClient {
         Ok(())
     }
 
-    pub fn receive_message(&self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
+    pub fn receive_message(&self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
         let channel_sender = self
             .receiver
             .get(&channel_id)
@@ -35,8 +36,8 @@ impl LocalClient {
 
 pub struct LocalClientConnected {
     id: ClientId,
-    sender: HashMap<u8, Sender<Box<[u8]>>>,
-    receiver: HashMap<u8, Receiver<Box<[u8]>>>,
+    sender: HashMap<u8, Sender<Payload>>,
+    receiver: HashMap<u8, Receiver<Payload>>,
     network_info: NetworkInfo,
 }
 
@@ -83,7 +84,7 @@ impl Client for LocalClientConnected {
         true
     }
 
-    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         let sender = self
             .sender
             .get(&channel_id)
@@ -93,7 +94,7 @@ impl Client for LocalClientConnected {
         Ok(())
     }
 
-    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
         let receiver = self
             .receiver
             .get(&channel_id)

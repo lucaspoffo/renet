@@ -116,7 +116,7 @@ fn test_remote_connection_reliable_channel() {
     for i in 0..number_messages {
         let message = TestMessage { value: i };
         let message = bincode::serialize(&message).unwrap();
-        server.broadcast_message(Channels::Reliable, message.into_boxed_slice());
+        server.broadcast_message(Channels::Reliable, message);
     }
 
     server.update().unwrap();
@@ -151,7 +151,7 @@ fn test_remote_connection_unreliable_channel() {
     for i in 0..number_messages {
         let message = TestMessage { value: i };
         let message = bincode::serialize(&message).unwrap();
-        server.broadcast_message(Channels::Unreliable, message.into_boxed_slice());
+        server.broadcast_message(Channels::Unreliable, message);
     }
 
     server.update().unwrap();

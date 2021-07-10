@@ -1,7 +1,7 @@
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
 use crate::error::{ConnectionError, RenetError};
-use crate::packet::{Packet, Unauthenticaded};
+use crate::packet::{Packet, Payload, Unauthenticaded};
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
 
@@ -114,7 +114,7 @@ where
         &mut self,
         client_id: ClientId,
         channel_id: C,
-        message: Box<[u8]>,
+        message: Vec<u8>,
     ) -> Result<(), RenetError> {
         let channel_id = channel_id.into();
         if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
@@ -126,7 +126,7 @@ where
         }
     }
 
-    pub fn broadcast_message<C: Into<u8>>(&mut self, channel_id: C, message: Box<[u8]>) {
+    pub fn broadcast_message<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
         let channel_id = channel_id.into();
         for remote_connection in self.remote_clients.values_mut() {
             if let Err(e) = remote_connection.send_message(channel_id, message.clone()) {
@@ -145,7 +145,7 @@ where
         &mut self,
         client_id: ClientId,
         channel_id: C,
-    ) -> Result<Option<Box<[u8]>>, RenetError> {
+    ) -> Result<Option<Payload>, RenetError> {
         let channel_id = channel_id.into();
         if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
             remote_client.receive_message(channel_id)

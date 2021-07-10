@@ -1,6 +1,9 @@
-use crate::channel::{Channel, ChannelPacketData};
+use crate::channel::Channel;
 use crate::error::{ConnectionError, RenetError};
-use crate::packet::{AckData, Authenticated, HeartBeat, Message, Normal, Packet, Unauthenticaded};
+use crate::packet::{
+    AckData, Authenticated, ChannelPacketData, HeartBeat, Message, Normal, Packet, Payload,
+    Unauthenticaded,
+};
 use crate::protocol::{AuthenticationProtocol, SecurityService};
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
@@ -173,13 +176,22 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         }
     }
 
-    pub fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         let channel = self
             .channels
             .get_mut(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
         channel.send_message(message);
         Ok(())
+    }
+
+    pub fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
+        let channel = match self.channels.get_mut(&channel_id) {
+            Some(c) => c,
+            None => return Err(RenetError::InvalidChannel { channel_id }),
+        };
+
+        Ok(channel.receive_message())
     }
 
     pub fn update(&mut self) {
@@ -227,91 +239,88 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 }
                 Ok(())
             }
-            Packet::Authenticated(Authenticated { payload }) => {
-                match self.state {
-                    ConnectionState::Disconnected { .. } => Err(RenetError::ClientDisconnected),
-                    ConnectionState::Connecting { .. } => Err(RenetError::NotAuthenticated),
-                    ConnectionState::Connected {
-                        ref mut security_service,
-                    } => {
-                        let payload = security_service.ss_unwrap(&payload)?;
-                        let message = bincode::deserialize(&payload)?;
-                        let message_payload = match message {
-                            Message::Normal(Normal {
-                                sequence,
-                                ack_data,
-                                payload,
-                            }) => {
+            Packet::Authenticated(Authenticated { payload }) => match self.state {
+                ConnectionState::Disconnected { .. } => Err(RenetError::ClientDisconnected),
+                ConnectionState::Connecting { .. } => Err(RenetError::NotAuthenticated),
+                ConnectionState::Connected {
+                    ref mut security_service,
+                } => {
+                    let payload = security_service.ss_unwrap(&payload)?;
+                    let message = bincode::deserialize(&payload)?;
+                    let channels_packet_data = match message {
+                        Message::Normal(Normal {
+                            sequence,
+                            ack_data,
+                            payload,
+                        }) => {
+                            let received_packet =
+                                ReceivedPacket::new(Instant::now(), payload.len());
+                            self.received_buffer.insert(sequence, received_packet);
+                            self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+                            payload
+                        }
+                        Message::Fragment(fragment) => {
+                            if let Some(received_packet) =
+                                self.received_buffer.get_mut(fragment.sequence)
+                            {
+                                received_packet.size_bytes += payload.len();
+                            } else {
                                 let received_packet =
                                     ReceivedPacket::new(Instant::now(), payload.len());
-                                self.received_buffer.insert(sequence, received_packet);
-                                self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
-                                payload
+                                self.received_buffer
+                                    .insert(fragment.sequence, received_packet);
                             }
-                            Message::Fragment(fragment) => {
-                                if let Some(received_packet) =
-                                    self.received_buffer.get_mut(fragment.sequence)
-                                {
-                                    received_packet.size_bytes += payload.len();
-                                } else {
-                                    let received_packet =
-                                        ReceivedPacket::new(Instant::now(), payload.len());
-                                    self.received_buffer
-                                        .insert(fragment.sequence, received_packet);
-                                }
 
-                                self.update_acket_packets(
-                                    fragment.ack_data.ack,
-                                    fragment.ack_data.ack_bits,
+                            self.update_acket_packets(
+                                fragment.ack_data.ack,
+                                fragment.ack_data.ack_bits,
+                            );
+
+                            let payload = self
+                                .reassembly_buffer
+                                .handle_fragment(fragment, &self.config.fragment_config)?;
+                            match payload {
+                                None => return Ok(()),
+                                Some(p) => p,
+                            }
+                        }
+                        Message::Heartbeat(HeartBeat { ack_data }) => {
+                            self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+                            return Ok(());
+                        }
+                        Message::ConnectionError(error) => {
+                            self.state = ConnectionState::Disconnected {
+                                reason: error.clone(),
+                            };
+                            return Err(RenetError::ConnectionError(error));
+                        }
+                    };
+
+                    for channel_packet_data in channels_packet_data.into_iter() {
+                        let channel = match self.channels.get_mut(&channel_packet_data.channel_id) {
+                            Some(c) => c,
+                            None => {
+                                error!(
+                                    "Discarted ChannelPacketData with invalid id: {:?}",
+                                    channel_packet_data.channel_id
                                 );
-
-                                let payload = self
-                                    .reassembly_buffer
-                                    .handle_fragment(fragment, &self.config.fragment_config)?;
-                                match payload {
-                                    None => return Ok(()),
-                                    Some(p) => p,
-                                }
-                            }
-                            Message::Heartbeat(HeartBeat { ack_data }) => {
-                                self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
-                                return Ok(());
-                            }
-                            Message::ConnectionError(error) => {
-                                self.state = ConnectionState::Disconnected {
-                                    reason: error.clone(),
-                                };
-                                return Err(RenetError::ConnectionError(error));
+                                continue;
                             }
                         };
-
-                        // TODO: should Vec<ChannelPacketData> be inside packet instead of payload?
-                        let mut channel_packets =
-                            bincode::deserialize::<Vec<ChannelPacketData>>(&message_payload)?;
-
-                        for channel_packet_data in channel_packets.drain(..) {
-                            let channel =
-                                match self.channels.get_mut(&channel_packet_data.channel_id) {
-                                    Some(c) => c,
-                                    None => {
-                                        error!(
-                                            "Received channel packet with invalid id: {:?}",
-                                            channel_packet_data.channel_id
-                                        );
-                                        continue;
-                                    }
-                                };
-                            channel.process_messages(channel_packet_data.messages);
-                        }
-
-                        Ok(())
+                        channel.process_messages(channel_packet_data.messages);
                     }
+
+                    Ok(())
                 }
-            }
+            },
         }
     }
 
-    pub fn send_payload(&mut self, payload: &[u8], socket: &UdpSocket) -> Result<(), RenetError> {
+    pub fn send_channels_packet_data(
+        &mut self,
+        channels_packet_data: Vec<ChannelPacketData>,
+        socket: &UdpSocket,
+    ) -> Result<(), RenetError> {
         let security_service = match self.state {
             ConnectionState::Connected {
                 ref mut security_service,
@@ -320,30 +329,19 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             ConnectionState::Disconnected { .. } => return Err(RenetError::ClientDisconnected),
         };
 
-        if payload.len() > self.config.max_packet_size {
-            error!(
-                "Packet to large to send, maximum is {} got {}.",
-                self.config.max_packet_size,
-                payload.len()
-            );
-            return Err(RenetError::MaximumPacketSizeExceeded {
-                expected: self.config.max_packet_size,
-                got: payload.len(),
-            });
-        }
-
+        let packet_size = bincode::serialized_size(&channels_packet_data)?;
         let sequence = self.sequence;
         self.sequence += 1;
 
         let (ack, ack_bits) = self.received_buffer.ack_bits();
 
-        let sent_packet = SentPacket::new(Instant::now(), payload.len());
+        let sent_packet = SentPacket::new(Instant::now(), channels_packet_data.len());
         self.sent_buffer.insert(sequence, sent_packet);
-        // TODO: Add method in Packet to generate packets
-        let payload = if payload.len() > self.config.fragment_config.fragment_above {
+
+        let payload = if packet_size > self.config.fragment_config.fragment_above as u64 {
             debug!("Sending fragmented packet {}.", sequence);
             build_fragments(
-                payload,
+                channels_packet_data,
                 sequence,
                 AckData { ack, ack_bits },
                 &self.config.fragment_config,
@@ -351,7 +349,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         } else {
             debug!("Sending normal packet {}.", sequence);
             let packet = Message::Normal(Normal {
-                payload: payload.to_vec(),
+                payload: channels_packet_data.to_vec(),
                 sequence,
                 ack_data: AckData { ack, ack_bits },
             });
@@ -401,20 +399,19 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 ref mut security_service,
             } => {
                 let sequence = self.sequence;
-                let mut channel_packets: Vec<ChannelPacketData> = vec![];
+                let mut channels_packet_data: Vec<ChannelPacketData> = vec![];
                 for (channel_id, channel) in self.channels.iter_mut() {
-                    let messages = channel
-                        .get_messages_to_send(Some(self.config.max_packet_size as u32), sequence);
+                    let messages =
+                        channel.get_messages_to_send(self.config.max_packet_size as u32, sequence);
                     if let Some(messages) = messages {
                         debug!("Sending {} messages.", messages.len());
                         let packet_data = ChannelPacketData::new(messages, *channel_id);
-                        channel_packets.push(packet_data);
+                        channels_packet_data.push(packet_data);
                     }
                 }
 
-                if !channel_packets.is_empty() {
-                    let payload = bincode::serialize(&channel_packets)?;
-                    self.send_payload(&payload, socket)?;
+                if !channels_packet_data.is_empty() {
+                    self.send_channels_packet_data(channels_packet_data, socket)?;
                     self.heartbeat_timer.reset();
                 } else if self.heartbeat_timer.is_finished() {
                     let (ack, ack_bits) = self.received_buffer.ack_bits();
@@ -444,15 +441,6 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             }
         }
         Ok(())
-    }
-
-    pub fn receive_message(&mut self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
-        let channel = match self.channels.get_mut(&channel_id) {
-            Some(c) => c,
-            None => return Err(RenetError::InvalidChannel { channel_id }),
-        };
-
-        Ok(channel.receive_message())
     }
 
     pub fn update_network_info(&mut self) {

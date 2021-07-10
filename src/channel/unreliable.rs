@@ -1,26 +1,26 @@
-use crate::channel::{Channel, ChannelConfig, Message};
+use crate::{
+    channel::{Channel, ChannelConfig},
+    packet::Payload,
+};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 pub struct UnreliableUnorderedChannelConfig {
-    packet_budget_bytes: Option<u32>,
     max_message_per_packet: u32,
 }
 
 impl Default for UnreliableUnorderedChannelConfig {
     fn default() -> Self {
         Self {
-            packet_budget_bytes: None,
             max_message_per_packet: 256,
         }
     }
 }
 
 pub struct UnreliableUnorderedChannel {
-    send_message_id: u16,
     config: UnreliableUnorderedChannelConfig,
-    messages_to_send: VecDeque<Message>,
-    messages_received: VecDeque<Message>,
+    messages_to_send: VecDeque<Payload>,
+    messages_received: VecDeque<Payload>,
 }
 
 impl ChannelConfig for UnreliableUnorderedChannelConfig {
@@ -32,7 +32,6 @@ impl ChannelConfig for UnreliableUnorderedChannelConfig {
 impl UnreliableUnorderedChannel {
     fn new(config: UnreliableUnorderedChannelConfig) -> Self {
         Self {
-            send_message_id: 0,
             messages_to_send: VecDeque::new(),
             messages_received: VecDeque::new(),
             config,
@@ -41,38 +40,23 @@ impl UnreliableUnorderedChannel {
 }
 
 impl Channel for UnreliableUnorderedChannel {
-    fn process_messages(&mut self, messages: Vec<Message>) {
+    fn process_messages(&mut self, messages: Vec<Payload>) {
         self.messages_received.extend(messages.into_iter());
     }
 
-    fn receive_message(&mut self) -> Option<Box<[u8]>> {
-        if let Some(message) = self.messages_received.pop_front() {
-            Some(message.payload)
-        } else {
-            None
-        }
+    fn receive_message(&mut self) -> Option<Payload> {
+        self.messages_received.pop_front()
     }
 
-    fn send_message(&mut self, message_payload: Box<[u8]>) {
-        let message = Message::new(self.send_message_id, message_payload);
-        self.send_message_id = self.send_message_id.wrapping_add(1);
-        self.messages_to_send.push_back(message);
+    fn send_message(&mut self, message_payload: Payload) {
+        self.messages_to_send.push_back(message_payload);
     }
 
     fn get_messages_to_send(
         &mut self,
-        available_bits: Option<u32>,
+        mut available_bytes: u32,
         _sequence: u16,
-    ) -> Option<Vec<Message>> {
-        // TODO: Should we even be doing this?
-        let available_bits = available_bits.unwrap_or(u32::MAX);
-
-        let mut available_bits = if let Some(packet_budget) = self.config.packet_budget_bytes {
-            std::cmp::min(packet_budget * 8, available_bits)
-        } else {
-            available_bits
-        };
-
+    ) -> Option<Vec<Payload>> {
         let mut num_messages = 0;
         let mut messages = vec![];
 
@@ -81,29 +65,23 @@ impl Channel for UnreliableUnorderedChannel {
                 break;
             }
 
-            // TODO: Magic number to give up trying to fit a message.
-            if available_bits < 40 {
+            let message_size = message.len() as u32;
+            if message_size > available_bytes {
                 break;
             }
 
-            let message_size = message.serialized_size_bytes() * 8;
-            // TODO: if there is not enough space we simply drop the message
-            // Should we do something else?
-            if message_size <= available_bits {
-                available_bits -= message_size;
-                num_messages += 1;
-                messages.push(message);
-            }
+            available_bytes -= message_size;
+            num_messages += 1;
+            messages.push(message);
         }
 
-        if !messages.is_empty() {
-            Some(messages)
-        } else {
+        if messages.is_empty() {
             None
+        } else {
+            Some(messages)
         }
     }
 
-    // Since this is an unreliable channel
-    // we do nothing with the ack.
+    // Since this is an unreliable channel, we do nothing with the ack.
     fn process_ack(&mut self, _ack: u16) {}
 }

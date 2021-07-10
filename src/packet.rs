@@ -2,6 +2,23 @@ use crate::error::ConnectionError;
 
 use serde::{Deserialize, Serialize};
 
+pub type Payload = Vec<u8>;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChannelPacketData {
+    pub(crate) messages: Vec<Payload>,
+    pub(crate) channel_id: u8,
+}
+
+impl ChannelPacketData {
+    pub fn new(messages: Vec<Payload>, channel_id: u8) -> Self {
+        Self {
+            messages,
+            channel_id,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct AckData {
     pub ack: u16,
@@ -17,12 +34,12 @@ pub enum Packet {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Unauthenticaded {
     ConnectionError(ConnectionError),
-    Protocol { payload: Vec<u8> },
+    Protocol { payload: Payload },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Authenticated {
-    pub payload: Vec<u8>,
+    pub payload: Payload,
 }
 
 impl From<Authenticated> for Packet {
@@ -49,7 +66,7 @@ pub enum Message {
 pub struct Normal {
     pub sequence: u16,
     pub ack_data: AckData,
-    pub payload: Vec<u8>,
+    pub payload: Vec<ChannelPacketData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -58,7 +75,7 @@ pub struct Fragment {
     pub ack_data: AckData,
     pub fragment_id: u8,
     pub num_fragments: u8,
-    pub payload: Vec<u8>,
+    pub payload: Payload,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

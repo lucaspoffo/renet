@@ -1,6 +1,7 @@
 use crate::channel::ChannelConfig;
 use crate::client::Client;
 use crate::error::RenetError;
+use crate::packet::Payload;
 use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
 
@@ -49,11 +50,11 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         self.id
     }
 
-    fn send_message(&mut self, channel_id: u8, message: Box<[u8]>) -> Result<(), RenetError> {
+    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         self.connection.send_message(channel_id, message)
     }
 
-    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Box<[u8]>>, RenetError> {
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
         self.connection.receive_message(channel_id)
     }
 
