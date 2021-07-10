@@ -71,11 +71,6 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
     }
 
     fn update(&mut self) -> Result<(), RenetError> {
-        if self.connection.has_timed_out() {
-            return Err(RenetError::ConnectionTimedOut);
-        }
-        self.connection.update();
-
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
@@ -86,12 +81,18 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
                         continue;
                     }
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(RenetError::IOError(e)),
             };
 
             // TODO: correctly handle error
             self.connection.process_payload(payload)?;
         }
+
+        if self.connection.has_timed_out() {
+            return Err(RenetError::ConnectionTimedOut);
+        }
+        self.connection.update();
+        Ok(())
     }
 }

@@ -183,11 +183,21 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
     }
 
     pub fn update(&mut self) {
-        if let ConnectionState::Connecting { ref mut protocol } = self.state {
-            if protocol.is_authenticated() {
-                let security_service = protocol.build_security_interface();
-                self.state = ConnectionState::Connected { security_service };
+        match self.state {
+            ConnectionState::Connecting { ref mut protocol } => {
+                if protocol.is_authenticated() {
+                    let security_service = protocol.build_security_interface();
+                    self.state = ConnectionState::Connected { security_service };
+                }
             }
+            ConnectionState::Connected { .. } => {
+                for ack in self.acks.drain(..) {
+                    for channel in self.channels.values_mut() {
+                        channel.process_ack(ack);
+                    }
+                }
+            }
+            ConnectionState::Disconnected { .. } => {}
         }
     }
 
@@ -236,7 +246,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                                     ReceivedPacket::new(Instant::now(), payload.len());
                                 self.received_buffer.insert(sequence, received_packet);
                                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
-                                Some(payload)
+                                payload
                             }
                             Message::Fragment(fragment) => {
                                 if let Some(received_packet) =
@@ -255,12 +265,17 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                                     fragment.ack_data.ack_bits,
                                 );
 
-                                self.reassembly_buffer
-                                    .handle_fragment(fragment, &self.config.fragment_config)?
+                                let payload = self
+                                    .reassembly_buffer
+                                    .handle_fragment(fragment, &self.config.fragment_config)?;
+                                match payload {
+                                    None => return Ok(()),
+                                    Some(p) => p,
+                                }
                             }
                             Message::Heartbeat(HeartBeat { ack_data }) => {
                                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
-                                None
+                                return Ok(());
                             }
                             Message::ConnectionError(error) => {
                                 self.state = ConnectionState::Disconnected {
@@ -268,18 +283,6 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                                 };
                                 return Err(RenetError::ConnectionError(error));
                             }
-                        };
-
-                        // TODO: move to update? if we do we can return earlier instead of an optional payload
-                        for ack in self.acks.drain(..) {
-                            for channel in self.channels.values_mut() {
-                                channel.process_ack(ack);
-                            }
-                        }
-
-                        let message_payload = match message_payload {
-                            None => return Ok(()),
-                            Some(p) => p,
                         };
 
                         // TODO: should Vec<ChannelPacketData> be inside packet instead of payload?
@@ -338,7 +341,6 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         self.sent_buffer.insert(sequence, sent_packet);
         // TODO: Add method in Packet to generate packets
         let payload = if payload.len() > self.config.fragment_config.fragment_above {
-            // Fragment packet
             debug!("Sending fragmented packet {}.", sequence);
             build_fragments(
                 payload,
@@ -347,7 +349,6 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 &self.config.fragment_config,
             )?
         } else {
-            // Normal packet
             debug!("Sending normal packet {}.", sequence);
             let packet = Message::Normal(Normal {
                 payload: payload.to_vec(),
