@@ -70,7 +70,7 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         self.connection.is_connected()
     }
 
-    fn process_events(&mut self) -> Result<(), RenetError> {
+    fn update(&mut self) -> Result<(), RenetError> {
         if self.connection.has_timed_out() {
             return Err(RenetError::ConnectionTimedOut);
         }

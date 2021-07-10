@@ -93,12 +93,12 @@ fn connect_to_server(
     request: &mut RemoteClient<UnsecureClientProtocol>,
 ) -> Result<(), RenetError> {
     loop {
-        request.process_events()?;
+        request.update()?;
         if request.is_connected() {
             return Ok(());
         }
         request.send_packets()?;
-        server.update();
+        server.update()?;
         server.send_packets();
     }
 }
@@ -119,11 +119,11 @@ fn test_remote_connection_reliable_channel() {
         server.broadcast_message(Channels::Reliable, message.into_boxed_slice());
     }
 
-    server.update();
+    server.update().unwrap();
     server.send_packets();
 
     loop {
-        remote_connection.process_events().unwrap();
+        remote_connection.update().unwrap();
         while let Ok(Some(message)) = remote_connection.receive_message(Channels::Reliable.into()) {
             let message: TestMessage = bincode::deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
@@ -154,11 +154,11 @@ fn test_remote_connection_unreliable_channel() {
         server.broadcast_message(Channels::Unreliable, message.into_boxed_slice());
     }
 
-    server.update();
+    server.update().unwrap();
     server.send_packets();
 
     loop {
-        remote_connection.process_events().unwrap();
+        remote_connection.update().unwrap();
         while let Ok(Some(message)) = remote_connection.receive_message(Channels::Unreliable.into())
         {
             let message: TestMessage = bincode::deserialize(&message).unwrap();

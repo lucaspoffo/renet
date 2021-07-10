@@ -21,5 +21,5 @@ pub trait Client {
 
     fn send_packets(&mut self) -> Result<(), RenetError>;
 
-    fn process_events(&mut self) -> Result<(), RenetError>;
+    fn update(&mut self) -> Result<(), RenetError>;
 }

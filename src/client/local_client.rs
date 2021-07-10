@@ -110,7 +110,7 @@ impl Client for LocalClientConnected {
         Ok(())
     }
 
-    fn process_events(&mut self) -> Result<(), RenetError> {
+    fn update(&mut self) -> Result<(), RenetError> {
         Ok(())
     }
 }
