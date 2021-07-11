@@ -4,6 +4,7 @@ use crate::sequence_buffer::SequenceBuffer;
 
 use log::error;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -232,7 +233,10 @@ impl Channel for ReliableOrderedChannel {
         }
     }
 
-    fn send_message(&mut self, message_payload: Payload) {
+    fn send_message(
+        &mut self,
+        message_payload: Payload,
+    ) -> Result<(), Box<dyn Error + Sync + Send + 'static>> {
         let message_id = self.send_message_id;
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
@@ -240,6 +244,9 @@ impl Channel for ReliableOrderedChannel {
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
+
+        // TODO: Should emit error when full
+        Ok(())
     }
 
     fn receive_message(&mut self) -> Option<Payload> {
@@ -293,7 +300,9 @@ mod tests {
         assert!(!channel.has_messages_to_send());
         assert_eq!(channel.num_messages_sent, 0);
 
-        channel.send_message(TestMessages::Second(0).serialize());
+        channel
+            .send_message(TestMessages::Second(0).serialize())
+            .unwrap();
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
@@ -341,8 +350,8 @@ mod tests {
         let config = ReliableOrderedChannelConfig::default();
         let mut channel: ReliableOrderedChannel = ReliableOrderedChannel::new(config);
 
-        channel.send_message(first_message.serialize());
-        channel.send_message(second_message.serialize());
+        channel.send_message(first_message.serialize()).unwrap();
+        channel.send_message(second_message.serialize()).unwrap();
 
         let message_size = bincode::serialized_size(&message).unwrap() as u32;
 
@@ -367,7 +376,9 @@ mod tests {
         config.message_resend_time = Duration::from_millis(0);
         let mut channel: ReliableOrderedChannel = ReliableOrderedChannel::new(config);
 
-        channel.send_message(TestMessages::First.serialize());
+        channel
+            .send_message(TestMessages::First.serialize())
+            .unwrap();
 
         let messages = channel.get_messages_to_send(u32::MAX, 0).unwrap();
         assert_eq!(messages.len(), 1);

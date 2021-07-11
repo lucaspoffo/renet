@@ -7,7 +7,7 @@ use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 
 pub struct LocalClient {
     pub id: u64,
@@ -26,9 +26,9 @@ impl LocalClient {
             .sender
             .get(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        // TODO: handle TrySendError
-        channel_sender.send(message).unwrap();
-        Ok(())
+        channel_sender
+            .send(message)
+            .map_err(|e| RenetError::ChannelError(Box::new(e)))
     }
 
     pub fn receive_message(&self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
@@ -36,8 +36,11 @@ impl LocalClient {
             .receiver
             .get(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        // TODO: handle TryRecvError
-        Ok(channel_sender.try_recv().ok())
+        match channel_sender.try_recv() {
+            Ok(payload) => Ok(Some(payload)),
+            Err(TryRecvError::Empty) => Ok(None),
+            Err(e) => Err(RenetError::ChannelError(Box::new(e))),
+        }
     }
 }
 
@@ -109,9 +112,9 @@ impl Client for LocalClientConnected {
             .sender
             .get(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        // TODO: handle TrySendError
-        sender.try_send(message).unwrap();
-        Ok(())
+        sender
+            .try_send(message)
+            .map_err(|e| RenetError::ChannelError(Box::new(e)))
     }
 
     fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
@@ -119,8 +122,11 @@ impl Client for LocalClientConnected {
             .receiver
             .get(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        // TODO: handle TryRecvError
-        Ok(receiver.try_recv().ok())
+        match receiver.try_recv() {
+            Ok(payload) => Ok(Some(payload)),
+            Err(TryRecvError::Empty) => Ok(None),
+            Err(e) => Err(RenetError::ChannelError(Box::new(e))),
+        }
     }
 
     fn network_info(&mut self) -> &NetworkInfo {

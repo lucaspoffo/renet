@@ -2,7 +2,7 @@ use crate::{
     channel::{Channel, ChannelConfig},
     packet::Payload,
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque, error::Error};
 
 #[derive(Debug, Clone)]
 pub struct UnreliableUnorderedChannelConfig {
@@ -48,8 +48,12 @@ impl Channel for UnreliableUnorderedChannel {
         self.messages_received.pop_front()
     }
 
-    fn send_message(&mut self, message_payload: Payload) {
+    fn send_message(
+        &mut self,
+        message_payload: Payload,
+    ) -> Result<(), Box<dyn Error + Sync + Send + 'static>> {
         self.messages_to_send.push_back(message_payload);
+        Ok(())
     }
 
     fn get_messages_to_send(

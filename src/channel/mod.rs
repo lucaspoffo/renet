@@ -1,6 +1,8 @@
 mod reliable;
 mod unreliable;
 
+use std::error::Error;
+
 pub use reliable::{ReliableOrderedChannel, ReliableOrderedChannelConfig};
 pub use unreliable::{UnreliableUnorderedChannel, UnreliableUnorderedChannelConfig};
 
@@ -15,6 +17,9 @@ pub trait Channel {
         -> Option<Vec<Payload>>;
     fn process_messages(&mut self, messages: Vec<Payload>);
     fn process_ack(&mut self, ack: u16);
-    fn send_message(&mut self, message_payload: Payload);
+    fn send_message(
+        &mut self,
+        message_payload: Payload,
+    ) -> Result<(), Box<dyn Error + Send + Sync + 'static>>;
     fn receive_message(&mut self) -> Option<Payload>;
 }

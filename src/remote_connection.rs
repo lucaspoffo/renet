@@ -205,8 +205,9 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             .channels
             .get_mut(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        channel.send_message(message);
-        Ok(())
+        channel
+            .send_message(message)
+            .map_err(|e| RenetError::ChannelError(e))
     }
 
     pub fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {

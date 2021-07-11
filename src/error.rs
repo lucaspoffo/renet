@@ -1,7 +1,7 @@
 use crate::reassembly_fragment::FragmentError;
 
 use serde::{Deserialize, Serialize};
-use std::{io, result};
+use std::{error::Error, io, result};
 use thiserror::Error;
 
 pub type Result<T> = result::Result<T, RenetError>;
@@ -27,7 +27,7 @@ pub enum RenetError {
     #[error("bincode failed to (de)serialize: {0}")]
     BincodeError(#[from] bincode::Error),
     #[error("error during protocol exchange: {0}")]
-    AuthenticationError(Box<dyn std::error::Error>),
+    AuthenticationError(Box<dyn Error + Send + Sync + 'static>),
     #[error("connection timed out.")]
     ConnectionTimedOut,
     #[error("packet fragmentation error: {0}")]
@@ -42,4 +42,6 @@ pub enum RenetError {
     InvalidChannel { channel_id: u8 },
     #[error("client not found")]
     ClientNotFound,
+    #[error("channel error: {0}")]
+    ChannelError(Box<dyn Error + Send + Sync + 'static>),
 }
