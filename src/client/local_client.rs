@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::client::Client;
-use crate::error::RenetError;
+use crate::error::{ConnectionError, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
@@ -82,6 +82,10 @@ impl Client for LocalClientConnected {
 
     fn is_connected(&self) -> bool {
         true
+    }
+
+    fn connection_error(&self) -> Option<ConnectionError> {
+        None
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {

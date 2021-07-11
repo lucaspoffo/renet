@@ -169,6 +169,13 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         matches!(self.state, ConnectionState::Connected { .. })
     }
 
+    pub fn connection_error(&self) -> Option<ConnectionError> {
+        match self.state {
+            ConnectionState::Disconnected { ref reason } => Some(reason.clone()),
+            _ => None,
+        }
+    }
+
     pub fn create_protocol_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
         match self.state {
             ConnectionState::Connecting { ref mut protocol } => protocol.create_payload(),
@@ -539,5 +546,29 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         } else {
             self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }
+    }
+
+    pub fn send_disconnect_packet(&mut self, socket: &UdpSocket) -> Result<(), RenetError> {
+        let payload = match self.state {
+            ConnectionState::Connected {
+                ref mut security_service,
+            } => {
+                let message = Message::ConnectionError(ConnectionError::DisconnectedByServer);
+                let message = bincode::serialize(&message)?;
+                let payload = security_service.ss_wrap(&message)?;
+                let packet = Packet::Authenticated(Authenticated { payload });
+                bincode::serialize(&packet)?
+            }
+            _ => {
+                let packet = Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
+                    ConnectionError::DisconnectedByServer,
+                ));
+
+                bincode::serialize(&packet)?
+            }
+        };
+
+        socket.send_to(&payload, self.addr)?;
+        Ok(())
     }
 }

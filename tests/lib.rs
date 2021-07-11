@@ -10,7 +10,7 @@ use renet::{
     error::ConnectionError,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{Server, ServerConfig},
+    server::{Server, ServerConfig, ServerEvent},
     RenetError,
 };
 
@@ -184,9 +184,32 @@ fn test_max_players_connected() {
     let mut server = setup_server_with_config(server_addr, server_config);
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6002", server_addr);
     let error = connect_to_server(&mut server, &mut remote_connection);
-    assert!(error.is_err());
-    match error {
-        Err(RenetError::ConnectionError(ConnectionError::MaxPlayer)) => {}
-        _ => unreachable!("ConnectionError::MaxPlayer error not occurred."),
-    }
+    assert!(matches!(
+        error,
+        Err(RenetError::ConnectionError(ConnectionError::MaxPlayer))
+    ));
+}
+
+#[test]
+fn test_server_disconnect_client() {
+    let server_addr = "127.0.0.1:5003".parse().unwrap();
+    let mut server = setup_server(server_addr);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6003", server_addr);
+    connect_to_server(&mut server, &mut remote_connection).unwrap();
+
+    server.disconnect(0);
+    let connect_event = server.get_event().unwrap();
+    assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
+    let error = remote_connection.update();
+    assert!(matches!(
+        error,
+        Err(RenetError::ConnectionError(
+            ConnectionError::DisconnectedByServer
+        ))
+    ));
+    let disconnect_event = server.get_event().unwrap();
+    assert!(matches!(
+        disconnect_event,
+        ServerEvent::ClientDisconnected(0)
+    ));
 }

@@ -1,6 +1,6 @@
 use crate::channel::ChannelConfig;
 use crate::client::Client;
-use crate::error::RenetError;
+use crate::error::{ConnectionError, RenetError};
 use crate::packet::Payload;
 use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
@@ -50,6 +50,14 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         self.id
     }
 
+    fn is_connected(&self) -> bool {
+        self.connection.is_connected()
+    }
+
+    fn connection_error(&self) -> Option<ConnectionError> {
+        self.connection.connection_error()
+    }
+
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         self.connection.send_message(channel_id, message)
     }
@@ -67,10 +75,6 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         Ok(())
     }
 
-    fn is_connected(&self) -> bool {
-        self.connection.is_connected()
-    }
-
     fn update(&mut self) -> Result<(), RenetError> {
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
@@ -86,7 +90,6 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
                 Err(e) => return Err(RenetError::IOError(e)),
             };
 
-            // TODO: correctly handle error
             self.connection.process_payload(payload)?;
         }
 

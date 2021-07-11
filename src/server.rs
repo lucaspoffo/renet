@@ -45,7 +45,7 @@ pub struct Server<P: ServerAuthenticationProtocol> {
     config: ServerConfig,
     socket: UdpSocket,
     remote_clients: HashMap<ClientId, RemoteConnection<P>>,
-    locale_clients: HashMap<ClientId, LocalClient>,
+    local_clients: HashMap<ClientId, LocalClient>,
     connecting: HashMap<ClientId, RemoteConnection<P>>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     events: VecDeque<ServerEvent>,
@@ -67,7 +67,7 @@ where
         Ok(Self {
             socket,
             remote_clients: HashMap::new(),
-            locale_clients: HashMap::new(),
+            local_clients: HashMap::new(),
             connecting: HashMap::new(),
             config,
             channels_config,
@@ -77,7 +77,7 @@ where
     }
 
     pub fn has_clients(&self) -> bool {
-        !self.remote_clients.is_empty() || !self.locale_clients.is_empty()
+        !self.remote_clients.is_empty() || !self.local_clients.is_empty()
     }
 
     pub fn get_event(&mut self) -> Option<ServerEvent> {
@@ -106,8 +106,24 @@ where
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
         let (local_client_connected, local_client) = LocalClientConnected::new(client_id, channels);
-        self.locale_clients.insert(client_id, local_client);
+        self.local_clients.insert(client_id, local_client);
         local_client_connected
+    }
+
+    pub fn disconnect(&mut self, client_id: ClientId) {
+        if let Some(mut remote_client) = self.remote_clients.remove(&client_id) {
+            self.events
+                .push_back(ServerEvent::ClientDisconnected(client_id));
+            if let Err(e) = remote_client.send_disconnect_packet(&self.socket) {
+                error!(
+                    "Failed to send disconnect packet to Client {}: {}",
+                    client_id, e
+                );
+            }
+        } else if self.local_clients.remove(&client_id).is_some() {
+            self.events
+                .push_back(ServerEvent::ClientDisconnected(client_id));
+        }
     }
 
     pub fn send_message<C: Into<u8>>(
@@ -119,7 +135,7 @@ where
         let channel_id = channel_id.into();
         if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
             remote_connection.send_message(channel_id, message)
-        } else if let Some(local_connection) = self.locale_clients.get_mut(&client_id) {
+        } else if let Some(local_connection) = self.local_clients.get_mut(&client_id) {
             local_connection.send_message(channel_id, message)
         } else {
             Err(RenetError::ClientNotFound)
@@ -134,7 +150,7 @@ where
             }
         }
 
-        for local_connection in self.locale_clients.values_mut() {
+        for local_connection in self.local_clients.values_mut() {
             if let Err(e) = local_connection.send_message(channel_id, message.clone()) {
                 error!("{}", e);
             }
@@ -149,7 +165,7 @@ where
         let channel_id = channel_id.into();
         if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
             remote_client.receive_message(channel_id)
-        } else if let Some(local_client) = self.locale_clients.get_mut(&client_id) {
+        } else if let Some(local_client) = self.local_clients.get_mut(&client_id) {
             local_client.receive_message(channel_id)
         } else {
             Err(RenetError::ClientNotFound)
@@ -158,7 +174,7 @@ where
 
     pub fn get_clients_id(&self) -> Vec<ClientId> {
         let mut clients: Vec<ClientId> = self.remote_clients.keys().copied().collect();
-        let mut local_clients: Vec<ClientId> = self.locale_clients.keys().copied().collect();
+        let mut local_clients: Vec<ClientId> = self.local_clients.keys().copied().collect();
         clients.append(&mut local_clients);
 
         clients

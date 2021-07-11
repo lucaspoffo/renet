@@ -12,6 +12,8 @@ pub enum ConnectionError {
     Denied,
     #[error("server has exceeded maximum players capacity")]
     MaxPlayer,
+    #[error("disconnected by server")]
+    DisconnectedByServer,
 }
 
 #[derive(Debug, Error)]
