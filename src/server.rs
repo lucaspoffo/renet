@@ -146,14 +146,32 @@ where
 
     pub fn broadcast_message<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
         let channel_id = channel_id.into();
-        for remote_connection in self.remote_clients.values_mut() {
-            if let Err(e) = remote_connection.send_message(channel_id, message.clone()) {
+        for remote_client in self.remote_clients.values_mut() {
+            if let Err(e) = remote_client.send_message(channel_id, message.clone()) {
                 error!("{}", e);
             }
         }
 
-        for local_connection in self.local_clients.values_mut() {
-            if let Err(e) = local_connection.send_message(channel_id, message.clone()) {
+        for local_client in self.local_clients.values_mut() {
+            if let Err(e) = local_client.send_message(channel_id, message.clone()) {
+                error!("{}", e);
+            }
+        }
+    }
+
+    pub fn broadcast_message_remote<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
+        let channel_id = channel_id.into();
+        for remote_client in self.remote_clients.values_mut() {
+            if let Err(e) = remote_client.send_message(channel_id, message.clone()) {
+                error!("{}", e);
+            }
+        }
+    }
+
+    pub fn broadcast_message_local<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
+        let channel_id = channel_id.into();
+        for local_client in self.local_clients.values_mut() {
+            if let Err(e) = local_client.send_message(channel_id, message.clone()) {
                 error!("{}", e);
             }
         }
@@ -292,12 +310,12 @@ where
     pub fn send_packets(&mut self) {
         for (client_id, connection) in self.remote_clients.iter_mut() {
             if let Err(e) = connection.send_packets(&self.socket) {
-                error!("Failed to send packet for client {}: {:?}", client_id, e);
+                error!("Failed to send packet for Client {}: {:?}", client_id, e);
             }
         }
     }
 
-    pub fn process_payload_from(
+    fn process_payload_from(
         &mut self,
         payload: &[u8],
         addr: &SocketAddr,

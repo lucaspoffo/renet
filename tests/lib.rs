@@ -15,8 +15,8 @@ use renet::{
 };
 
 use bincode;
-use serde::{Deserialize, Serialize};
 use env_logger;
+use serde::{Deserialize, Serialize};
 
 fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
