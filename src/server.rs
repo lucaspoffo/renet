@@ -193,11 +193,11 @@ where
     }
 
     pub fn get_clients_id(&self) -> Vec<ClientId> {
-        let mut clients: Vec<ClientId> = self.remote_clients.keys().copied().collect();
-        let mut local_clients: Vec<ClientId> = self.local_clients.keys().copied().collect();
-        clients.append(&mut local_clients);
-
-        clients
+        self.remote_clients
+            .keys()
+            .copied()
+            .chain(self.local_clients.keys().copied())
+            .collect()
     }
 
     pub fn update(&mut self) -> Result<(), RenetError> {
