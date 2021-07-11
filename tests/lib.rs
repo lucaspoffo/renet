@@ -16,6 +16,11 @@ use renet::{
 
 use bincode;
 use serde::{Deserialize, Serialize};
+use env_logger;
+
+fn init_log() {
+    let _ = env_logger::builder().is_test(true).try_init();
+}
 
 enum Channels {
     Reliable,
@@ -105,6 +110,7 @@ fn connect_to_server(
 
 #[test]
 fn test_remote_connection_reliable_channel() {
+    init_log();
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let mut server = setup_server(server_addr);
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6000", server_addr);
@@ -140,6 +146,7 @@ fn test_remote_connection_reliable_channel() {
 
 #[test]
 fn test_remote_connection_unreliable_channel() {
+    init_log();
     let server_addr = "127.0.0.1:5001".parse().unwrap();
     let mut server = setup_server(server_addr);
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6001", server_addr);
@@ -176,6 +183,7 @@ fn test_remote_connection_unreliable_channel() {
 
 #[test]
 fn test_max_players_connected() {
+    init_log();
     let server_addr = "127.0.0.1:5002".parse().unwrap();
     let server_config = ServerConfig {
         max_clients: 0,
@@ -192,6 +200,7 @@ fn test_max_players_connected() {
 
 #[test]
 fn test_server_disconnect_client() {
+    init_log();
     let server_addr = "127.0.0.1:5003".parse().unwrap();
     let mut server = setup_server(server_addr);
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6003", server_addr);
@@ -216,6 +225,7 @@ fn test_server_disconnect_client() {
 
 #[test]
 fn test_remote_client_disconnect() {
+    init_log();
     let server_addr = "127.0.0.1:5004".parse().unwrap();
     let mut server = setup_server(server_addr);
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6004", server_addr);
@@ -238,6 +248,7 @@ fn test_remote_client_disconnect() {
 
 #[test]
 fn test_local_client_disconnect() {
+    init_log();
     let server_addr: SocketAddr = "127.0.0.1:5005".parse().unwrap();
     let mut server = setup_server(server_addr);
     let mut local_client = server.create_local_client(0);
