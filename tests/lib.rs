@@ -7,7 +7,7 @@ use std::{
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannelConfig, UnreliableUnorderedChannelConfig},
     client::{Client, RemoteClient},
-    error::ConnectionError,
+    error::DisconnectionReason,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
     server::{Server, ServerConfig, ServerEvent},
@@ -186,7 +186,7 @@ fn test_max_players_connected() {
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
-        Err(RenetError::ConnectionError(ConnectionError::MaxPlayer))
+        Err(RenetError::ConnectionError(DisconnectionReason::MaxPlayer))
     ));
 }
 
@@ -204,9 +204,53 @@ fn test_server_disconnect_client() {
     assert!(matches!(
         error,
         Err(RenetError::ConnectionError(
-            ConnectionError::DisconnectedByServer
+            DisconnectionReason::DisconnectedByServer
         ))
     ));
+    let disconnect_event = server.get_event().unwrap();
+    assert!(matches!(
+        disconnect_event,
+        ServerEvent::ClientDisconnected(0)
+    ));
+}
+
+#[test]
+fn test_remote_client_disconnect() {
+    let server_addr = "127.0.0.1:5004".parse().unwrap();
+    let mut server = setup_server(server_addr);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6004", server_addr);
+    connect_to_server(&mut server, &mut remote_connection).unwrap();
+
+    let connect_event = server.get_event().unwrap();
+    assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
+
+    remote_connection.disconnect();
+    assert!(!remote_connection.is_connected());
+
+    server.update().unwrap();
+
+    let disconnect_event = server.get_event().unwrap();
+    assert!(matches!(
+        disconnect_event,
+        ServerEvent::ClientDisconnected(0)
+    ));
+}
+
+#[test]
+fn test_local_client_disconnect() {
+    let server_addr: SocketAddr = "127.0.0.1:5005".parse().unwrap();
+    let mut server = setup_server(server_addr);
+    let mut local_client = server.create_local_client(0);
+
+    let connect_event = server.get_event().unwrap();
+    assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
+
+    assert!(local_client.is_connected());
+    local_client.disconnect();
+    assert!(!local_client.is_connected());
+
+    server.update().unwrap();
+
     let disconnect_event = server.get_event().unwrap();
     assert!(matches!(
         disconnect_event,

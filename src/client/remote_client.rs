@@ -1,6 +1,6 @@
 use crate::channel::ChannelConfig;
 use crate::client::Client;
-use crate::error::{ConnectionError, RenetError};
+use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::Payload;
 use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
@@ -54,8 +54,12 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         self.connection.is_connected()
     }
 
-    fn connection_error(&self) -> Option<ConnectionError> {
+    fn connection_error(&self) -> Option<DisconnectionReason> {
         self.connection.connection_error()
+    }
+
+    fn disconnect(&mut self) {
+        self.connection.disconnect(&self.socket);
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {

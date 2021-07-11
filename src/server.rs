@@ -1,6 +1,6 @@
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
-use crate::error::{ConnectionError, RenetError};
+use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::{Packet, Payload, Unauthenticaded};
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
@@ -114,7 +114,9 @@ where
         if let Some(mut remote_client) = self.remote_clients.remove(&client_id) {
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id));
-            if let Err(e) = remote_client.send_disconnect_packet(&self.socket) {
+            if let Err(e) = remote_client
+                .send_disconnect_packet(&self.socket, DisconnectionReason::DisconnectedByServer)
+            {
                 error!(
                     "Failed to send disconnect packet to Client {}: {}",
                     client_id, e
@@ -194,19 +196,33 @@ where
             };
         }
 
-        let mut timed_out_connections: Vec<ClientId> = vec![];
+        let mut disconnected_remote_clients: Vec<ClientId> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
             connection.update();
-            if connection.has_timed_out() {
-                timed_out_connections.push(client_id);
+            if connection.has_timed_out() || !connection.is_connected() {
+                disconnected_remote_clients.push(client_id);
             }
         }
 
-        for &client_id in timed_out_connections.iter() {
+        for &client_id in disconnected_remote_clients.iter() {
             self.remote_clients.remove(&client_id);
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id));
-            info!("Client {} disconnected.", client_id);
+            info!("Remote Client {} disconnected.", client_id);
+        }
+
+        let mut disconnected_local_clients: Vec<ClientId> = vec![];
+        for (&client_id, connection) in self.local_clients.iter() {
+            if !connection.is_connected() {
+                disconnected_local_clients.push(client_id);
+            }
+        }
+
+        for &client_id in disconnected_local_clients.iter() {
+            self.local_clients.remove(&client_id);
+            self.events
+                .push_back(ServerEvent::ClientDisconnected(client_id));
+            info!("Local Client {} disconnected.", client_id);
         }
 
         self.update_pending_connections();
@@ -249,7 +265,7 @@ where
                     "Connection from {} successfuly stablished but server was full.",
                     connection.addr()
                 );
-                let packet = Unauthenticaded::ConnectionError(ConnectionError::MaxPlayer);
+                let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
                 send_packet(&self.socket, packet, connection.addr());
 
                 continue;
@@ -291,7 +307,7 @@ where
         }
 
         if self.remote_clients.len() >= self.config.max_clients {
-            let packet = Unauthenticaded::ConnectionError(ConnectionError::MaxPlayer);
+            let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
             try_send_packet(&self.socket, packet, addr)?;
             debug!("Connection Denied to addr {}, server is full.", addr);
             return Ok(());

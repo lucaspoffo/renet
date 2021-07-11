@@ -1,4 +1,4 @@
-use crate::error::ConnectionError;
+use crate::error::DisconnectionReason;
 
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +33,7 @@ pub enum Packet {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Unauthenticaded {
-    ConnectionError(ConnectionError),
+    ConnectionError(DisconnectionReason),
     Protocol { payload: Payload },
 }
 
@@ -59,7 +59,7 @@ pub enum Message {
     Normal(Normal),
     Fragment(Fragment),
     Heartbeat(HeartBeat),
-    ConnectionError(ConnectionError),
+    Disconnect(DisconnectionReason),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -101,8 +101,8 @@ impl From<HeartBeat> for Message {
     }
 }
 
-impl From<ConnectionError> for Message {
-    fn from(value: ConnectionError) -> Self {
-        Self::ConnectionError(value)
+impl From<DisconnectionReason> for Message {
+    fn from(value: DisconnectionReason) -> Self {
+        Self::Disconnect(value)
     }
 }

@@ -1,5 +1,5 @@
 use crate::channel::Channel;
-use crate::error::{ConnectionError, RenetError};
+use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::{
     AckData, Authenticated, ChannelPacketData, HeartBeat, Message, Normal, Packet, Payload,
     Unauthenticaded,
@@ -49,7 +49,7 @@ impl ReceivedPacket {
 pub enum ConnectionState<P: AuthenticationProtocol> {
     Connecting { protocol: P },
     Connected { security_service: P::Service },
-    Disconnected { reason: ConnectionError },
+    Disconnected { reason: DisconnectionReason },
 }
 
 #[derive(Debug)]
@@ -169,11 +169,28 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         matches!(self.state, ConnectionState::Connected { .. })
     }
 
-    pub fn connection_error(&self) -> Option<ConnectionError> {
+    pub fn connection_error(&self) -> Option<DisconnectionReason> {
         match self.state {
             ConnectionState::Disconnected { ref reason } => Some(reason.clone()),
             _ => None,
         }
+    }
+
+    pub fn disconnect(&mut self, socket: &UdpSocket) {
+        if matches!(self.state, ConnectionState::Disconnected { .. }) {
+            error!("Trying to disconnect an already disconnected client.");
+            return;
+        }
+
+        if let Err(e) =
+            self.send_disconnect_packet(socket, DisconnectionReason::DisconnectedByClient)
+        {
+            error!("Failed to send disconnect packet: {}", e);
+        }
+
+        self.state = ConnectionState::Disconnected {
+            reason: DisconnectionReason::DisconnectedByClient,
+        };
     }
 
     pub fn create_protocol_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
@@ -295,7 +312,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                             self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
                             return Ok(());
                         }
-                        Message::ConnectionError(error) => {
+                        Message::Disconnect(error) => {
                             self.state = ConnectionState::Disconnected {
                                 reason: error.clone(),
                             };
@@ -548,20 +565,25 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         }
     }
 
-    pub fn send_disconnect_packet(&mut self, socket: &UdpSocket) -> Result<(), RenetError> {
+    pub fn send_disconnect_packet(
+        &mut self,
+        socket: &UdpSocket,
+        reason: DisconnectionReason,
+    ) -> Result<(), RenetError> {
         let payload = match self.state {
             ConnectionState::Connected {
                 ref mut security_service,
             } => {
-                let message = Message::ConnectionError(ConnectionError::DisconnectedByServer);
+                let message = Message::Disconnect(reason);
                 let message = bincode::serialize(&message)?;
                 let payload = security_service.ss_wrap(&message)?;
                 let packet = Packet::Authenticated(Authenticated { payload });
+
                 bincode::serialize(&packet)?
             }
             _ => {
                 let packet = Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
-                    ConnectionError::DisconnectedByServer,
+                    DisconnectionReason::DisconnectedByServer,
                 ));
 
                 bincode::serialize(&packet)?

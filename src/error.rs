@@ -7,13 +7,15 @@ use thiserror::Error;
 pub type Result<T> = result::Result<T, RenetError>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Error)]
-pub enum ConnectionError {
+pub enum DisconnectionReason {
     #[error("connection denied.")]
     Denied,
     #[error("server has exceeded maximum players capacity")]
     MaxPlayer,
     #[error("disconnected by server")]
     DisconnectedByServer,
+    #[error("disconnected by client")]
+    DisconnectedByClient,
 }
 
 #[derive(Debug, Error)]
@@ -31,7 +33,7 @@ pub enum RenetError {
     #[error("packet fragmentation error: {0}")]
     FragmentError(#[from] FragmentError),
     #[error("connection error: {0}")]
-    ConnectionError(ConnectionError),
+    ConnectionError(DisconnectionReason),
     #[error("client is disconnected")]
     ClientDisconnected,
     #[error("connection is not established")]

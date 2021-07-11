@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::client::Client;
-use crate::error::{ConnectionError, RenetError};
+use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
@@ -11,9 +13,14 @@ pub struct LocalClient {
     pub id: u64,
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
+    connected: Arc<AtomicBool>,
 }
 
 impl LocalClient {
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
+    }
+
     pub fn send_message(&self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         let channel_sender = self
             .sender
@@ -39,6 +46,7 @@ pub struct LocalClientConnected {
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
     network_info: NetworkInfo,
+    connected: Arc<AtomicBool>,
 }
 
 impl LocalClientConnected {
@@ -58,13 +66,17 @@ impl LocalClientConnected {
             host_channels_send.insert(channel, host_send);
         }
 
+        let connected = Arc::new(AtomicBool::new(true));
+
         let host_server = LocalClient {
+            connected: connected.clone(),
             id: client_id,
             sender: host_channels_send,
             receiver: host_channels_recv,
         };
 
         let host_client = LocalClientConnected {
+            connected,
             id: client_id,
             sender: client_channels_send,
             receiver: client_channels_recv,
@@ -81,10 +93,14 @@ impl Client for LocalClientConnected {
     }
 
     fn is_connected(&self) -> bool {
-        true
+        self.connected.load(Ordering::Relaxed)
     }
 
-    fn connection_error(&self) -> Option<ConnectionError> {
+    fn disconnect(&mut self) {
+        self.connected.store(false, Ordering::Relaxed);
+    }
+
+    fn connection_error(&self) -> Option<DisconnectionReason> {
         None
     }
 
