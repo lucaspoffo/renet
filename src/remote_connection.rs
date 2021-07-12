@@ -169,6 +169,10 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         matches!(self.state, ConnectionState::Connected { .. })
     }
 
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self.state, ConnectionState::Disconnected { .. })
+    }
+
     pub fn connection_error(&self) -> Option<DisconnectionReason> {
         match self.state {
             ConnectionState::Disconnected { ref reason } => Some(reason.clone()),
@@ -220,6 +224,17 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
     }
 
     pub fn update(&mut self) {
+        if self.is_disconnected() {
+            return;
+        }
+
+        if self.has_timed_out() {
+            self.state = ConnectionState::Disconnected {
+                reason: DisconnectionReason::TimedOut,
+            };
+            return;
+        }
+
         match self.state {
             ConnectionState::Connecting { ref mut protocol } => {
                 if protocol.is_authenticated() {
@@ -234,7 +249,9 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                     }
                 }
             }
-            ConnectionState::Disconnected { .. } => {}
+            ConnectionState::Disconnected { .. } => {
+                unreachable!()
+            }
         }
     }
 

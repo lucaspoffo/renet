@@ -12,6 +12,8 @@ pub enum DisconnectionReason {
     Denied,
     #[error("server has exceeded maximum players capacity")]
     MaxPlayer,
+    #[error("connection has timedout")]
+    TimedOut,
     #[error("disconnected by server")]
     DisconnectedByServer,
     #[error("disconnected by client")]
