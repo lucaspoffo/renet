@@ -97,8 +97,8 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
             self.connection.process_payload(payload)?;
         }
 
-        if self.connection.has_timed_out() {
-            return Err(RenetError::ConnectionTimedOut);
+        if let Some(connection_error) = self.connection_error() {
+            return Err(RenetError::ConnectionError(connection_error));
         }
         self.connection.update();
         Ok(())

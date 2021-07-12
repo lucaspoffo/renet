@@ -102,8 +102,8 @@ fn connect_to_server(
         if request.is_connected() {
             return Ok(());
         }
-        request.send_packets()?;
-        server.update()?;
+        request.send_packets().unwrap();
+        server.update().unwrap();
         server.send_packets();
     }
 }
