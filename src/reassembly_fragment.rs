@@ -145,6 +145,7 @@ impl SequenceBuffer<ReassemblyFragment> {
             reassembly_fragment.buffer.resize(len, 0);
         }
 
+        // TODO: remove Cursor and use [start..end].copy_from_slice.
         let mut cursor = Cursor::new(reassembly_fragment.buffer.as_mut_slice());
         cursor.set_position(fragment_id as u64 * config.fragment_size as u64);
         cursor.write_all(&payload)?;

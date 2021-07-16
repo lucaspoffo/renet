@@ -1,8 +1,10 @@
+mod block;
 mod reliable;
 mod unreliable;
 
 use std::error::Error;
 
+pub use block::{BlockChannel, BlockChannelConfig};
 pub use reliable::{ReliableOrderedChannel, ReliableOrderedChannelConfig};
 pub use unreliable::{UnreliableUnorderedChannel, UnreliableUnorderedChannelConfig};
 

@@ -5,7 +5,10 @@ use std::{
 };
 
 use renet::{
-    channel::{ChannelConfig, ReliableOrderedChannelConfig, UnreliableUnorderedChannelConfig},
+    channel::{
+        BlockChannelConfig, ChannelConfig, ReliableOrderedChannelConfig,
+        UnreliableUnorderedChannelConfig,
+    },
     client::{Client, RemoteClient},
     error::DisconnectionReason,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
@@ -18,13 +21,14 @@ use bincode;
 use env_logger;
 use serde::{Deserialize, Serialize};
 
-fn init_log() {
+pub fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
 enum Channels {
     Reliable,
     Unreliable,
+    Block,
 }
 
 impl Into<u8> for Channels {
@@ -32,6 +36,7 @@ impl Into<u8> for Channels {
         match self {
             Channels::Reliable => 0,
             Channels::Unreliable => 1,
+            Channels::Block => 2,
         }
     }
 }
@@ -44,10 +49,12 @@ struct TestMessage {
 fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
     let reliable_config = ReliableOrderedChannelConfig::default();
     let unreliable_config = UnreliableUnorderedChannelConfig::default();
+    let block_config = BlockChannelConfig::default();
 
     let mut channels_config: HashMap<u8, Box<dyn ChannelConfig>> = HashMap::new();
     channels_config.insert(Channels::Reliable.into(), Box::new(reliable_config));
     channels_config.insert(Channels::Unreliable.into(), Box::new(unreliable_config));
+    channels_config.insert(Channels::Block.into(), Box::new(block_config));
     channels_config
 }
 
@@ -62,6 +69,7 @@ fn setup_server_with_config<A: ToSocketAddrs>(
     let socket = UdpSocket::bind(addr).unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
+        heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
     let server: Server<UnsecureServerProtocol> =
@@ -78,6 +86,7 @@ fn request_remote_connection<A: ToSocketAddrs>(
     let socket = UdpSocket::bind(addr).unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
+        heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
     let request_connection = RemoteClient::new(
@@ -182,15 +191,42 @@ fn test_remote_connection_unreliable_channel() {
 }
 
 #[test]
-fn test_max_players_connected() {
+fn test_remote_connection_block_channel() {
     init_log();
     let server_addr = "127.0.0.1:5002".parse().unwrap();
+    let mut server = setup_server(server_addr);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6002", server_addr);
+    connect_to_server(&mut server, &mut remote_connection).unwrap();
+
+    let payload = vec![7u8; 20480];
+    server
+        .send_message(0, Channels::Block, payload.clone())
+        .unwrap();
+
+    let received_payload = loop {
+        remote_connection.update().unwrap();
+        if let Ok(Some(message)) = remote_connection.receive_message(Channels::Block.into()) {
+            break message;
+        }
+
+        remote_connection.send_packets().unwrap();
+        server.update().unwrap();
+        server.send_packets();
+    };
+
+    assert_eq!(payload.len(), received_payload.len());
+}
+
+#[test]
+fn test_max_players_connected() {
+    init_log();
+    let server_addr = "127.0.0.1:5003".parse().unwrap();
     let server_config = ServerConfig {
         max_clients: 0,
         ..Default::default()
     };
     let mut server = setup_server_with_config(server_addr, server_config);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6002", server_addr);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6003", server_addr);
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
@@ -201,9 +237,9 @@ fn test_max_players_connected() {
 #[test]
 fn test_server_disconnect_client() {
     init_log();
-    let server_addr = "127.0.0.1:5003".parse().unwrap();
+    let server_addr = "127.0.0.1:5004".parse().unwrap();
     let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6003", server_addr);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6004", server_addr);
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     server.disconnect(0);
@@ -226,9 +262,9 @@ fn test_server_disconnect_client() {
 #[test]
 fn test_remote_client_disconnect() {
     init_log();
-    let server_addr = "127.0.0.1:5004".parse().unwrap();
+    let server_addr = "127.0.0.1:5005".parse().unwrap();
     let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6004", server_addr);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6005", server_addr);
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let connect_event = server.get_event().unwrap();
@@ -249,7 +285,7 @@ fn test_remote_client_disconnect() {
 #[test]
 fn test_local_client_disconnect() {
     init_log();
-    let server_addr: SocketAddr = "127.0.0.1:5005".parse().unwrap();
+    let server_addr: SocketAddr = "127.0.0.1:5006".parse().unwrap();
     let mut server = setup_server(server_addr);
     let mut local_client = server.create_local_client(0);
 
