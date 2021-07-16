@@ -67,6 +67,7 @@ pub struct ReliableOrderedChannelConfig {
     pub message_send_queue_size: usize,
     pub message_receive_queue_size: usize,
     pub max_message_per_packet: u32,
+    pub packet_budget: Option<u32>,
     pub message_resend_time: Duration,
 }
 
@@ -77,6 +78,7 @@ impl Default for ReliableOrderedChannelConfig {
             message_send_queue_size: 1024,
             message_receive_queue_size: 1024,
             max_message_per_packet: 256,
+            packet_budget: None,
             message_resend_time: Duration::from_millis(100),
         }
     }
@@ -138,6 +140,10 @@ impl Channel for ReliableOrderedChannel {
     ) -> Option<Vec<Payload>> {
         if !self.has_messages_to_send() {
             return None;
+        }
+
+        if let Some(packet_budget) = self.config.packet_budget {
+            available_bytes = available_bytes.min(packet_budget);
         }
 
         let message_limit = self

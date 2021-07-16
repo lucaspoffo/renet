@@ -6,13 +6,15 @@ use std::{collections::VecDeque, error::Error};
 
 #[derive(Debug, Clone)]
 pub struct UnreliableUnorderedChannelConfig {
-    max_message_per_packet: u32,
+    pub max_message_per_packet: u32,
+    pub packet_budget: Option<u32>,
 }
 
 impl Default for UnreliableUnorderedChannelConfig {
     fn default() -> Self {
         Self {
             max_message_per_packet: 256,
+            packet_budget: None,
         }
     }
 }
@@ -63,6 +65,10 @@ impl Channel for UnreliableUnorderedChannel {
     ) -> Option<Vec<Payload>> {
         let mut num_messages = 0;
         let mut messages = vec![];
+
+        if let Some(packet_budget) = self.config.packet_budget {
+            available_bytes = available_bytes.min(packet_budget);
+        }
 
         while let Some(message) = self.messages_to_send.pop_front() {
             if num_messages == self.config.max_message_per_packet {

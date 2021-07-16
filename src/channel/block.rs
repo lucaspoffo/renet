@@ -15,6 +15,7 @@ pub struct BlockChannelConfig {
     pub slice_size: usize,
     pub resend_time: Duration,
     pub sent_packet_buffer_size: usize,
+    pub packet_budget: Option<u32>,
 }
 
 impl Default for BlockChannelConfig {
@@ -23,6 +24,7 @@ impl Default for BlockChannelConfig {
             slice_size: 400,
             resend_time: Duration::from_millis(300),
             sent_packet_buffer_size: 256,
+            packet_budget: None,
         }
     }
 }
@@ -71,10 +73,16 @@ struct ChunkSender {
     last_time_sent: Vec<Option<Instant>>,
     packets_sent: SequenceBuffer<PacketSent>,
     resend_time: Duration,
+    packet_budget: Option<u32>,
 }
 
 impl ChunkSender {
-    fn new(slice_size: usize, sent_packet_buffer_size: usize, resend_time: Duration) -> Self {
+    fn new(
+        slice_size: usize,
+        sent_packet_buffer_size: usize,
+        resend_time: Duration,
+        packet_budget: Option<u32>,
+    ) -> Self {
         Self {
             sending: false,
             chunk_id: 0,
@@ -87,6 +95,7 @@ impl ChunkSender {
             last_time_sent: Vec::with_capacity(0),
             packets_sent: SequenceBuffer::with_capacity(sent_packet_buffer_size),
             resend_time,
+            packet_budget,
         }
     }
     fn send_message(&mut self, data: Payload) {
@@ -106,6 +115,10 @@ impl ChunkSender {
         let mut slice_messages = vec![];
         if !self.sending {
             return slice_messages;
+        }
+
+        if let Some(packet_budget) = self.packet_budget {
+            available_bytes = available_bytes.min(packet_budget);
         }
 
         for i in 0..self.num_slices {
@@ -211,7 +224,7 @@ impl ChunkReceiver {
         }
     }
 
-    fn process_slice_message(&mut self, message: SliceMessage) -> Option<Payload> {
+    fn process_slice_message(&mut self, message: &SliceMessage) -> Option<Payload> {
         if !self.receiving {
             self.receiving = true;
             self.num_slices = message.num_slices as usize;
@@ -305,6 +318,7 @@ impl BlockChannel {
             config.slice_size,
             config.sent_packet_buffer_size,
             config.resend_time,
+            config.packet_budget,
         );
         let receiver = ChunkReceiver::new(config.slice_size);
 
@@ -349,7 +363,7 @@ impl Channel for BlockChannel {
         for message in messages.iter() {
             match bincode::deserialize::<SliceMessage>(message) {
                 Ok(message) => {
-                    if let Some(block) = self.receiver.process_slice_message(message) {
+                    if let Some(block) = self.receiver.process_slice_message(&message) {
                         self.received_messages.push(block);
                     }
                 }
@@ -382,19 +396,23 @@ mod tests {
     #[test]
     fn split_chunk() {
         const SLICE_SIZE: usize = 10;
-        let mut sender = ChunkSender::new(SLICE_SIZE, 100, Duration::from_millis(100));
+        let mut sender = ChunkSender::new(SLICE_SIZE, 100, Duration::from_millis(100), Some(60));
         let message = vec![7u8; 30];
         sender.send_message(message.clone());
 
         let mut receiver = ChunkReceiver::new(SLICE_SIZE);
 
         let slice_messages = sender.generate_slice_packets(u32::MAX);
-        assert_eq!(slice_messages.len(), 3);
+        assert_eq!(slice_messages.len(), 2);
+        sender.process_ack(0);
+        sender.process_ack(1);
 
-        let mut result = None;
         for slice_message in slice_messages.into_iter() {
-            result = receiver.process_slice_message(slice_message);
+            receiver.process_slice_message(&slice_message);
         }
+
+        let last_message = sender.generate_slice_packets(u32::MAX);
+        let result = receiver.process_slice_message(&last_message[0]);
         assert_eq!(message, result.unwrap());
     }
 
