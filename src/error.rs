@@ -6,7 +6,7 @@ use thiserror::Error;
 
 pub type Result<T> = result::Result<T, RenetError>;
 
-#[derive(Clone, Debug, Serialize, Deserialize, Error)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
 pub enum DisconnectionReason {
     #[error("connection denied.")]
     Denied,

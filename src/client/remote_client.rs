@@ -80,6 +80,10 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
     }
 
     fn update(&mut self) -> Result<(), RenetError> {
+        if let Some(connection_error) = self.connection_error() {
+            return Err(RenetError::ConnectionError(connection_error.clone()));
+        }
+
         loop {
             let payload = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
@@ -97,9 +101,6 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
             self.connection.process_payload(payload)?;
         }
 
-        if let Some(connection_error) = self.connection_error() {
-            return Err(RenetError::ConnectionError(connection_error));
-        }
         self.connection.update();
         Ok(())
     }

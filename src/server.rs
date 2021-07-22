@@ -122,7 +122,8 @@ where
                     client_id, e
                 );
             }
-        } else if self.local_clients.remove(&client_id).is_some() {
+        } else if let Some(mut local_client) = self.local_clients.remove(&client_id) {
+            local_client.disconnect();
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id));
         }

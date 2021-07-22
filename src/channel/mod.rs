@@ -24,4 +24,5 @@ pub trait Channel {
         message_payload: Payload,
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>>;
     fn receive_message(&mut self) -> Option<Payload>;
+    // TODO: add fn can_send_message(&self) -> bool;
 }

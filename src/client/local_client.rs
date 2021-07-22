@@ -21,6 +21,10 @@ impl LocalClient {
         self.connected.load(Ordering::Relaxed)
     }
 
+    pub fn disconnect(&mut self) {
+        self.connected.store(false, Ordering::Relaxed);
+    }
+
     pub fn send_message(&self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         let channel_sender = self
             .sender
@@ -50,6 +54,7 @@ pub struct LocalClientConnected {
     receiver: HashMap<u8, Receiver<Payload>>,
     network_info: NetworkInfo,
     connected: Arc<AtomicBool>,
+    disconnect_reason: Option<DisconnectionReason>,
 }
 
 impl LocalClientConnected {
@@ -84,6 +89,7 @@ impl LocalClientConnected {
             sender: client_channels_send,
             receiver: client_channels_recv,
             network_info: NetworkInfo::default(),
+            disconnect_reason: None,
         };
 
         (host_client, host_server)
@@ -100,11 +106,12 @@ impl Client for LocalClientConnected {
     }
 
     fn disconnect(&mut self) {
+        self.disconnect_reason = Some(DisconnectionReason::DisconnectedByClient);
         self.connected.store(false, Ordering::Relaxed);
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
-        None
+        self.disconnect_reason
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
@@ -138,6 +145,9 @@ impl Client for LocalClientConnected {
     }
 
     fn update(&mut self) -> Result<(), RenetError> {
+        if !self.is_connected() && self.disconnect_reason.is_none() {
+            self.disconnect_reason = Some(DisconnectionReason::DisconnectedByServer);
+        }
         Ok(())
     }
 }

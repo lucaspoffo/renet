@@ -175,7 +175,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
 
     pub fn connection_error(&self) -> Option<DisconnectionReason> {
         match self.state {
-            ConnectionState::Disconnected { ref reason } => Some(reason.clone()),
+            ConnectionState::Disconnected { reason } => Some(reason),
             _ => None,
         }
     }
