@@ -11,6 +11,7 @@ use renet::{
 };
 
 use crate::{channels_config, ClientMessages, ServerMessages};
+use log::info;
 
 pub struct ChatServer {
     pub server: Server<UnsecureServerProtocol>,
@@ -40,11 +41,9 @@ impl ChatServer {
         while let Some(event) = self.server.get_event() {
             match event {
                 ServerEvent::ClientConnected(id) => {
-                    println!("Client {} connected.", id);
                     self.clients_initializing.insert(id);
                 }
                 ServerEvent::ClientDisconnected(id) => {
-                    println!("Client {} disconnected.", id);
                     self.clients_initializing.remove(&id);
                     self.clients.remove(&id);
                 }
@@ -54,7 +53,7 @@ impl ChatServer {
         for client_id in self.server.get_clients_id().into_iter() {
             while let Ok(Some(message)) = self.server.receive_message(client_id, 0) {
                 if let Ok(message) = bincode::deserialize::<ClientMessages>(&message) {
-                    println!("Received message from client {}: {:?}", client_id, message);
+                    info!("Received message from client {}: {:?}", client_id, message);
                     match message {
                         ClientMessages::Init { nick } => {
                             if self.clients_initializing.remove(&client_id) {
@@ -89,7 +88,6 @@ impl ChatServer {
         }
 
         self.server.send_packets();
-
         Ok(())
     }
 }

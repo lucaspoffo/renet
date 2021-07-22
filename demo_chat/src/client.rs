@@ -3,6 +3,7 @@ use eframe::{
     epi,
 };
 
+use log::{error, Level};
 use renet::{
     client::{Client, RemoteClient},
     error::DisconnectionReason,
@@ -10,7 +11,11 @@ use renet::{
     remote_connection::ConnectionConfig,
 };
 
-use std::net::{SocketAddr, UdpSocket};
+use std::{
+    collections::VecDeque,
+    net::{SocketAddr, UdpSocket},
+    sync::{Arc, Mutex},
+};
 
 use crate::server::ChatServer;
 use crate::{channels_config, ClientMessages, ServerMessages};
@@ -28,8 +33,15 @@ impl Default for AppState {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, PartialEq, Eq)]
+enum Application {
+    ChatApp,
+    Logger,
+}
+
 pub struct App {
+    log_records: Arc<Mutex<VecDeque<(Level, String)>>>,
+    application: Application,
     state: AppState,
     nick: String,
     server_addr: String,
@@ -43,6 +55,23 @@ pub struct App {
 }
 
 impl App {
+    pub fn with_records(log_records: Arc<Mutex<VecDeque<(Level, String)>>>) -> Self {
+        Self {
+            application: Application::ChatApp,
+            log_records,
+            state: AppState::default(),
+            nick: String::new(),
+            server_addr: String::new(),
+            client_id: 0,
+            clients: Vec::new(),
+            messages: Vec::new(),
+            chat_server: None,
+            client: None,
+            connection_error: None,
+            text_input: String::new(),
+        }
+    }
+
     fn draw_chat(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         let Self {
             clients,
@@ -87,7 +116,6 @@ impl App {
             });
 
             if send_message.inner {
-                println!("Sending message");
                 let message =
                     bincode::serialize(&ClientMessages::Text(text_input.clone())).unwrap();
                 text_input.clear();
@@ -158,7 +186,7 @@ impl App {
 
                             *client = Some(Box::new(remote_client));
                         }
-                        Err(e) => println!("{}", e),
+                        Err(e) => error!("{}", e),
                     }
                 }
 
@@ -212,6 +240,25 @@ impl App {
             });
         });
     }
+
+    fn draw_log(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::auto_sized().show(ui, |ui| {
+                let records = self.log_records.lock().unwrap();
+                for (level, message) in records.iter() {
+                    let color = match level {
+                        Level::Error => Color32::RED,
+                        Level::Warn => Color32::YELLOW,
+                        Level::Info => Color32::WHITE,
+                        Level::Trace => Color32::WHITE,
+                        Level::Debug => Color32::LIGHT_GRAY,
+                    };
+
+                    ui.colored_label(color, message);
+                }
+            });
+        });
+    }
 }
 
 fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
@@ -243,10 +290,31 @@ impl epi::App for App {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
-        match self.state {
-            AppState::Chat => self.draw_chat(ctx, frame),
-            AppState::Start => self.draw_start(ctx, frame),
-            AppState::Connecting => self.draw_connecting(ctx, frame),
+        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(self.application == Application::ChatApp, "Chat App")
+                    .clicked()
+                {
+                    self.application = Application::ChatApp;
+                }
+
+                if ui
+                    .selectable_label(self.application == Application::Logger, "Log")
+                    .clicked()
+                {
+                    self.application = Application::Logger;
+                }
+            });
+        });
+
+        match self.application {
+            Application::ChatApp => match self.state {
+                AppState::Chat => self.draw_chat(ctx, frame),
+                AppState::Start => self.draw_start(ctx, frame),
+                AppState::Connecting => self.draw_connecting(ctx, frame),
+            },
+            Application::Logger => self.draw_log(ctx, frame),
         }
 
         if let Some(chat_server) = self.chat_server.as_mut() {
@@ -255,11 +323,12 @@ impl epi::App for App {
 
         if let Some(chat_client) = self.client.as_mut() {
             if let Err(e) = chat_client.update() {
-                println!("{}", e);
+                error!("{}", e);
             }
             if let Some(error) = chat_client.connection_error() {
                 self.state = AppState::Start;
                 self.connection_error = Some(error);
+                self.chat_server = None;
                 self.client = None;
             } else {
                 if let Ok(Some(message)) = chat_client.receive_message(0) {

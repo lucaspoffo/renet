@@ -1,9 +1,13 @@
+use log::Level;
 use renet::channel::{ChannelConfig, ReliableOrderedChannelConfig};
 use serde::{Deserialize, Serialize};
+
+use history_logger::HistoryLogger;
 
 use std::collections::HashMap;
 
 mod client;
+mod history_logger;
 mod server;
 
 fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
@@ -28,7 +32,10 @@ enum ServerMessages {
 }
 
 fn main() {
-    let app = client::App::default();
+    let logger = HistoryLogger::new(100, Level::Trace);
+    let records = logger.records();
+    logger.init();
+    let app = client::App::with_records(records);
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
 }
