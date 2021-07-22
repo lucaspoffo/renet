@@ -81,7 +81,7 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
 
     fn update(&mut self) -> Result<(), RenetError> {
         if let Some(connection_error) = self.connection_error() {
-            return Err(RenetError::ConnectionError(connection_error.clone()));
+            return Err(RenetError::ConnectionError(connection_error));
         }
 
         loop {

@@ -261,9 +261,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
 
         match packet {
             Packet::Unauthenticaded(Unauthenticaded::ConnectionError(error)) => {
-                self.state = ConnectionState::Disconnected {
-                    reason: error.clone(),
-                };
+                self.state = ConnectionState::Disconnected { reason: error };
                 Err(RenetError::ConnectionError(error))
             }
             Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) => {
@@ -331,9 +329,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                             return Ok(());
                         }
                         Message::Disconnect(error) => {
-                            self.state = ConnectionState::Disconnected {
-                                reason: error.clone(),
-                            };
+                            self.state = ConnectionState::Disconnected { reason: error };
                             return Err(RenetError::ConnectionError(error));
                         }
                     };
