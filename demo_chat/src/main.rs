@@ -26,9 +26,10 @@ enum ClientMessages {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum ServerMessages {
-    ClientConnected(String),
-    ClientMessage(String, String),
-    InitClient { clients: Vec<String> },
+    ClientConnected(u64, String),
+    ClientDisconnected(u64),
+    ClientMessage(u64, String),
+    InitClient { clients: HashMap<u64, String> },
 }
 
 fn main() {

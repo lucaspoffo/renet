@@ -45,6 +45,9 @@ impl ChatServer {
                 ServerEvent::ClientDisconnected(id) => {
                     self.clients_initializing.remove(&id);
                     self.clients.remove(&id);
+                    let message =
+                        bincode::serialize(&ServerMessages::ClientDisconnected(id)).unwrap();
+                    self.server.broadcast_message(0, message);
                 }
             }
         }
@@ -57,13 +60,14 @@ impl ChatServer {
                         ClientMessages::Init { nick } => {
                             if self.clients_initializing.remove(&client_id) {
                                 self.clients.insert(client_id, nick.clone());
-                                let message =
-                                    bincode::serialize(&ServerMessages::ClientConnected(nick))
-                                        .unwrap();
+                                let message = bincode::serialize(&ServerMessages::ClientConnected(
+                                    client_id, nick,
+                                ))
+                                .unwrap();
                                 self.server.broadcast_message(0, message);
 
                                 let init_message = ServerMessages::InitClient {
-                                    clients: self.clients.values().cloned().collect(),
+                                    clients: self.clients.clone(),
                                 };
                                 let init_message = bincode::serialize(&init_message).unwrap();
                                 self.server
@@ -72,10 +76,9 @@ impl ChatServer {
                             }
                         }
                         ClientMessages::Text(text) => {
-                            if let Some(client) = self.clients.get(&client_id) {
+                            if self.clients.contains_key(&client_id) {
                                 let message = bincode::serialize(&ServerMessages::ClientMessage(
-                                    client.clone(),
-                                    text,
+                                    client_id, text,
                                 ))
                                 .unwrap();
                                 self.server.broadcast_message(0, message);

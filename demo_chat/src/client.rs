@@ -12,7 +12,7 @@ use renet::{
 };
 
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex},
 };
@@ -46,8 +46,8 @@ pub struct App {
     nick: String,
     server_addr: String,
     client_id: u64,
-    clients: Vec<String>,
-    messages: Vec<(String, String)>,
+    clients: HashMap<u64, String>,
+    messages: Vec<(u64, String)>,
     chat_server: Option<ChatServer>,
     client: Option<Box<dyn Client>>,
     connection_error: Option<DisconnectionReason>,
@@ -63,7 +63,7 @@ impl App {
             nick: String::new(),
             server_addr: String::new(),
             client_id: 0,
-            clients: Vec::new(),
+            clients: HashMap::new(),
             messages: Vec::new(),
             chat_server: None,
             client: None,
@@ -99,7 +99,7 @@ impl App {
                 ui.separator();
 
                 egui::ScrollArea::auto_sized().show(ui, |ui| {
-                    for client in clients.iter() {
+                    for client in clients.values() {
                         ui.label(client);
                     }
                 });
@@ -126,7 +126,13 @@ impl App {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::auto_sized().show(ui, |ui| {
                 for (client, message) in messages.iter() {
-                    ui.label(format!("{}: {}", client, message));
+                    let label = if let Some(nick) = clients.get(client) {
+                        format!("{}: {}", nick, message)
+                    } else {
+                        format!("unknown: {}", message)
+                    };
+
+                    ui.label(label);
                 }
             });
         });
@@ -345,8 +351,11 @@ impl epi::App for App {
                 if let Ok(Some(message)) = chat_client.receive_message(0) {
                     let message: ServerMessages = bincode::deserialize(&message).unwrap();
                     match message {
-                        ServerMessages::ClientConnected(nick) => {
-                            self.clients.push(nick);
+                        ServerMessages::ClientConnected(id, nick) => {
+                            self.clients.insert(id, nick);
+                        }
+                        ServerMessages::ClientDisconnected(id) => {
+                            self.clients.remove(&id);
                         }
                         ServerMessages::ClientMessage(nick, text) => {
                             self.messages.push((nick, text));
