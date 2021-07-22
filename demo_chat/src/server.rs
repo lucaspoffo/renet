@@ -22,7 +22,6 @@ pub struct ChatServer {
 impl ChatServer {
     pub fn new(addr: SocketAddr) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
-        println!("Server bound at {}.", socket.local_addr().unwrap());
         let server_config = ServerConfig::default();
         let connection_config = ConnectionConfig::default();
         let server: Server<UnsecureServerProtocol> =

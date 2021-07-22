@@ -75,6 +75,10 @@ where
             events: VecDeque::new(),
         })
     }
+    
+    pub fn addr(&self) -> Option<SocketAddr> {
+        self.socket.local_addr().ok()
+    }
 
     pub fn has_clients(&self) -> bool {
         !self.remote_clients.is_empty() || !self.local_clients.is_empty()

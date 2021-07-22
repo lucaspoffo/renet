@@ -251,7 +251,7 @@ impl App {
                         Level::Warn => Color32::YELLOW,
                         Level::Info => Color32::WHITE,
                         Level::Trace => Color32::WHITE,
-                        Level::Debug => Color32::LIGHT_GRAY,
+                        Level::Debug => Color32::GREEN,
                     };
 
                     ui.colored_label(color, message);
@@ -267,6 +267,17 @@ fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
     });
 
     ui.separator();
+    if let Some(addr) = chat_server.server.addr() {
+        ui.horizontal(|ui| {
+            ui.label(format!("Address: {}", addr));
+            let tooltip = "Click to copy the server address";
+            if ui.button("📋").on_hover_text(tooltip).clicked() {
+                ui.output().copied_text = addr.to_string();
+            }
+        });
+
+        ui.separator();
+    }
 
     egui::ScrollArea::auto_sized().show(ui, |ui| {
         for client_id in chat_server.server.get_clients_id().into_iter() {
