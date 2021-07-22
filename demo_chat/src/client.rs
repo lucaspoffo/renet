@@ -3,7 +3,7 @@ use eframe::{
     epi,
 };
 
-use log::{error, Level};
+use log::error;
 use renet::{
     client::{Client, RemoteClient},
     error::DisconnectionReason,
@@ -12,9 +12,8 @@ use renet::{
 };
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     net::{SocketAddr, UdpSocket},
-    sync::{Arc, Mutex},
 };
 
 use crate::server::ChatServer;
@@ -33,15 +32,8 @@ impl Default for AppState {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Application {
-    ChatApp,
-    Logger,
-}
-
-pub struct App {
-    log_records: Arc<Mutex<VecDeque<(Level, String)>>>,
-    application: Application,
+#[derive(Default)]
+pub struct ChatApp {
     state: AppState,
     nick: String,
     server_addr: String,
@@ -54,24 +46,7 @@ pub struct App {
     text_input: String,
 }
 
-impl App {
-    pub fn with_records(log_records: Arc<Mutex<VecDeque<(Level, String)>>>) -> Self {
-        Self {
-            application: Application::ChatApp,
-            log_records,
-            state: AppState::default(),
-            nick: String::new(),
-            server_addr: String::new(),
-            client_id: 0,
-            clients: HashMap::new(),
-            messages: Vec::new(),
-            chat_server: None,
-            client: None,
-            connection_error: None,
-            text_input: String::new(),
-        }
-    }
-
+impl ChatApp {
     fn draw_chat(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         let Self {
             clients,
@@ -247,93 +222,15 @@ impl App {
         });
     }
 
-    fn draw_log(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::auto_sized().show(ui, |ui| {
-                let records = self.log_records.lock().unwrap();
-                for (level, message) in records.iter() {
-                    let color = match level {
-                        Level::Error => Color32::RED,
-                        Level::Warn => Color32::YELLOW,
-                        Level::Info => Color32::WHITE,
-                        Level::Trace => Color32::WHITE,
-                        Level::Debug => Color32::GREEN,
-                    };
-
-                    ui.colored_label(color, message);
-                }
-            });
-        });
-    }
-}
-
-fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
-    ui.vertical_centered(|ui| {
-        ui.heading("Server Commands");
-    });
-
-    ui.separator();
-    if let Some(addr) = chat_server.server.addr() {
-        ui.horizontal(|ui| {
-            ui.label(format!("Address: {}", addr));
-            let tooltip = "Click to copy the server address";
-            if ui.button("📋").on_hover_text(tooltip).clicked() {
-                ui.output().copied_text = addr.to_string();
-            }
-        });
-
-        ui.separator();
-    }
-
-    egui::ScrollArea::auto_sized().show(ui, |ui| {
-        for client_id in chat_server.server.get_clients_id().into_iter() {
-            ui.horizontal(|ui| {
-                if ui
-                    .button(format!("Disconnect client {}", client_id))
-                    .clicked()
-                {
-                    chat_server.server.disconnect(client_id);
-                }
-            });
+    pub fn draw(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+        match self.state {
+            AppState::Chat => self.draw_chat(ctx, frame),
+            AppState::Start => self.draw_start(ctx, frame),
+            AppState::Connecting => self.draw_connecting(ctx, frame),
         }
-    });
-}
-
-impl epi::App for App {
-    fn name(&self) -> &str {
-        "Renet Chat"
     }
 
-    /// Called each time the UI needs repainting, which may be many times per second.
-    /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(self.application == Application::ChatApp, "Chat App")
-                    .clicked()
-                {
-                    self.application = Application::ChatApp;
-                }
-
-                if ui
-                    .selectable_label(self.application == Application::Logger, "Log")
-                    .clicked()
-                {
-                    self.application = Application::Logger;
-                }
-            });
-        });
-
-        match self.application {
-            Application::ChatApp => match self.state {
-                AppState::Chat => self.draw_chat(ctx, frame),
-                AppState::Start => self.draw_start(ctx, frame),
-                AppState::Connecting => self.draw_connecting(ctx, frame),
-            },
-            Application::Logger => self.draw_log(ctx, frame),
-        }
-
+    pub fn update(&mut self) {
         if let Some(chat_server) = self.chat_server.as_mut() {
             chat_server.update().unwrap();
         }
@@ -372,6 +269,37 @@ impl epi::App for App {
                 chat_client.send_packets().unwrap();
             }
         }
-        ctx.request_repaint();
     }
+}
+
+fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
+    ui.vertical_centered(|ui| {
+        ui.heading("Server Commands");
+    });
+
+    ui.separator();
+    if let Some(addr) = chat_server.server.addr() {
+        ui.horizontal(|ui| {
+            ui.label(format!("Address: {}", addr));
+            let tooltip = "Click to copy the server address";
+            if ui.button("📋").on_hover_text(tooltip).clicked() {
+                ui.output().copied_text = addr.to_string();
+            }
+        });
+
+        ui.separator();
+    }
+
+    egui::ScrollArea::auto_sized().show(ui, |ui| {
+        for client_id in chat_server.server.get_clients_id().into_iter() {
+            ui.horizontal(|ui| {
+                if ui
+                    .button(format!("Disconnect client {}", client_id))
+                    .clicked()
+                {
+                    chat_server.server.disconnect(client_id);
+                }
+            });
+        }
+    });
 }

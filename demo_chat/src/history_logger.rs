@@ -1,7 +1,12 @@
+use eframe::{
+    egui::{self, Color32},
+    epi,
+};
 use log::{Level, Log};
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+
 /// Simple logger to keep the last records in an array
 /// so we can display them in the interface. Also prints
 /// to console.
@@ -54,4 +59,33 @@ impl Log for HistoryLogger {
     }
 
     fn flush(&self) {}
+}
+
+pub struct LoggerApp {
+    records: Arc<Mutex<VecDeque<(Level, String)>>>,
+}
+
+impl LoggerApp {
+    pub fn new(records: Arc<Mutex<VecDeque<(Level, String)>>>) -> Self {
+        Self { records }
+    }
+
+    pub fn draw(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::auto_sized().show(ui, |ui| {
+                let records = self.records.lock().unwrap();
+                for (level, message) in records.iter() {
+                    let color = match level {
+                        Level::Error => Color32::RED,
+                        Level::Warn => Color32::YELLOW,
+                        Level::Info => Color32::WHITE,
+                        Level::Trace => Color32::WHITE,
+                        Level::Debug => Color32::GREEN,
+                    };
+
+                    ui.colored_label(color, message);
+                }
+            });
+        });
+    }
 }
