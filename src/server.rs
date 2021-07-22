@@ -201,6 +201,10 @@ where
             .collect()
     }
 
+    pub fn is_client_connected(&self, client_id: &ClientId) -> bool {
+        self.remote_clients.contains_key(client_id) || self.local_clients.contains_key(client_id)
+    }
+
     pub fn update(&mut self) -> Result<(), RenetError> {
         let mut buffer = vec![0u8; self.config.max_payload_size];
         loop {
@@ -340,14 +344,25 @@ where
                 if let Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) = packet {
                     let protocol = P::from_payload(&payload)?;
                     let id = protocol.id();
-                    info!("Created new protocol from payload with client id {}", id);
-                    let new_connection = RemoteConnection::new(
-                        protocol.id(),
-                        *addr,
-                        self.connection_config.clone(),
-                        protocol,
-                    );
-                    self.connecting.insert(id, new_connection);
+                    if self.is_client_connected(&id) {
+                        info!(
+                            "Client with id {} already connected, discarded connection attempt.",
+                            id
+                        );
+                        let packet = Unauthenticaded::ConnectionError(
+                            DisconnectionReason::ClientIdAlreadyConnected,
+                        );
+                        send_packet(&self.socket, packet, addr);
+                    } else {
+                        info!("Created new protocol from payload with client id {}", id);
+                        let new_connection = RemoteConnection::new(
+                            protocol.id(),
+                            *addr,
+                            self.connection_config.clone(),
+                            protocol,
+                        );
+                        self.connecting.insert(id, new_connection);
+                    }
                 }
             }
         };

@@ -18,6 +18,8 @@ pub enum DisconnectionReason {
     DisconnectedByServer,
     #[error("disconnected by client")]
     DisconnectedByClient,
+    #[error("client with same id already connected")]
+    ClientIdAlreadyConnected,
 }
 
 #[derive(Debug, Error)]
