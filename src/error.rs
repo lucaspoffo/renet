@@ -27,16 +27,12 @@ pub enum DisconnectionReason {
 
 #[derive(Debug, Error)]
 pub enum RenetError {
-    #[error("packet size {got} above the limit, expected < {expected}")]
-    MaximumPacketSizeExceeded { expected: usize, got: usize },
     #[error("socket disconnected: {0}")]
     IOError(#[from] io::Error),
     #[error("bincode failed to (de)serialize: {0}")]
     BincodeError(#[from] bincode::Error),
     #[error("error during protocol exchange: {0}")]
     AuthenticationError(Box<dyn Error + Send + Sync + 'static>),
-    #[error("connection timed out.")]
-    ConnectionTimedOut,
     #[error("packet fragmentation error: {0}")]
     FragmentError(#[from] FragmentError),
     #[error("connection error: {0}")]
