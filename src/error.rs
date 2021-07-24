@@ -20,6 +20,9 @@ pub enum DisconnectionReason {
     DisconnectedByClient,
     #[error("client with same id already connected")]
     ClientIdAlreadyConnected,
+    // TODO: Should the actual error be in this struct?
+    #[error("error in channel {channel_id}")]
+    ChannelError { channel_id: u8 },
 }
 
 #[derive(Debug, Error)]

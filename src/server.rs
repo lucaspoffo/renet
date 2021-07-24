@@ -75,7 +75,7 @@ where
             events: VecDeque::new(),
         })
     }
-    
+
     pub fn addr(&self) -> Option<SocketAddr> {
         self.socket.local_addr().ok()
     }

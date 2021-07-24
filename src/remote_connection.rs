@@ -209,9 +209,8 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
             .channels
             .get_mut(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        channel
-            .send_message(message)
-            .map_err(|e| RenetError::ChannelError(e))
+        channel.send_message(message);
+        Ok(())
     }
 
     pub fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
@@ -233,6 +232,18 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 reason: DisconnectionReason::TimedOut,
             };
             return;
+        }
+
+        for (channel_id, channel) in self.channels.iter() {
+            if let Some(e) = channel.error() {
+                error!("Channel {} with error {}.", channel_id, e);
+                self.state = ConnectionState::Disconnected {
+                    reason: DisconnectionReason::ChannelError {
+                        channel_id: *channel_id,
+                    },
+                };
+                return;
+            }
         }
 
         match self.state {
@@ -441,8 +452,12 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 for (channel_id, channel) in self.channels.iter_mut() {
                     let messages =
                         channel.get_messages_to_send(self.config.max_packet_size as u32, sequence);
-                    if let Some(messages) = messages {
-                        debug!("Sending {} messages.", messages.len());
+                    if !messages.is_empty() {
+                        debug!(
+                            "Sending {} messages from channel {}.",
+                            messages.len(),
+                            channel_id
+                        );
                         let packet_data = ChannelPacketData::new(messages, *channel_id);
                         channels_packet_data.push(packet_data);
                     }

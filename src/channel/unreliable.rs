@@ -2,7 +2,7 @@ use crate::{
     channel::{Channel, ChannelConfig},
     packet::Payload,
 };
-use std::{collections::VecDeque, error::Error};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 pub struct UnreliableUnorderedChannelConfig {
@@ -50,19 +50,11 @@ impl Channel for UnreliableUnorderedChannel {
         self.messages_received.pop_front()
     }
 
-    fn send_message(
-        &mut self,
-        message_payload: Payload,
-    ) -> Result<(), Box<dyn Error + Sync + Send + 'static>> {
+    fn send_message(&mut self, message_payload: Payload) {
         self.messages_to_send.push_back(message_payload);
-        Ok(())
     }
 
-    fn get_messages_to_send(
-        &mut self,
-        mut available_bytes: u32,
-        _sequence: u16,
-    ) -> Option<Vec<Payload>> {
+    fn get_messages_to_send(&mut self, mut available_bytes: u32, _sequence: u16) -> Vec<Payload> {
         let mut num_messages = 0;
         let mut messages = vec![];
 
@@ -85,11 +77,11 @@ impl Channel for UnreliableUnorderedChannel {
             messages.push(message);
         }
 
-        if messages.is_empty() {
-            None
-        } else {
-            Some(messages)
-        }
+        messages
+    }
+
+    fn error(&self) -> Option<&(dyn std::error::Error + Send + Sync + 'static)> {
+        None
     }
 
     // Since this is an unreliable channel, we do nothing with the ack.

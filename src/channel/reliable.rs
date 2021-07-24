@@ -4,8 +4,16 @@ use crate::sequence_buffer::SequenceBuffer;
 
 use log::error;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::time::{Duration, Instant};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ReliableOrderedChannelError {
+    #[error("ReliableOrderedChannel out of sync, a message was dropped")]
+    WouldDropMessage,
+    #[error("failed to serialize message: {0}")]
+    FailedToSerialize(#[from] bincode::Error),
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReliableMessage {
@@ -100,6 +108,7 @@ pub struct ReliableOrderedChannel {
     num_messages_sent: u64,
     num_messages_received: u64,
     oldest_unacked_message_id: u16,
+    error: Option<ReliableOrderedChannelError>,
 }
 
 impl ReliableOrderedChannel {
@@ -114,6 +123,7 @@ impl ReliableOrderedChannel {
             num_messages_sent: 0,
             oldest_unacked_message_id: 0,
             config,
+            error: None,
         }
     }
 
@@ -133,13 +143,9 @@ impl ReliableOrderedChannel {
 }
 
 impl Channel for ReliableOrderedChannel {
-    fn get_messages_to_send(
-        &mut self,
-        mut available_bytes: u32,
-        sequence: u16,
-    ) -> Option<Vec<Payload>> {
+    fn get_messages_to_send(&mut self, mut available_bytes: u32, sequence: u16) -> Vec<Payload> {
         if !self.has_messages_to_send() {
-            return None;
+            return vec![];
         }
 
         if let Some(packet_budget) = self.config.packet_budget {
@@ -173,7 +179,8 @@ impl Channel for ReliableOrderedChannel {
                     Ok(size) => size as u32,
                     Err(e) => {
                         error!("Failed to get reliable message size: {}", e);
-                        continue;
+                        self.error = Some(ReliableOrderedChannelError::FailedToSerialize(e));
+                        return vec![];
                     }
                 };
 
@@ -187,26 +194,29 @@ impl Channel for ReliableOrderedChannel {
             }
         }
 
-        if !messages.is_empty() {
-            let mut messages_id = vec![];
-            let mut payloads = vec![];
-            for message in messages.iter() {
-                match bincode::serialize(message) {
-                    Ok(p) => {
-                        messages_id.push(message.id);
-                        payloads.push(p);
-                    }
-                    Err(e) => {
-                        error!("Failed to serialize reliable message: {}", e);
-                    }
+        if messages.is_empty() {
+            return vec![];
+        }
+
+        let mut messages_id = vec![];
+        let mut payloads = vec![];
+        for message in messages.iter() {
+            match bincode::serialize(message) {
+                Ok(p) => {
+                    messages_id.push(message.id);
+                    payloads.push(p);
+                }
+                Err(e) => {
+                    error!("Failed to serialize reliable message: {}", e);
+                    self.error = Some(ReliableOrderedChannelError::FailedToSerialize(e));
+                    return payloads;
                 }
             }
-
-            let packet_sent = PacketSent::new(messages_id);
-            self.packets_sent.insert(sequence, packet_sent);
-            return Some(payloads);
         }
-        None
+
+        let packet_sent = PacketSent::new(messages_id);
+        self.packets_sent.insert(sequence, packet_sent);
+        payloads
     }
 
     fn process_messages(&mut self, messages: Vec<Payload>) {
@@ -239,20 +249,18 @@ impl Channel for ReliableOrderedChannel {
         }
     }
 
-    fn send_message(
-        &mut self,
-        message_payload: Payload,
-    ) -> Result<(), Box<dyn Error + Sync + Send + 'static>> {
+    fn send_message(&mut self, message_payload: Payload) {
         let message_id = self.send_message_id;
+        if !self.messages_send.available(message_id) {
+            self.error = Some(ReliableOrderedChannelError::WouldDropMessage);
+            return;
+        }
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
         let entry = ReliableMessageSent::new(ReliableMessage::new(message_id, message_payload));
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
-
-        // TODO: Should emit error when full
-        Ok(())
     }
 
     fn receive_message(&mut self) -> Option<Payload> {
@@ -268,6 +276,12 @@ impl Channel for ReliableOrderedChannel {
         self.messages_received
             .remove(received_message_id)
             .map(|m| m.payload)
+    }
+
+    fn error(&self) -> Option<&(dyn std::error::Error + Send + Sync + 'static)> {
+        self.error
+            .as_ref()
+            .map(|e| e as &(dyn std::error::Error + Send + Sync + 'static))
     }
 }
 
@@ -306,13 +320,11 @@ mod tests {
         assert!(!channel.has_messages_to_send());
         assert_eq!(channel.num_messages_sent, 0);
 
-        channel
-            .send_message(TestMessages::Second(0).serialize())
-            .unwrap();
+        channel.send_message(TestMessages::Second(0).serialize());
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
-        let messages = channel.get_messages_to_send(u32::MAX, sequence).unwrap();
+        let messages = channel.get_messages_to_send(u32::MAX, sequence);
 
         assert_eq!(messages.len(), 1);
         assert!(channel.has_messages_to_send());
@@ -356,23 +368,17 @@ mod tests {
         let config = ReliableOrderedChannelConfig::default();
         let mut channel: ReliableOrderedChannel = ReliableOrderedChannel::new(config);
 
-        channel.send_message(first_message.serialize()).unwrap();
-        channel.send_message(second_message.serialize()).unwrap();
+        channel.send_message(first_message.serialize());
+        channel.send_message(second_message.serialize());
 
         let message_size = bincode::serialized_size(&message).unwrap() as u32;
 
         let messages = channel.get_messages_to_send(message_size, 0);
-        assert!(messages.is_some());
-        let messages = messages.unwrap();
-
         assert_eq!(messages.len(), 1);
 
         channel.process_ack(0);
 
         let messages = channel.get_messages_to_send(message_size, 1);
-        assert!(messages.is_some());
-        let messages = messages.unwrap();
-
         assert_eq!(messages.len(), 1);
     }
 
@@ -382,14 +388,30 @@ mod tests {
         config.message_resend_time = Duration::from_millis(0);
         let mut channel: ReliableOrderedChannel = ReliableOrderedChannel::new(config);
 
-        channel
-            .send_message(TestMessages::First.serialize())
-            .unwrap();
+        channel.send_message(TestMessages::First.serialize());
 
-        let messages = channel.get_messages_to_send(u32::MAX, 0).unwrap();
+        let messages = channel.get_messages_to_send(u32::MAX, 0);
         assert_eq!(messages.len(), 1);
 
-        let messages = channel.get_messages_to_send(u32::MAX, 1).unwrap();
+        let messages = channel.get_messages_to_send(u32::MAX, 1);
         assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn out_of_sync() {
+        let config = ReliableOrderedChannelConfig {
+            message_send_queue_size: 1,
+            ..Default::default()
+        };
+        let mut channel: ReliableOrderedChannel = ReliableOrderedChannel::new(config);
+
+        channel.send_message(TestMessages::Second(0).serialize());
+        assert!(channel.error().is_none());
+
+        channel.send_message(TestMessages::Second(0).serialize());
+        assert!(matches!(
+            channel.error,
+            Some(ReliableOrderedChannelError::WouldDropMessage)
+        ));
     }
 }

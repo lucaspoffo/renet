@@ -43,6 +43,11 @@ impl<T: Clone> SequenceBuffer<T> {
         sequence as usize % self.entries.len()
     }
 
+    pub fn available(&self, sequence: u16) -> bool {
+        let index = self.index(sequence);
+        self.entry_sequences[index].is_none()
+    }
+
     /// Returns whether or not we have previously inserted an entry for the given sequence number.
     pub fn exists(&self, sequence: u16) -> bool {
         let index = self.index(sequence);

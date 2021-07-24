@@ -1,5 +1,5 @@
 use std::{
-    error::Error,
+    collections::VecDeque,
     mem,
     time::{Duration, Instant},
 };
@@ -9,6 +9,13 @@ use serde::{Deserialize, Serialize};
 use super::{Channel, ChannelConfig};
 use crate::{packet::Payload, sequence_buffer::SequenceBuffer};
 use log::{error, info};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum BlockChannelError {
+    #[error("failed to serialize block: {0}")]
+    FailedToSerialize(#[from] bincode::Error),
+}
 
 #[derive(Debug, Clone)]
 pub struct BlockChannelConfig {
@@ -74,6 +81,7 @@ struct ChunkSender {
     packets_sent: SequenceBuffer<PacketSent>,
     resend_time: Duration,
     packet_budget: Option<u32>,
+    messages_to_send: VecDeque<Payload>,
 }
 
 impl ChunkSender {
@@ -90,19 +98,26 @@ impl ChunkSender {
             num_slices: 0,
             current_slice_id: 0,
             num_acked_slices: 0,
-            acked: Vec::with_capacity(0),
-            chunk_data: Vec::with_capacity(0),
-            last_time_sent: Vec::with_capacity(0),
+            acked: Vec::new(),
+            chunk_data: Vec::new(),
+            last_time_sent: Vec::new(),
             packets_sent: SequenceBuffer::with_capacity(sent_packet_buffer_size),
             resend_time,
             packet_budget,
+            messages_to_send: VecDeque::new(),
         }
     }
+
     fn send_message(&mut self, data: Payload) {
         if self.sending {
+            self.messages_to_send.push_back(data);
             return;
         }
 
+        self.start_sending_message(data);
+    }
+
+    fn start_sending_message(&mut self, data: Payload) {
         self.sending = true;
         self.num_slices = (data.len() + self.slice_size - 1) / self.slice_size;
 
@@ -111,10 +126,17 @@ impl ChunkSender {
         self.chunk_data = data;
     }
 
-    fn generate_slice_packets(&mut self, mut available_bytes: u32) -> Vec<SliceMessage> {
+    fn generate_slice_packets(
+        &mut self,
+        mut available_bytes: u32,
+    ) -> Result<Vec<SliceMessage>, BlockChannelError> {
         let mut slice_messages = vec![];
         if !self.sending {
-            return slice_messages;
+            if let Some(message) = self.messages_to_send.pop_front() {
+                self.start_sending_message(message);
+            } else {
+                return Ok(slice_messages);
+            }
         }
 
         if let Some(packet_budget) = self.packet_budget {
@@ -150,13 +172,9 @@ impl ChunkSender {
                 data,
             };
 
-            let message_size = match bincode::serialized_size(&message) {
-                Ok(size) => size as u32,
-                Err(e) => {
-                    error!("Failed to get slice message size: {}", e);
-                    continue;
-                }
-            };
+            let message_size =
+                bincode::serialized_size(&message).map_err(BlockChannelError::FailedToSerialize)?;
+            let message_size = message_size as u32;
 
             if available_bytes < message_size {
                 break;
@@ -171,7 +189,7 @@ impl ChunkSender {
         }
         self.current_slice_id = (self.current_slice_id + slice_messages.len()) % self.num_slices;
 
-        slice_messages
+        Ok(slice_messages)
     }
 
     fn process_ack(&mut self, ack: u16) {
@@ -219,8 +237,8 @@ impl ChunkReceiver {
             slice_size,
             num_slices: 0,
             num_received_slices: 0,
-            received: Vec::with_capacity(0),
-            chunk_data: Vec::with_capacity(0),
+            received: Vec::new(),
+            chunk_data: Vec::new(),
         }
     }
 
@@ -309,7 +327,8 @@ impl ChunkReceiver {
 pub struct BlockChannel {
     sender: ChunkSender,
     receiver: ChunkReceiver,
-    received_messages: Vec<Payload>,
+    received_messages: VecDeque<Payload>,
+    error: Option<BlockChannelError>,
 }
 
 impl BlockChannel {
@@ -325,21 +344,26 @@ impl BlockChannel {
         Self {
             sender,
             receiver,
-            received_messages: Vec::new(),
+            received_messages: VecDeque::new(),
+            error: None,
         }
     }
 }
 
 impl Channel for BlockChannel {
-    fn get_messages_to_send(
-        &mut self,
-        available_bytes: u32,
-        sequence: u16,
-    ) -> Option<Vec<Payload>> {
-        let messages = self.sender.generate_slice_packets(available_bytes);
+    fn get_messages_to_send(&mut self, available_bytes: u32, sequence: u16) -> Vec<Payload> {
+        let mut payloads = vec![];
+        let messages: Vec<SliceMessage> = match self.sender.generate_slice_packets(available_bytes)
+        {
+            Ok(m) => m,
+            Err(e) => {
+                self.error = Some(e);
+                return payloads;
+            }
+        };
+
         if !messages.is_empty() {
             let mut slice_ids = vec![];
-            let mut payloads = vec![];
             for message in messages.iter() {
                 let slice_id = message.slice_id;
                 match bincode::serialize(message) {
@@ -347,27 +371,34 @@ impl Channel for BlockChannel {
                         slice_ids.push(slice_id);
                         payloads.push(p);
                     }
-                    Err(e) => error!("Failed to serialize slicec message: {}", e),
+                    Err(e) => {
+                        error!("Failed to serialize slice message: {}", e);
+                        self.error = Some(BlockChannelError::FailedToSerialize(e));
+                        return vec![];
+                    }
                 }
             }
 
             let packet_sent = PacketSent::new(slice_ids);
             self.sender.packets_sent.insert(sequence, packet_sent);
-            return Some(payloads);
         }
 
-        None
+        payloads
     }
 
     fn process_messages(&mut self, messages: Vec<Payload>) {
         for message in messages.iter() {
+            // TODO: If we add better error check for packets
+            // Should we set an channel error when we fail to deserialize here?
+            // Yojimbo set an error when this occurs, we are currently just dropping
+            // the slice.
             match bincode::deserialize::<SliceMessage>(message) {
                 Ok(message) => {
                     if let Some(block) = self.receiver.process_slice_message(&message) {
-                        self.received_messages.push(block);
+                        self.received_messages.push_back(block);
                     }
                 }
-                Err(e) => error!("Failed to deserialize slicec message: {}", e),
+                Err(e) => error!("Failed to deserialize slice message: {}", e),
             }
         }
     }
@@ -376,16 +407,18 @@ impl Channel for BlockChannel {
         self.sender.process_ack(ack);
     }
 
-    fn send_message(
-        &mut self,
-        message_payload: Payload,
-    ) -> Result<(), Box<dyn Error + Sync + Send + 'static>> {
+    fn send_message(&mut self, message_payload: Payload) {
         self.sender.send_message(message_payload);
-        Ok(())
     }
 
     fn receive_message(&mut self) -> Option<Payload> {
-        self.received_messages.pop()
+        self.received_messages.pop_front()
+    }
+
+    fn error(&self) -> Option<&(dyn std::error::Error + Send + Sync + 'static)> {
+        self.error
+            .as_ref()
+            .map(|e| e as &(dyn std::error::Error + Send + Sync + 'static))
     }
 }
 
@@ -402,7 +435,7 @@ mod tests {
 
         let mut receiver = ChunkReceiver::new(SLICE_SIZE);
 
-        let slice_messages = sender.generate_slice_packets(u32::MAX);
+        let slice_messages = sender.generate_slice_packets(u32::MAX).unwrap();
         assert_eq!(slice_messages.len(), 2);
         sender.process_ack(0);
         sender.process_ack(1);
@@ -411,7 +444,7 @@ mod tests {
             receiver.process_slice_message(&slice_message);
         }
 
-        let last_message = sender.generate_slice_packets(u32::MAX);
+        let last_message = sender.generate_slice_packets(u32::MAX).unwrap();
         let result = receiver.process_slice_message(&last_message[0]);
         assert_eq!(message, result.unwrap());
     }
@@ -424,10 +457,14 @@ mod tests {
 
         let payload = vec![7u8; 102400];
 
-        sender_channel.send_message(payload.clone()).unwrap();
+        sender_channel.send_message(payload.clone());
         let mut sequence = 0;
 
-        while let Some(messages) = sender_channel.get_messages_to_send(1600, sequence) {
+        loop {
+            let messages = sender_channel.get_messages_to_send(1600, sequence);
+            if messages.is_empty() {
+                break;
+            }
             receiver_channel.process_messages(messages);
             sender_channel.process_ack(sequence);
             sequence += 1;
