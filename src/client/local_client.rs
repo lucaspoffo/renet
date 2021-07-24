@@ -8,6 +8,7 @@ use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
 use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
+use log::error;
 
 pub struct LocalClient {
     pub id: u64,
@@ -30,9 +31,15 @@ impl LocalClient {
             .sender
             .get(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        channel_sender
-            .send(message)
-            .map_err(|e| RenetError::ChannelError(Box::new(e)))
+        if let Err(e) = channel_sender.send(message) {
+            error!(
+                "Error while sending message to local client in channel {}: {}",
+                channel_id, e
+            );
+            self.connected.store(false, Ordering::Relaxed);
+        }
+
+        Ok(())
     }
 
     pub fn receive_message(&self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
@@ -43,7 +50,13 @@ impl LocalClient {
         match channel_sender.try_recv() {
             Ok(payload) => Ok(Some(payload)),
             Err(TryRecvError::Empty) => Ok(None),
-            Err(e) => Err(RenetError::ChannelError(Box::new(e))),
+            Err(e) => {
+                error!(
+                    "Error while receiving message in local client in channel {}: {}",
+                    channel_id, e
+                );
+                Ok(None)
+            }
         }
     }
 }
@@ -119,9 +132,15 @@ impl Client for LocalClientConnected {
             .sender
             .get(&channel_id)
             .ok_or(RenetError::InvalidChannel { channel_id })?;
-        sender
-            .try_send(message)
-            .map_err(|e| RenetError::ChannelError(Box::new(e)))
+        if let Err(e) = sender.try_send(message) {
+            error!(
+                "Error while sending message to local connection in channel {}: {}",
+                channel_id, e
+            );
+            self.disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
+        }
+
+        Ok(())
     }
 
     fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
@@ -132,7 +151,14 @@ impl Client for LocalClientConnected {
         match receiver.try_recv() {
             Ok(payload) => Ok(Some(payload)),
             Err(TryRecvError::Empty) => Ok(None),
-            Err(e) => Err(RenetError::ChannelError(Box::new(e))),
+            Err(e) => {
+                error!(
+                    "Error while receiving message in local connection in channel {}: {}",
+                    channel_id, e
+                );
+                self.disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
+                Ok(None)
+            }
         }
     }
 

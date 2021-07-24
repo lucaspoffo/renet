@@ -49,6 +49,4 @@ pub enum RenetError {
     InvalidChannel { channel_id: u8 },
     #[error("client not found")]
     ClientNotFound,
-    #[error("channel error: {0}")]
-    ChannelError(Box<dyn Error + Send + Sync + 'static>),
 }
