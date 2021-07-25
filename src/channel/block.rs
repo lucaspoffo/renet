@@ -362,26 +362,28 @@ impl Channel for BlockChannel {
             }
         };
 
-        if !messages.is_empty() {
-            let mut slice_ids = vec![];
-            for message in messages.iter() {
-                let slice_id = message.slice_id;
-                match bincode::serialize(message) {
-                    Ok(p) => {
-                        slice_ids.push(slice_id);
-                        payloads.push(p);
-                    }
-                    Err(e) => {
-                        error!("Failed to serialize slice message: {}", e);
-                        self.error = Some(BlockChannelError::FailedToSerialize(e));
-                        return vec![];
-                    }
+        if messages.is_empty() {
+            return payloads;
+        }
+
+        let mut slice_ids = vec![];
+        for message in messages.iter() {
+            let slice_id = message.slice_id;
+            match bincode::serialize(message) {
+                Ok(p) => {
+                    slice_ids.push(slice_id);
+                    payloads.push(p);
+                }
+                Err(e) => {
+                    error!("Failed to serialize slice message: {}", e);
+                    self.error = Some(BlockChannelError::FailedToSerialize(e));
+                    return vec![];
                 }
             }
-
-            let packet_sent = PacketSent::new(slice_ids);
-            self.sender.packets_sent.insert(sequence, packet_sent);
         }
+
+        let packet_sent = PacketSent::new(slice_ids);
+        self.sender.packets_sent.insert(sequence, packet_sent);
 
         payloads
     }
