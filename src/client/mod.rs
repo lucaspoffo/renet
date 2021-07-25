@@ -1,4 +1,4 @@
-use crate::error::{DisconnectionReason, RenetError};
+use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
@@ -18,9 +18,9 @@ pub trait Client {
 
     fn disconnect(&mut self);
 
-    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError>;
+    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError>;
 
-    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError>;
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, MessageError>;
 
     fn network_info(&mut self) -> &NetworkInfo;
 

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::client::Client;
-use crate::error::{DisconnectionReason, RenetError};
+use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::{ClientId, NetworkInfo};
 
@@ -26,11 +26,11 @@ impl LocalClient {
         self.connected.store(false, Ordering::Relaxed);
     }
 
-    pub fn send_message(&self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
+    pub fn send_message(&self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
         let channel_sender = self
             .sender
             .get(&channel_id)
-            .ok_or(RenetError::InvalidChannel { channel_id })?;
+            .ok_or(MessageError::InvalidChannel { channel_id })?;
         if let Err(e) = channel_sender.send(message) {
             error!(
                 "Error while sending message to local client in channel {}: {}",
@@ -42,11 +42,11 @@ impl LocalClient {
         Ok(())
     }
 
-    pub fn receive_message(&self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
+    pub fn receive_message(&self, channel_id: u8) -> Result<Option<Payload>, MessageError> {
         let channel_sender = self
             .receiver
             .get(&channel_id)
-            .ok_or(RenetError::InvalidChannel { channel_id })?;
+            .ok_or(MessageError::InvalidChannel { channel_id })?;
         match channel_sender.try_recv() {
             Ok(payload) => Ok(Some(payload)),
             Err(TryRecvError::Empty) => Ok(None),
@@ -127,11 +127,11 @@ impl Client for LocalClientConnected {
         self.disconnect_reason
     }
 
-    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
+    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
         let sender = self
             .sender
             .get(&channel_id)
-            .ok_or(RenetError::InvalidChannel { channel_id })?;
+            .ok_or(MessageError::InvalidChannel { channel_id })?;
         if let Err(e) = sender.try_send(message) {
             error!(
                 "Error while sending message to local connection in channel {}: {}",
@@ -143,11 +143,11 @@ impl Client for LocalClientConnected {
         Ok(())
     }
 
-    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, RenetError> {
+    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, MessageError> {
         let receiver = self
             .receiver
             .get(&channel_id)
-            .ok_or(RenetError::InvalidChannel { channel_id })?;
+            .ok_or(MessageError::InvalidChannel { channel_id })?;
         match receiver.try_recv() {
             Ok(payload) => Ok(Some(payload)),
             Err(TryRecvError::Empty) => Ok(None),

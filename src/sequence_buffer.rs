@@ -21,6 +21,7 @@ impl<T: Clone> SequenceBuffer<T> {
         None
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, sequence: u16) -> Option<&T> {
         if self.exists(sequence) {
             let index = self.index(sequence);

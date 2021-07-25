@@ -1,10 +1,8 @@
 use crate::reassembly_fragment::FragmentError;
 
 use serde::{Deserialize, Serialize};
-use std::{error::Error, io, result};
+use std::{error::Error, io};
 use thiserror::Error;
-
-pub type Result<T> = result::Result<T, RenetError>;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
 pub enum DisconnectionReason {
@@ -39,8 +37,10 @@ pub enum RenetError {
     ConnectionError(DisconnectionReason),
     #[error("client is disconnected")]
     ClientDisconnected,
-    #[error("connection is not established")]
-    NotAuthenticated,
+}
+
+#[derive(Debug, Error)]
+pub enum MessageError {
     #[error("invalid channel {channel_id}")]
     InvalidChannel { channel_id: u8 },
     #[error("client not found")]

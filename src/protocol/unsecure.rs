@@ -1,5 +1,6 @@
-use crate::error::RenetError;
-use crate::protocol::{AuthenticationProtocol, SecurityService, ServerAuthenticationProtocol};
+use crate::protocol::{
+    AuthenticationProtocol, Result, SecurityService, ServerAuthenticationProtocol,
+};
 use crate::remote_connection::ClientId;
 
 use log::debug;
@@ -47,18 +48,16 @@ impl UnsecureClientProtocol {
 }
 
 impl SecurityService for UnsecureService {
-    fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>, RenetError> {
+    fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>> {
         let packet = Packet::Payload(data.into());
         Ok(bincode::serialize(&packet)?)
     }
 
-    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>, RenetError> {
+    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>> {
         let packet = bincode::deserialize(data)?;
         match packet {
             Packet::Payload(payload) => Ok(payload),
-            _ => Err(RenetError::AuthenticationError(Box::new(
-                ConnectionError::InvalidPacket,
-            ))),
+            _ => Err(Box::new(ConnectionError::InvalidPacket)),
         }
     }
 }
@@ -70,7 +69,7 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         self.id
     }
 
-    fn create_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
+    fn create_payload(&mut self) -> Result<Option<Vec<u8>>> {
         let packet = match self.state {
             ClientState::SendingConnectionRequest => Packet::ConnectionRequest(self.id),
             ClientState::Accepted => {
@@ -85,7 +84,7 @@ impl AuthenticationProtocol for UnsecureClientProtocol {
         Ok(Some(packet))
     }
 
-    fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+    fn read_payload(&mut self, payload: &[u8]) -> Result<()> {
         let packet = bincode::deserialize(payload)?;
         match (packet, &self.state) {
             (Packet::KeepAlive, ClientState::SendingConnectionRequest) => {
@@ -131,7 +130,7 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         self.id
     }
 
-    fn create_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
+    fn create_payload(&mut self) -> Result<Option<Vec<u8>>> {
         let packet = match self.state {
             ServerState::SendingKeepAlive => Packet::KeepAlive,
             _ => return Ok(None),
@@ -140,7 +139,7 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
         Ok(Some(bincode::serialize(&packet)?))
     }
 
-    fn read_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
+    fn read_payload(&mut self, payload: &[u8]) -> Result<()> {
         let packet = bincode::deserialize(payload)?;
         match (packet, &self.state) {
             (Packet::ConnectionRequest(_), _) => {}
@@ -168,7 +167,7 @@ impl AuthenticationProtocol for UnsecureServerProtocol {
 }
 
 impl ServerAuthenticationProtocol for UnsecureServerProtocol {
-    fn from_payload(payload: &[u8]) -> Result<Self, RenetError> {
+    fn from_payload(payload: &[u8]) -> Result<Self> {
         let packet = bincode::deserialize(payload)?;
         if let Packet::ConnectionRequest(client_id) = packet {
             Ok(Self {
@@ -176,9 +175,7 @@ impl ServerAuthenticationProtocol for UnsecureServerProtocol {
                 state: ServerState::SendingKeepAlive,
             })
         } else {
-            Err(RenetError::AuthenticationError(Box::new(
-                ConnectionError::InvalidPacket,
-            )))
+            Err(Box::new(ConnectionError::InvalidPacket))
         }
     }
 }

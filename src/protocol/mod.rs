@@ -1,7 +1,9 @@
-use crate::error::Result;
 use crate::remote_connection::ClientId;
+use std::error::Error;
 
 pub mod unsecure;
+
+pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync + 'static>>;
 
 pub trait SecurityService {
     fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>>;

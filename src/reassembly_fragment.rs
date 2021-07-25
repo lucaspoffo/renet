@@ -1,6 +1,6 @@
+use crate::error::RenetError;
 use crate::packet::{AckData, ChannelPacketData, Fragment, Message};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::RenetError;
 
 use log::{error, trace};
 use std::io;
@@ -169,7 +169,7 @@ impl SequenceBuffer<ReassemblyFragment> {
     }
 }
 
-pub fn build_fragments(
+pub(crate) fn build_fragments(
     channels_packet_data: Vec<ChannelPacketData>,
     sequence: u16,
     ack_data: AckData,

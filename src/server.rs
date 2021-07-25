@@ -1,6 +1,6 @@
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
-use crate::error::{DisconnectionReason, RenetError};
+use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::{Packet, Payload, Unauthenticaded};
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
@@ -61,7 +61,7 @@ where
         config: ServerConfig,
         connection_config: ConnectionConfig,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-    ) -> Result<Self, RenetError> {
+    ) -> Result<Self, io::Error> {
         socket.set_nonblocking(true)?;
 
         Ok(Self {
@@ -100,6 +100,7 @@ where
 
     pub fn network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
         if let Some(connection) = self.remote_clients.get_mut(&client_id) {
+            connection.update_network_info();
             return Some(connection.network_info());
         }
         None
@@ -138,14 +139,14 @@ where
         client_id: ClientId,
         channel_id: C,
         message: Vec<u8>,
-    ) -> Result<(), RenetError> {
+    ) -> Result<(), MessageError> {
         let channel_id = channel_id.into();
         if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
             remote_connection.send_message(channel_id, message)
         } else if let Some(local_connection) = self.local_clients.get_mut(&client_id) {
             local_connection.send_message(channel_id, message)
         } else {
-            Err(RenetError::ClientNotFound)
+            Err(MessageError::ClientNotFound)
         }
     }
 
@@ -186,14 +187,14 @@ where
         &mut self,
         client_id: ClientId,
         channel_id: C,
-    ) -> Result<Option<Payload>, RenetError> {
+    ) -> Result<Option<Payload>, MessageError> {
         let channel_id = channel_id.into();
         if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
             remote_client.receive_message(channel_id)
         } else if let Some(local_client) = self.local_clients.get_mut(&client_id) {
             local_client.receive_message(channel_id)
         } else {
-            Err(RenetError::ClientNotFound)
+            Err(MessageError::ClientNotFound)
         }
     }
 
@@ -209,17 +210,17 @@ where
         self.remote_clients.contains_key(client_id) || self.local_clients.contains_key(client_id)
     }
 
-    pub fn update(&mut self) -> Result<(), RenetError> {
+    pub fn update(&mut self) -> Result<(), io::Error> {
         let mut buffer = vec![0u8; self.config.max_payload_size];
         loop {
             match self.socket.recv_from(&mut buffer) {
-                Ok((len, addr)) => {
-                    if let Err(e) = self.process_payload_from(&buffer[..len], &addr) {
-                        error!("{}", e);
-                    }
-                }
+                Ok((len, addr)) => match self.process_payload_from(&buffer[..len], &addr) {
+                    Err(RenetError::IOError(e)) => return Err(e),
+                    Err(e) => error!("{}", e),
+                    Ok(()) => {}
+                },
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetError::IOError(e)),
+                Err(e) => return Err(e),
             };
         }
 
@@ -252,13 +253,20 @@ where
             info!("Local Client {} disconnected.", client_id);
         }
 
-        self.update_pending_connections();
-        Ok(())
+        match self.update_pending_connections() {
+            Err(RenetError::IOError(e)) => Err(e),
+            Err(e) => {
+                error!("Error updating pending connections: {}", e);
+                Ok(())
+            }
+            Ok(()) => Ok(()),
+        }
     }
 
-    fn update_pending_connections(&mut self) {
+    fn update_pending_connections(&mut self) -> Result<(), RenetError> {
         let mut connected_clients = vec![];
         let mut disconnected_clients = vec![];
+        let mut protocol_packets = vec![];
         for connection in self.connecting.values_mut() {
             connection.update();
             if connection.is_disconnected() {
@@ -270,8 +278,12 @@ where
                 connected_clients.push(connection.client_id());
             } else if let Ok(Some(payload)) = connection.create_protocol_payload() {
                 let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                send_packet(&self.socket, packet, connection.addr());
+                protocol_packets.push((*connection.addr(), packet));
             }
+        }
+
+        for (addr, packet) in protocol_packets.into_iter() {
+            self.try_send_packet(packet, &addr)?;
         }
 
         for client_id in disconnected_clients {
@@ -292,7 +304,7 @@ where
                     connection.addr()
                 );
                 let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-                send_packet(&self.socket, packet, connection.addr());
+                self.try_send_packet(packet, connection.addr())?;
 
                 continue;
             }
@@ -313,6 +325,8 @@ where
             self.remote_clients
                 .insert(connection.client_id(), connection);
         }
+
+        Ok(())
     }
 
     pub fn send_packets(&mut self) {
@@ -334,7 +348,7 @@ where
 
         if self.remote_clients.len() >= self.config.max_clients {
             let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-            try_send_packet(&self.socket, packet, addr)?;
+            self.try_send_packet(packet, addr)?;
             debug!("Connection Denied to addr {}, server is full.", addr);
             return Ok(());
         }
@@ -346,7 +360,8 @@ where
             None => {
                 let packet = bincode::deserialize::<Packet>(payload)?;
                 if let Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) = packet {
-                    let protocol = P::from_payload(&payload)?;
+                    let protocol =
+                        P::from_payload(&payload).map_err(RenetError::AuthenticationError)?;
                     let id = protocol.id();
                     if self.is_client_connected(&id) {
                         info!(
@@ -356,7 +371,7 @@ where
                         let packet = Unauthenticaded::ConnectionError(
                             DisconnectionReason::ClientIdAlreadyConnected,
                         );
-                        send_packet(&self.socket, packet, addr);
+                        self.try_send_packet(packet, addr)?;
                     } else {
                         info!("Created new protocol from payload with client id {}", id);
                         let new_connection = RemoteConnection::new(
@@ -373,29 +388,22 @@ where
 
         Ok(())
     }
-}
 
-fn try_send_packet(
-    socket: &UdpSocket,
-    packet: impl Into<Packet>,
-    addr: &SocketAddr,
-) -> Result<(), RenetError> {
-    let packet: Packet = packet.into();
-    let packet = bincode::serialize(&packet)?;
-    socket.send_to(&packet, addr)?;
-    Ok(())
-}
-
-fn send_packet(socket: &UdpSocket, packet: impl Into<Packet>, addr: &SocketAddr) {
-    let packet: Packet = packet.into();
-    let packet = match bincode::serialize(&packet) {
-        Err(e) => {
-            error!("Failed to serialize packet {}", e);
-            return;
+    fn try_send_packet(
+        &mut self,
+        packet: impl Into<Packet>,
+        addr: &SocketAddr,
+    ) -> Result<(), io::Error> {
+        let packet: Packet = packet.into();
+        match bincode::serialize(&packet) {
+            Ok(packet) => {
+                self.socket.send_to(&packet, addr)?;
+            }
+            Err(e) => {
+                // TODO: should we error the server when this occurs?
+                error!("Failed to serialize packet: {}", e);
+            }
         }
-        Ok(p) => p,
-    };
-    if let Err(e) = socket.send_to(&packet, addr) {
-        error!("Failed to serialize packet {}", e);
+        Ok(())
     }
 }

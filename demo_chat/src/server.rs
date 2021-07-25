@@ -4,10 +4,10 @@ use std::{
 };
 
 use renet::{
+    error::RenetError,
     protocol::unsecure::UnsecureServerProtocol,
     remote_connection::ConnectionConfig,
     server::{Server, ServerConfig, ServerEvent},
-    RenetError,
 };
 
 use crate::{channels_config, ClientMessages, ServerMessages};

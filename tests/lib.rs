@@ -10,11 +10,10 @@ use renet::{
         UnreliableUnorderedChannelConfig,
     },
     client::{Client, RemoteClient},
-    error::DisconnectionReason,
+    error::{DisconnectionReason, RenetError},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
     server::{Server, ServerConfig, ServerEvent},
-    RenetError,
 };
 
 use bincode;
