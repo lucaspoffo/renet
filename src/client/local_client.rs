@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
@@ -14,16 +13,17 @@ pub struct LocalClient {
     pub id: u64,
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
-    connected: Arc<AtomicBool>,
+    disconnect_reason: Arc<Mutex<Option<DisconnectionReason>>>,
 }
 
 impl LocalClient {
     pub fn is_connected(&self) -> bool {
-        self.connected.load(Ordering::Relaxed)
+        self.disconnect_reason.lock().unwrap().is_none()
     }
 
     pub fn disconnect(&mut self) {
-        self.connected.store(false, Ordering::Relaxed);
+        let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+        *disconnect_reason = Some(DisconnectionReason::DisconnectedByServer);
     }
 
     pub fn send_message(&self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
@@ -36,7 +36,9 @@ impl LocalClient {
                 "Error while sending message to local client in channel {}: {}",
                 channel_id, e
             );
-            self.connected.store(false, Ordering::Relaxed);
+
+            let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+            *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
         }
 
         Ok(())
@@ -51,6 +53,8 @@ impl LocalClient {
             Ok(payload) => Ok(Some(payload)),
             Err(TryRecvError::Empty) => Ok(None),
             Err(e) => {
+                let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+                *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
                 error!(
                     "Error while receiving message in local client in channel {}: {}",
                     channel_id, e
@@ -66,8 +70,7 @@ pub struct LocalClientConnected {
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
     network_info: NetworkInfo,
-    connected: Arc<AtomicBool>,
-    disconnect_reason: Option<DisconnectionReason>,
+    disconnect_reason: Arc<Mutex<Option<DisconnectionReason>>>,
 }
 
 impl LocalClientConnected {
@@ -87,22 +90,21 @@ impl LocalClientConnected {
             host_channels_send.insert(channel, host_send);
         }
 
-        let connected = Arc::new(AtomicBool::new(true));
+        let disconnect_reason = Arc::new(Mutex::new(None));
 
         let host_server = LocalClient {
-            connected: connected.clone(),
+            disconnect_reason: disconnect_reason.clone(),
             id: client_id,
             sender: host_channels_send,
             receiver: host_channels_recv,
         };
 
         let host_client = LocalClientConnected {
-            connected,
+            disconnect_reason,
             id: client_id,
             sender: client_channels_send,
             receiver: client_channels_recv,
             network_info: NetworkInfo::default(),
-            disconnect_reason: None,
         };
 
         (host_client, host_server)
@@ -115,16 +117,17 @@ impl Client for LocalClientConnected {
     }
 
     fn is_connected(&self) -> bool {
-        self.connected.load(Ordering::Relaxed)
+        self.disconnect_reason.lock().unwrap().is_none()
     }
 
     fn disconnect(&mut self) {
-        self.disconnect_reason = Some(DisconnectionReason::DisconnectedByClient);
-        self.connected.store(false, Ordering::Relaxed);
+        let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+        *disconnect_reason = Some(DisconnectionReason::DisconnectedByClient);
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
-        self.disconnect_reason
+        let disconnect_reason = self.disconnect_reason.lock().unwrap();
+        *disconnect_reason
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
@@ -137,7 +140,9 @@ impl Client for LocalClientConnected {
                 "Error while sending message to local connection in channel {}: {}",
                 channel_id, e
             );
-            self.disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
+
+            let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+            *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
         }
 
         Ok(())
@@ -156,7 +161,9 @@ impl Client for LocalClientConnected {
                     "Error while receiving message in local connection in channel {}: {}",
                     channel_id, e
                 );
-                self.disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
+
+                let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+                *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
                 Ok(None)
             }
         }
@@ -171,9 +178,6 @@ impl Client for LocalClientConnected {
     }
 
     fn update(&mut self) -> Result<(), RenetError> {
-        if !self.is_connected() && self.disconnect_reason.is_none() {
-            self.disconnect_reason = Some(DisconnectionReason::DisconnectedByServer);
-        }
         Ok(())
     }
 }
