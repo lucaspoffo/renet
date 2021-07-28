@@ -23,6 +23,7 @@ pub enum DisconnectionReason {
     ChannelError { channel_id: u8 },
 }
 
+// TODO: Can this be separated into Server/Client Error or Server/Connection Error
 #[derive(Debug, Error)]
 pub enum RenetError {
     #[error("socket disconnected: {0}")]

@@ -6,7 +6,6 @@ use eframe::{
 use log::error;
 use renet::{
     client::{Client, RemoteClient},
-    error::DisconnectionReason,
     protocol::unsecure::UnsecureClientProtocol,
     remote_connection::ConnectionConfig,
 };
@@ -42,7 +41,7 @@ pub struct ChatApp {
     messages: Vec<(u64, String)>,
     chat_server: Option<ChatServer>,
     client: Option<Box<dyn Client>>,
-    connection_error: Option<DisconnectionReason>,
+    connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     text_input: String,
 }
 
@@ -57,8 +56,7 @@ impl ChatApp {
             ..
         } = self;
 
-        assert!(client.is_some(), "Client always exists when drawing chat.");
-        let client = client.as_mut().unwrap();
+        let client = client.as_mut().expect("Client always exists when drawing chat.");
 
         egui::SidePanel::right("right_panel")
             .min_width(150.0)
@@ -232,16 +230,22 @@ impl ChatApp {
 
     pub fn update(&mut self) {
         if let Some(chat_server) = self.chat_server.as_mut() {
-            chat_server.update().unwrap();
+            if let Err(e) = chat_server.update() {
+                error!("Failed updating server: {}", e);
+                self.state = AppState::Start;
+                self.connection_error = Some(Box::new(e));
+                self.chat_server = None;
+                self.client = None;
+            }
         }
 
         if let Some(chat_client) = self.client.as_mut() {
             if let Err(e) = chat_client.update() {
                 error!("{}", e);
             }
-            if let Some(error) = chat_client.connection_error() {
+            if let Some(e) = chat_client.connection_error() {
                 self.state = AppState::Start;
-                self.connection_error = Some(error);
+                self.connection_error = Some(Box::new(e));
                 self.chat_server = None;
                 self.client = None;
             } else {
