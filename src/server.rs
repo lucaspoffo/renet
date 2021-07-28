@@ -266,7 +266,6 @@ where
     fn update_pending_connections(&mut self) -> Result<(), RenetError> {
         let mut connected_clients = vec![];
         let mut disconnected_clients = vec![];
-        let mut protocol_packets = vec![];
         for connection in self.connecting.values_mut() {
             connection.update();
             if connection.is_disconnected() {
@@ -278,12 +277,8 @@ where
                 connected_clients.push(connection.client_id());
             } else if let Ok(Some(payload)) = connection.create_protocol_payload() {
                 let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                protocol_packets.push((*connection.addr(), packet));
+                try_send_packet(&self.socket, packet, connection.addr())?;
             }
-        }
-
-        for (addr, packet) in protocol_packets.into_iter() {
-            self.try_send_packet(packet, &addr)?;
         }
 
         for client_id in disconnected_clients {
@@ -304,7 +299,7 @@ where
                     connection.addr()
                 );
                 let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-                self.try_send_packet(packet, connection.addr())?;
+                try_send_packet(&self.socket, packet, connection.addr())?;
 
                 continue;
             }
@@ -348,7 +343,7 @@ where
 
         if self.remote_clients.len() >= self.config.max_clients {
             let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-            self.try_send_packet(packet, addr)?;
+            try_send_packet(&self.socket, packet, addr)?;
             debug!("Connection Denied to addr {}, server is full.", addr);
             return Ok(());
         }
@@ -371,7 +366,7 @@ where
                         let packet = Unauthenticaded::ConnectionError(
                             DisconnectionReason::ClientIdAlreadyConnected,
                         );
-                        self.try_send_packet(packet, addr)?;
+                        try_send_packet(&self.socket, packet, addr)?;
                     } else {
                         info!("Created new protocol from payload with client id {}", id);
                         let new_connection = RemoteConnection::new(
@@ -388,22 +383,22 @@ where
 
         Ok(())
     }
+}
 
-    fn try_send_packet(
-        &mut self,
-        packet: impl Into<Packet>,
-        addr: &SocketAddr,
-    ) -> Result<(), io::Error> {
-        let packet: Packet = packet.into();
-        match bincode::serialize(&packet) {
-            Ok(packet) => {
-                self.socket.send_to(&packet, addr)?;
-            }
-            Err(e) => {
-                // TODO: should we error the server when this occurs?
-                error!("Failed to serialize packet: {}", e);
-            }
+fn try_send_packet(
+    socket: &UdpSocket,
+    packet: impl Into<Packet>,
+    addr: &SocketAddr,
+) -> Result<(), io::Error> {
+    let packet: Packet = packet.into();
+    match bincode::serialize(&packet) {
+        Ok(packet) => {
+            socket.send_to(&packet, addr)?;
         }
-        Ok(())
+        Err(e) => {
+            // TODO: should we error the server when this occurs?
+            error!("Failed to serialize packet: {}", e);
+        }
     }
+    Ok(())
 }
