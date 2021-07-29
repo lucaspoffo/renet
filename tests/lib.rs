@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    net::{SocketAddr, UdpSocket},
     time::Duration,
 };
 
@@ -57,16 +57,15 @@ fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
     channels_config
 }
 
-fn setup_server<A: ToSocketAddrs>(addr: A) -> Server<UnsecureServerProtocol> {
-    setup_server_with_config(addr, Default::default(), ConnectionPermission::All)
+fn setup_server() -> Server<UnsecureServerProtocol> {
+    setup_server_with_config(Default::default(), ConnectionPermission::All)
 }
 
-fn setup_server_with_config<A: ToSocketAddrs>(
-    addr: A,
+fn setup_server_with_config(
     server_config: ServerConfig,
     connection_permission: ConnectionPermission,
 ) -> Server<UnsecureServerProtocol> {
-    let socket = UdpSocket::bind(addr).unwrap();
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
         heartbeat_time: Duration::from_millis(10),
@@ -84,12 +83,11 @@ fn setup_server_with_config<A: ToSocketAddrs>(
     server
 }
 
-fn request_remote_connection<A: ToSocketAddrs>(
+fn request_remote_connection(
     id: u64,
-    addr: A,
     server_addr: SocketAddr,
 ) -> RemoteClient<UnsecureClientProtocol> {
-    let socket = UdpSocket::bind(addr).unwrap();
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
         heartbeat_time: Duration::from_millis(10),
@@ -126,9 +124,8 @@ fn connect_to_server(
 #[test]
 fn test_remote_connection_reliable_channel() {
     init_log();
-    let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6000", server_addr);
+    let mut server = setup_server();
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let number_messages = 64;
@@ -162,9 +159,8 @@ fn test_remote_connection_reliable_channel() {
 #[test]
 fn test_remote_connection_unreliable_channel() {
     init_log();
-    let server_addr = "127.0.0.1:5001".parse().unwrap();
-    let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6001", server_addr);
+    let mut server = setup_server();
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let number_messages = 64;
@@ -199,9 +195,8 @@ fn test_remote_connection_unreliable_channel() {
 #[test]
 fn test_remote_connection_block_channel() {
     init_log();
-    let server_addr = "127.0.0.1:5002".parse().unwrap();
-    let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6002", server_addr);
+    let mut server = setup_server();
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let payload = vec![7u8; 20480];
@@ -226,14 +221,12 @@ fn test_remote_connection_block_channel() {
 #[test]
 fn test_max_players_connected() {
     init_log();
-    let server_addr = "127.0.0.1:5003".parse().unwrap();
     let server_config = ServerConfig {
         max_clients: 0,
         ..Default::default()
     };
-    let mut server =
-        setup_server_with_config(server_addr, server_config, ConnectionPermission::All);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6003", server_addr);
+    let mut server = setup_server_with_config(server_config, ConnectionPermission::All);
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
@@ -244,9 +237,8 @@ fn test_max_players_connected() {
 #[test]
 fn test_server_disconnect_client() {
     init_log();
-    let server_addr = "127.0.0.1:5004".parse().unwrap();
-    let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6004", server_addr);
+    let mut server = setup_server();
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     server.disconnect(&0);
@@ -269,9 +261,8 @@ fn test_server_disconnect_client() {
 #[test]
 fn test_remote_client_disconnect() {
     init_log();
-    let server_addr = "127.0.0.1:5005".parse().unwrap();
-    let mut server = setup_server(server_addr);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6005", server_addr);
+    let mut server = setup_server();
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let connect_event = server.get_event().unwrap();
@@ -292,8 +283,7 @@ fn test_remote_client_disconnect() {
 #[test]
 fn test_local_client_disconnect() {
     init_log();
-    let server_addr: SocketAddr = "127.0.0.1:5006".parse().unwrap();
-    let mut server = setup_server(server_addr);
+    let mut server = setup_server();
     let mut local_client = server.create_local_client(0);
 
     let connect_event = server.get_event().unwrap();
@@ -315,10 +305,8 @@ fn test_local_client_disconnect() {
 #[test]
 fn test_connection_permission_none() {
     init_log();
-    let server_addr = "127.0.0.1:5007".parse().unwrap();
-    let mut server =
-        setup_server_with_config(server_addr, Default::default(), ConnectionPermission::None);
-    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6007", server_addr);
+    let mut server = setup_server_with_config(Default::default(), ConnectionPermission::None);
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
@@ -329,15 +317,11 @@ fn test_connection_permission_none() {
 #[test]
 fn test_connection_permission_only_allowed() {
     init_log();
-    let server_addr = "127.0.0.1:5008".parse().unwrap();
-    let mut server = setup_server_with_config(
-        server_addr,
-        Default::default(),
-        ConnectionPermission::OnlyAllowed,
-    );
+    let mut server =
+        setup_server_with_config(Default::default(), ConnectionPermission::OnlyAllowed);
     let client_id = 0;
     let mut remote_connection =
-        request_remote_connection(client_id.clone(), "127.0.0.1:6008", server_addr);
+        request_remote_connection(client_id.clone(), server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
@@ -345,7 +329,7 @@ fn test_connection_permission_only_allowed() {
     ));
 
     let mut remote_connection =
-        request_remote_connection(client_id.clone(), "127.0.0.1:6009", server_addr);
+        request_remote_connection(client_id.clone(), server.addr().unwrap());
     server.allow_client(&client_id);
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 }
@@ -353,13 +337,11 @@ fn test_connection_permission_only_allowed() {
 #[test]
 fn test_connection_permission_denied() {
     init_log();
-    let server_addr = "127.0.0.1:5009".parse().unwrap();
-    let mut server =
-        setup_server_with_config(server_addr, Default::default(), ConnectionPermission::All);
+    let mut server = setup_server_with_config(Default::default(), ConnectionPermission::All);
     let client_id = 0;
     server.deny_client(&client_id);
     let mut remote_connection =
-        request_remote_connection(client_id.clone(), "127.0.0.1:6010", server_addr);
+        request_remote_connection(client_id.clone(), server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
