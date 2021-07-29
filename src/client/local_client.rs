@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
@@ -13,16 +13,16 @@ pub struct LocalClient {
     pub id: u64,
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
-    disconnect_reason: Arc<Mutex<Option<DisconnectionReason>>>,
+    disconnect_reason: Arc<RwLock<Option<DisconnectionReason>>>,
 }
 
 impl LocalClient {
     pub fn is_connected(&self) -> bool {
-        self.disconnect_reason.lock().unwrap().is_none()
+        self.disconnect_reason.read().unwrap().is_none()
     }
 
     pub fn disconnect(&mut self) {
-        let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+        let mut disconnect_reason = self.disconnect_reason.write().unwrap();
         *disconnect_reason = Some(DisconnectionReason::DisconnectedByServer);
     }
 
@@ -37,7 +37,7 @@ impl LocalClient {
                 channel_id, e
             );
 
-            let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+            let mut disconnect_reason = self.disconnect_reason.write().unwrap();
             *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
         }
 
@@ -53,7 +53,7 @@ impl LocalClient {
             Ok(payload) => Ok(Some(payload)),
             Err(TryRecvError::Empty) => Ok(None),
             Err(e) => {
-                let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+                let mut disconnect_reason = self.disconnect_reason.write().unwrap();
                 *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
                 error!(
                     "Error while receiving message in local client in channel {}: {}",
@@ -70,7 +70,7 @@ pub struct LocalClientConnected {
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
     network_info: NetworkInfo,
-    disconnect_reason: Arc<Mutex<Option<DisconnectionReason>>>,
+    disconnect_reason: Arc<RwLock<Option<DisconnectionReason>>>,
 }
 
 impl LocalClientConnected {
@@ -90,7 +90,7 @@ impl LocalClientConnected {
             host_channels_send.insert(channel, host_send);
         }
 
-        let disconnect_reason = Arc::new(Mutex::new(None));
+        let disconnect_reason = Arc::new(RwLock::new(None));
 
         let host_server = LocalClient {
             disconnect_reason: disconnect_reason.clone(),
@@ -117,17 +117,16 @@ impl Client for LocalClientConnected {
     }
 
     fn is_connected(&self) -> bool {
-        self.disconnect_reason.lock().unwrap().is_none()
+        self.disconnect_reason.read().unwrap().is_none()
     }
 
     fn disconnect(&mut self) {
-        let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+        let mut disconnect_reason = self.disconnect_reason.write().unwrap();
         *disconnect_reason = Some(DisconnectionReason::DisconnectedByClient);
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
-        let disconnect_reason = self.disconnect_reason.lock().unwrap();
-        *disconnect_reason
+        *self.disconnect_reason.read().unwrap()
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
@@ -141,7 +140,7 @@ impl Client for LocalClientConnected {
                 channel_id, e
             );
 
-            let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+            let mut disconnect_reason = self.disconnect_reason.write().unwrap();
             *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
         }
 
@@ -162,7 +161,7 @@ impl Client for LocalClientConnected {
                     channel_id, e
                 );
 
-                let mut disconnect_reason = self.disconnect_reason.lock().unwrap();
+                let mut disconnect_reason = self.disconnect_reason.write().unwrap();
                 *disconnect_reason = Some(DisconnectionReason::ChannelError { channel_id });
                 Ok(None)
             }
