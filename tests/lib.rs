@@ -13,7 +13,7 @@ use renet::{
     error::{DisconnectionReason, RenetError},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
 };
 
 use bincode;
@@ -58,12 +58,13 @@ fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
 }
 
 fn setup_server<A: ToSocketAddrs>(addr: A) -> Server<UnsecureServerProtocol> {
-    setup_server_with_config(addr, Default::default())
+    setup_server_with_config(addr, Default::default(), ConnectionPermission::All)
 }
 
 fn setup_server_with_config<A: ToSocketAddrs>(
     addr: A,
     server_config: ServerConfig,
+    connection_permission: ConnectionPermission,
 ) -> Server<UnsecureServerProtocol> {
     let socket = UdpSocket::bind(addr).unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
@@ -71,8 +72,14 @@ fn setup_server_with_config<A: ToSocketAddrs>(
         heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
-    let server: Server<UnsecureServerProtocol> =
-        Server::new(socket, server_config, connection_config, channels_config()).unwrap();
+    let server: Server<UnsecureServerProtocol> = Server::new(
+        socket,
+        server_config,
+        connection_config,
+        connection_permission,
+        channels_config(),
+    )
+    .unwrap();
 
     server
 }
@@ -224,7 +231,8 @@ fn test_max_players_connected() {
         max_clients: 0,
         ..Default::default()
     };
-    let mut server = setup_server_with_config(server_addr, server_config);
+    let mut server =
+        setup_server_with_config(server_addr, server_config, ConnectionPermission::All);
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6003", server_addr);
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
@@ -241,7 +249,7 @@ fn test_server_disconnect_client() {
     let mut remote_connection = request_remote_connection(0, "127.0.0.1:6004", server_addr);
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
-    server.disconnect(0);
+    server.disconnect(&0);
     let connect_event = server.get_event().unwrap();
     assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
     let error = remote_connection.update();
@@ -301,5 +309,60 @@ fn test_local_client_disconnect() {
     assert!(matches!(
         disconnect_event,
         ServerEvent::ClientDisconnected(0)
+    ));
+}
+
+#[test]
+fn test_connection_permission_none() {
+    init_log();
+    let server_addr = "127.0.0.1:5007".parse().unwrap();
+    let mut server =
+        setup_server_with_config(server_addr, Default::default(), ConnectionPermission::None);
+    let mut remote_connection = request_remote_connection(0, "127.0.0.1:6007", server_addr);
+    let error = connect_to_server(&mut server, &mut remote_connection);
+    assert!(matches!(
+        error,
+        Err(RenetError::ConnectionError(DisconnectionReason::Denied))
+    ));
+}
+
+#[test]
+fn test_connection_permission_only_allowed() {
+    init_log();
+    let server_addr = "127.0.0.1:5008".parse().unwrap();
+    let mut server = setup_server_with_config(
+        server_addr,
+        Default::default(),
+        ConnectionPermission::OnlyAllowed,
+    );
+    let client_id = 0;
+    let mut remote_connection =
+        request_remote_connection(client_id.clone(), "127.0.0.1:6008", server_addr);
+    let error = connect_to_server(&mut server, &mut remote_connection);
+    assert!(matches!(
+        error,
+        Err(RenetError::ConnectionError(DisconnectionReason::Denied))
+    ));
+
+    let mut remote_connection =
+        request_remote_connection(client_id.clone(), "127.0.0.1:6009", server_addr);
+    server.allow_client(&client_id);
+    connect_to_server(&mut server, &mut remote_connection).unwrap();
+}
+
+#[test]
+fn test_connection_permission_denied() {
+    init_log();
+    let server_addr = "127.0.0.1:5009".parse().unwrap();
+    let mut server =
+        setup_server_with_config(server_addr, Default::default(), ConnectionPermission::All);
+    let client_id = 0;
+    server.deny_client(&client_id);
+    let mut remote_connection =
+        request_remote_connection(client_id.clone(), "127.0.0.1:6010", server_addr);
+    let error = connect_to_server(&mut server, &mut remote_connection);
+    assert!(matches!(
+        error,
+        Err(RenetError::ConnectionError(DisconnectionReason::Denied))
     ));
 }

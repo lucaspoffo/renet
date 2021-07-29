@@ -7,10 +7,26 @@ use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteCo
 
 use log::{debug, error, info};
 
-use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectionPermission {
+    /// All connection are allowed, excepet clients that are denied.
+    All,
+    /// Only clients in the allow list can connect.
+    OnlyAllowed,
+    /// No connection can be stablished.
+    None,
+}
+
+impl Default for ConnectionPermission {
+    fn default() -> Self {
+        ConnectionPermission::All
+    }
+}
 
 pub struct ServerConfig {
     pub max_clients: usize,
@@ -50,6 +66,9 @@ pub struct Server<P: ServerAuthenticationProtocol> {
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     events: VecDeque<ServerEvent>,
     connection_config: ConnectionConfig,
+    allow_clients: HashSet<ClientId>,
+    deny_clients: HashSet<ClientId>,
+    connection_permission: ConnectionPermission,
 }
 
 impl<P> Server<P>
@@ -60,6 +79,7 @@ where
         socket: UdpSocket,
         config: ServerConfig,
         connection_config: ConnectionConfig,
+        connection_permission: ConnectionPermission,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
     ) -> Result<Self, io::Error> {
         socket.set_nonblocking(true)?;
@@ -72,6 +92,9 @@ where
             config,
             channels_config,
             connection_config,
+            connection_permission,
+            allow_clients: HashSet::new(),
+            deny_clients: HashSet::new(),
             events: VecDeque::new(),
         })
     }
@@ -98,8 +121,47 @@ where
         self.connecting.values_mut().find(|c| c.addr() == addr)
     }
 
+    pub fn allow_client(&mut self, client_id: &ClientId) {
+        self.allow_clients.insert(*client_id);
+        self.deny_clients.remove(client_id);
+    }
+
+    pub fn deny_client(&mut self, client_id: &ClientId) {
+        self.deny_clients.insert(*client_id);
+        self.allow_clients.remove(client_id);
+    }
+
+    pub fn set_connection_permission(&mut self, connection_permission: ConnectionPermission) {
+        self.connection_permission = connection_permission;
+    }
+
+    pub fn connection_permission(&self) -> &ConnectionPermission {
+        &self.connection_permission
+    }
+
+    pub fn can_client_connect(&self, client_id: ClientId) -> bool {
+        if self.deny_clients.contains(&client_id) {
+            return false;
+        }
+
+        match self.connection_permission {
+            ConnectionPermission::All => true,
+            ConnectionPermission::OnlyAllowed => self.allow_clients.contains(&client_id),
+            ConnectionPermission::None => false,
+        }
+    }
+
+    pub fn allowed_clients(&self) -> Vec<ClientId> {
+        self.allow_clients.iter().copied().collect()
+    }
+
+    pub fn denied_clients(&self) -> Vec<ClientId> {
+        self.deny_clients.iter().copied().collect()
+    }
+
     pub fn network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
         if let Some(connection) = self.remote_clients.get_mut(&client_id) {
+            // TODO: add update_network_info in connection.update
             connection.update_network_info();
             return Some(connection.network_info());
         }
@@ -115,10 +177,10 @@ where
         local_client_connected
     }
 
-    pub fn disconnect(&mut self, client_id: ClientId) {
+    pub fn disconnect(&mut self, client_id: &ClientId) {
         if let Some(mut remote_client) = self.remote_clients.remove(&client_id) {
             self.events
-                .push_back(ServerEvent::ClientDisconnected(client_id));
+                .push_back(ServerEvent::ClientDisconnected(*client_id));
             if let Err(e) = remote_client
                 .send_disconnect_packet(&self.socket, DisconnectionReason::DisconnectedByServer)
             {
@@ -130,7 +192,7 @@ where
         } else if let Some(mut local_client) = self.local_clients.remove(&client_id) {
             local_client.disconnect();
             self.events
-                .push_back(ServerEvent::ClientDisconnected(client_id));
+                .push_back(ServerEvent::ClientDisconnected(*client_id));
         }
     }
 
@@ -358,6 +420,16 @@ where
                     let protocol =
                         P::from_payload(&payload).map_err(RenetError::AuthenticationError)?;
                     let id = protocol.id();
+                    if !self.can_client_connect(id) {
+                        info!(
+                            "Client with id {} is not allowed to connect the server.",
+                            id
+                        );
+
+                        let packet = Unauthenticaded::ConnectionError(DisconnectionReason::Denied);
+                        try_send_packet(&self.socket, packet, addr)?;
+                    }
+
                     if self.is_client_connected(&id) {
                         info!(
                             "Client with id {} already connected, discarded connection attempt.",

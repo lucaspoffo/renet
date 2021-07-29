@@ -3,7 +3,7 @@ use renet::{
     client::{Client, RemoteClient},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
 };
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
@@ -44,8 +44,14 @@ fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
-    let mut server: Server<UnsecureServerProtocol> =
-        Server::new(socket, server_config, connection_config, channels_config()).unwrap();
+    let mut server: Server<UnsecureServerProtocol> = Server::new(
+        socket,
+        server_config,
+        connection_config,
+        ConnectionPermission::All,
+        channels_config(),
+    )
+    .unwrap();
     let mut received_messages = vec![];
     loop {
         server.update().unwrap();

@@ -7,7 +7,7 @@ use renet::{
     error::RenetError,
     protocol::unsecure::UnsecureServerProtocol,
     remote_connection::ConnectionConfig,
-    server::{Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
 };
 
 use crate::{channels_config, ClientMessages, ServerMessages};
@@ -24,8 +24,14 @@ impl ChatServer {
         let socket = UdpSocket::bind(addr).unwrap();
         let server_config = ServerConfig::default();
         let connection_config = ConnectionConfig::default();
-        let server: Server<UnsecureServerProtocol> =
-            Server::new(socket, server_config, connection_config, channels_config()).unwrap();
+        let server: Server<UnsecureServerProtocol> = Server::new(
+            socket,
+            server_config,
+            connection_config,
+            ConnectionPermission::All,
+            channels_config(),
+        )
+        .unwrap();
 
         Self {
             server,
