@@ -165,10 +165,8 @@ where
         self.deny_clients.iter().copied().collect()
     }
 
-    pub fn network_info(&mut self, client_id: ClientId) -> Option<&NetworkInfo> {
-        if let Some(connection) = self.remote_clients.get_mut(&client_id) {
-            // TODO: add update_network_info in connection.update
-            connection.update_network_info();
+    pub fn network_info(&self, client_id: ClientId) -> Option<&NetworkInfo> {
+        if let Some(connection) = self.remote_clients.get(&client_id) {
             return Some(connection.network_info());
         }
         None

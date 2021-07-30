@@ -70,8 +70,7 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
         self.connection.receive_message(channel_id)
     }
 
-    fn network_info(&mut self) -> &NetworkInfo {
-        self.connection.update_network_info();
+    fn network_info(&self) -> &NetworkInfo {
         self.connection.network_info()
     }
 

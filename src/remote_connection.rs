@@ -261,6 +261,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                         channel.process_ack(ack);
                     }
                 }
+                self.update_network_info();
             }
             ConnectionState::Disconnected { .. } => {
                 unreachable!()

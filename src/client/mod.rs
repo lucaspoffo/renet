@@ -22,7 +22,7 @@ pub trait Client {
 
     fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, MessageError>;
 
-    fn network_info(&mut self) -> &NetworkInfo;
+    fn network_info(&self) -> &NetworkInfo;
 
     fn send_packets(&mut self) -> Result<(), RenetError>;
 

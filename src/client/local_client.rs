@@ -168,7 +168,7 @@ impl Client for LocalClientConnected {
         }
     }
 
-    fn network_info(&mut self) -> &NetworkInfo {
+    fn network_info(&self) -> &NetworkInfo {
         &self.network_info
     }
 
