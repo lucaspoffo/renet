@@ -298,8 +298,7 @@ where
 
         let mut disconnected_remote_clients: Vec<ClientId> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
-            connection.update();
-            if connection.is_disconnected() {
+            if connection.update().is_err() {
                 disconnected_remote_clients.push(client_id);
             }
         }
@@ -339,8 +338,7 @@ where
         let mut connected_clients = vec![];
         let mut disconnected_clients = vec![];
         for connection in self.connecting.values_mut() {
-            connection.update();
-            if connection.is_disconnected() {
+            if connection.update().is_err() {
                 disconnected_clients.push(connection.client_id());
                 continue;
             }

@@ -101,7 +101,6 @@ impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
             self.connection.process_payload(payload)?;
         }
 
-        self.connection.update();
-        Ok(())
+        self.connection.update()
     }
 }

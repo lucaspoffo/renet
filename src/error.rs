@@ -35,7 +35,7 @@ pub enum RenetError {
     #[error("packet fragmentation error: {0}")]
     FragmentError(#[from] FragmentError),
     #[error("connection error: {0}")]
-    ConnectionError(DisconnectionReason),
+    ConnectionError(#[from] DisconnectionReason),
     #[error("client is disconnected")]
     ClientDisconnected,
 }

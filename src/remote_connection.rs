@@ -169,10 +169,6 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         matches!(self.state, ConnectionState::Connected { .. })
     }
 
-    pub fn is_disconnected(&self) -> bool {
-        matches!(self.state, ConnectionState::Disconnected { .. })
-    }
-
     pub fn connection_error(&self) -> Option<DisconnectionReason> {
         match self.state {
             ConnectionState::Disconnected { reason } => Some(reason),
@@ -224,27 +220,25 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         Ok(channel.receive_message())
     }
 
-    pub fn update(&mut self) {
-        if self.is_disconnected() {
-            return;
+    pub fn update(&mut self) -> Result<(), RenetError> {
+        if let Some(e) = self.connection_error() {
+            return Err(e.into());
         }
 
         if self.has_timed_out() {
-            self.state = ConnectionState::Disconnected {
-                reason: DisconnectionReason::TimedOut,
-            };
-            return;
+            let reason = DisconnectionReason::TimedOut;
+            self.state = ConnectionState::Disconnected { reason };
+            return Err(reason.into());
         }
 
         for (channel_id, channel) in self.channels.iter() {
             if let Some(e) = channel.error() {
                 error!("Channel {} with error {}.", channel_id, e);
-                self.state = ConnectionState::Disconnected {
-                    reason: DisconnectionReason::ChannelError {
-                        channel_id: *channel_id,
-                    },
+                let reason = DisconnectionReason::ChannelError {
+                    channel_id: *channel_id,
                 };
-                return;
+                self.state = ConnectionState::Disconnected { reason };
+                return Err(reason.into());
             }
         }
 
@@ -267,6 +261,8 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 unreachable!()
             }
         }
+
+        Ok(())
     }
 
     pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
