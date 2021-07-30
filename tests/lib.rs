@@ -157,6 +157,35 @@ fn test_remote_connection_reliable_channel() {
 }
 
 #[test]
+fn test_remote_connection_reliable_channel_would_drop_message() {
+    init_log();
+    let mut server = setup_server();
+    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    connect_to_server(&mut server, &mut remote_connection).unwrap();
+
+    let number_messages = ReliableOrderedChannelConfig::default().message_send_queue_size;
+    for _ in 0..number_messages {
+        remote_connection
+            .send_message(Channels::Reliable.into(), vec![0])
+            .unwrap();
+    }
+
+    // No more messages can be sent or it will drop an unacked one.
+    remote_connection.update().unwrap();
+
+    // Send one more message than the channel can store, so it'll error when updated.
+    remote_connection
+        .send_message(Channels::Reliable.into(), vec![0])
+        .unwrap();
+
+    let error = remote_connection.update().unwrap_err();
+    assert!(matches!(
+        error,
+        RenetError::ConnectionError(DisconnectionReason::ChannelError { channel_id: 0 })
+    ));
+}
+
+#[test]
 fn test_remote_connection_unreliable_channel() {
     init_log();
     let mut server = setup_server();
@@ -215,7 +244,10 @@ fn test_remote_connection_block_channel() {
         server.send_packets();
     };
 
-    assert_eq!(payload.len(), received_payload.len());
+    assert!(
+        payload == received_payload,
+        "block message payload is not the same"
+    );
 }
 
 #[test]
@@ -227,10 +259,10 @@ fn test_max_players_connected() {
     };
     let mut server = setup_server_with_config(server_config, ConnectionPermission::All);
     let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
-    let error = connect_to_server(&mut server, &mut remote_connection);
+    let error = connect_to_server(&mut server, &mut remote_connection).unwrap_err();
     assert!(matches!(
         error,
-        Err(RenetError::ConnectionError(DisconnectionReason::MaxPlayer))
+        RenetError::ConnectionError(DisconnectionReason::MaxPlayer)
     ));
 }
 

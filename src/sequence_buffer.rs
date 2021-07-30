@@ -170,6 +170,11 @@ mod tests {
         assert!(!buffer.exists(0));
     }
 
+    fn count_entries(buffer: &SequenceBuffer<DataStub>) -> usize {
+        let nums: Vec<&u16> = buffer.entry_sequences.iter().flatten().collect();
+        nums.len()
+    }
+
     #[test]
     fn insert_over_older_entries() {
         let mut buffer = SequenceBuffer::with_capacity(8);
@@ -213,8 +218,11 @@ mod tests {
         assert_eq!(ack_bits, 0b11011101000000000000000000000011u32);
     }
 
-    fn count_entries(buffer: &SequenceBuffer<DataStub>) -> usize {
-        let nums: Vec<&u16> = buffer.entry_sequences.iter().flatten().collect();
-        nums.len()
+    #[test]
+    fn available() {
+        let mut buffer = SequenceBuffer::with_capacity(2);
+        buffer.insert(0, DataStub).unwrap();
+        buffer.insert(1, DataStub).unwrap();
+        assert!(!buffer.available(2));
     }
 }
