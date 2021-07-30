@@ -126,6 +126,12 @@ where
         self.deny_clients.remove(client_id);
     }
 
+    pub fn allow_connected_clients(&mut self) {
+        for client_id in self.get_clients_id().iter() {
+            self.allow_client(client_id);
+        }
+    }
+
     pub fn deny_client(&mut self, client_id: &ClientId) {
         self.deny_clients.insert(*client_id);
         self.allow_clients.remove(client_id);
@@ -193,6 +199,12 @@ where
             local_client.disconnect();
             self.events
                 .push_back(ServerEvent::ClientDisconnected(*client_id));
+        }
+    }
+
+    pub fn disconnect_clients(&mut self) {
+        for client_id in self.get_clients_id().iter() {
+            self.disconnect(client_id);
         }
     }
 
