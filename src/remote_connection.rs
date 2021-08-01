@@ -7,15 +7,13 @@ use crate::packet::{
 use crate::protocol::{AuthenticationProtocol, SecurityService};
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::Timer;
+use crate::{ClientId, Timer};
 
 use log::{debug, error, info, trace};
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
-
-pub type ClientId = u64;
 
 #[derive(Debug, Clone)]
 struct SentPacket {
@@ -46,7 +44,7 @@ impl ReceivedPacket {
     }
 }
 
-enum ConnectionState<P: AuthenticationProtocol> {
+enum ConnectionState<C, P: AuthenticationProtocol<C>> {
     Connecting { protocol: P },
     Connected { security_service: P::Service },
     Disconnected { reason: DisconnectionReason },
@@ -97,9 +95,9 @@ impl Default for ConnectionConfig {
     }
 }
 
-pub(crate) struct RemoteConnection<P: AuthenticationProtocol> {
-    client_id: ClientId,
-    state: ConnectionState<P>,
+pub(crate) struct RemoteConnection<P: AuthenticationProtocol<C>, C> {
+    client_id: C,
+    state: ConnectionState<C, P>,
     sequence: u16,
     addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
@@ -113,9 +111,13 @@ pub(crate) struct RemoteConnection<P: AuthenticationProtocol> {
     network_info: NetworkInfo,
 }
 
-impl<P: AuthenticationProtocol> RemoteConnection<P> {
+impl<P, C> RemoteConnection<P, C>
+where
+    P: AuthenticationProtocol<C>,
+    C: ClientId,
+{
     pub fn new(
-        client_id: ClientId,
+        client_id: C,
         addr: SocketAddr,
         config: ConnectionConfig,
         protocol: P,
@@ -153,7 +155,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         &self.network_info
     }
 
-    pub fn client_id(&self) -> ClientId {
+    pub fn client_id(&self) -> C {
         self.client_id
     }
 

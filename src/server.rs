@@ -1,9 +1,10 @@
+use crate::ClientId;
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::{Packet, Payload, Unauthenticaded};
 use crate::protocol::ServerAuthenticationProtocol;
-use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
+use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::{debug, error, info};
 
@@ -51,29 +52,30 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ServerEvent {
-    ClientConnected(ClientId),
-    ClientDisconnected(ClientId),
+#[derive(Debug)]
+pub enum ServerEvent<C> {
+    ClientConnected(C),
+    ClientDisconnected(C),
 }
 
-pub struct Server<P: ServerAuthenticationProtocol> {
+pub struct Server<P: ServerAuthenticationProtocol<C>, C> {
     config: ServerConfig,
     socket: UdpSocket,
-    remote_clients: HashMap<ClientId, RemoteConnection<P>>,
-    local_clients: HashMap<ClientId, LocalClient>,
-    connecting: HashMap<ClientId, RemoteConnection<P>>,
+    remote_clients: HashMap<C, RemoteConnection<P, C>>,
+    local_clients: HashMap<C, LocalClient<C>>,
+    connecting: HashMap<C, RemoteConnection<P, C>>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-    events: VecDeque<ServerEvent>,
+    events: VecDeque<ServerEvent<C>>,
     connection_config: ConnectionConfig,
-    allow_clients: HashSet<ClientId>,
-    deny_clients: HashSet<ClientId>,
+    allow_clients: HashSet<C>,
+    deny_clients: HashSet<C>,
     connection_permission: ConnectionPermission,
 }
 
-impl<P> Server<P>
+impl<P, C> Server<P, C>
 where
-    P: ServerAuthenticationProtocol,
+    P: ServerAuthenticationProtocol<C>,
+    C: ClientId
 {
     pub fn new(
         socket: UdpSocket,
@@ -107,21 +109,21 @@ where
         !self.remote_clients.is_empty() || !self.local_clients.is_empty()
     }
 
-    pub fn get_event(&mut self) -> Option<ServerEvent> {
+    pub fn get_event(&mut self) -> Option<ServerEvent<C>> {
         self.events.pop_front()
     }
 
-    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P>> {
+    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P, C>> {
         self.remote_clients
             .values_mut()
             .find(|c| *c.addr() == *addr)
     }
 
-    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P>> {
+    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P, C>> {
         self.connecting.values_mut().find(|c| c.addr() == addr)
     }
 
-    pub fn allow_client(&mut self, client_id: &ClientId) {
+    pub fn allow_client(&mut self, client_id: &C) {
         self.allow_clients.insert(*client_id);
         self.deny_clients.remove(client_id);
     }
@@ -132,7 +134,7 @@ where
         }
     }
 
-    pub fn deny_client(&mut self, client_id: &ClientId) {
+    pub fn deny_client(&mut self, client_id: &C) {
         self.deny_clients.insert(*client_id);
         self.allow_clients.remove(client_id);
     }
@@ -145,7 +147,7 @@ where
         &self.connection_permission
     }
 
-    pub fn can_client_connect(&self, client_id: ClientId) -> bool {
+    pub fn can_client_connect(&self, client_id: C) -> bool {
         if self.deny_clients.contains(&client_id) {
             return false;
         }
@@ -157,22 +159,22 @@ where
         }
     }
 
-    pub fn allowed_clients(&self) -> Vec<ClientId> {
+    pub fn allowed_clients(&self) -> Vec<C> {
         self.allow_clients.iter().copied().collect()
     }
 
-    pub fn denied_clients(&self) -> Vec<ClientId> {
+    pub fn denied_clients(&self) -> Vec<C> {
         self.deny_clients.iter().copied().collect()
     }
 
-    pub fn network_info(&self, client_id: ClientId) -> Option<&NetworkInfo> {
+    pub fn network_info(&self, client_id: C) -> Option<&NetworkInfo> {
         if let Some(connection) = self.remote_clients.get(&client_id) {
             return Some(connection.network_info());
         }
         None
     }
 
-    pub fn create_local_client(&mut self, client_id: u64) -> LocalClientConnected {
+    pub fn create_local_client(&mut self, client_id: C) -> LocalClientConnected<C> {
         let channels = self.channels_config.keys().copied().collect();
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
@@ -181,7 +183,7 @@ where
         local_client_connected
     }
 
-    pub fn disconnect(&mut self, client_id: &ClientId) {
+    pub fn disconnect(&mut self, client_id: &C) {
         if let Some(mut remote_client) = self.remote_clients.remove(&client_id) {
             self.events
                 .push_back(ServerEvent::ClientDisconnected(*client_id));
@@ -206,10 +208,10 @@ where
         }
     }
 
-    pub fn send_message<C: Into<u8>>(
+    pub fn send_message<ChannelId: Into<u8>>(
         &mut self,
-        client_id: ClientId,
-        channel_id: C,
+        client_id: C,
+        channel_id: ChannelId,
         message: Vec<u8>,
     ) -> Result<(), MessageError> {
         let channel_id = channel_id.into();
@@ -222,7 +224,7 @@ where
         }
     }
 
-    pub fn broadcast_message<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
+    pub fn broadcast_message<ChannelId: Into<u8>>(&mut self, channel_id: ChannelId, message: Payload) {
         let channel_id = channel_id.into();
         for remote_client in self.remote_clients.values_mut() {
             if let Err(e) = remote_client.send_message(channel_id, message.clone()) {
@@ -237,7 +239,7 @@ where
         }
     }
 
-    pub fn broadcast_message_remote<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
+    pub fn broadcast_message_remote<ChannelId: Into<u8>>(&mut self, channel_id: ChannelId, message: Payload) {
         let channel_id = channel_id.into();
         for remote_client in self.remote_clients.values_mut() {
             if let Err(e) = remote_client.send_message(channel_id, message.clone()) {
@@ -246,7 +248,7 @@ where
         }
     }
 
-    pub fn broadcast_message_local<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
+    pub fn broadcast_message_local<ChannelId: Into<u8>>(&mut self, channel_id: ChannelId, message: Payload) {
         let channel_id = channel_id.into();
         for local_client in self.local_clients.values_mut() {
             if let Err(e) = local_client.send_message(channel_id, message.clone()) {
@@ -255,10 +257,10 @@ where
         }
     }
 
-    pub fn receive_message<C: Into<u8>>(
+    pub fn receive_message<ChannelId: Into<u8>>(
         &mut self,
-        client_id: ClientId,
-        channel_id: C,
+        client_id: C,
+        channel_id: ChannelId,
     ) -> Result<Option<Payload>, MessageError> {
         let channel_id = channel_id.into();
         if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
@@ -270,7 +272,7 @@ where
         }
     }
 
-    pub fn get_clients_id(&self) -> Vec<ClientId> {
+    pub fn get_clients_id(&self) -> Vec<C> {
         self.remote_clients
             .keys()
             .copied()
@@ -278,7 +280,7 @@ where
             .collect()
     }
 
-    pub fn is_client_connected(&self, client_id: &ClientId) -> bool {
+    pub fn is_client_connected(&self, client_id: &C) -> bool {
         self.remote_clients.contains_key(client_id) || self.local_clients.contains_key(client_id)
     }
 
@@ -296,7 +298,7 @@ where
             };
         }
 
-        let mut disconnected_remote_clients: Vec<ClientId> = vec![];
+        let mut disconnected_remote_clients: Vec<C> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
             if connection.update().is_err() {
                 disconnected_remote_clients.push(client_id);
@@ -310,7 +312,7 @@ where
             info!("Remote Client {} disconnected.", client_id);
         }
 
-        let mut disconnected_local_clients: Vec<ClientId> = vec![];
+        let mut disconnected_local_clients: Vec<C> = vec![];
         for (&client_id, connection) in self.local_clients.iter() {
             if !connection.is_connected() {
                 disconnected_local_clients.push(client_id);

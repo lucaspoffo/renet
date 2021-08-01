@@ -1,9 +1,10 @@
+use crate::ClientId;
 use crate::channel::ChannelConfig;
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
 use crate::protocol::AuthenticationProtocol;
-use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
+use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::debug;
 
@@ -11,16 +12,20 @@ use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 
-pub struct RemoteClient<A: AuthenticationProtocol> {
+pub struct RemoteClient<A: AuthenticationProtocol<C>, C> {
     socket: UdpSocket,
-    id: ClientId,
-    connection: RemoteConnection<A>,
+    id: C,
+    connection: RemoteConnection<A, C>,
     buffer: Box<[u8]>,
 }
 
-impl<A: AuthenticationProtocol> RemoteClient<A> {
+impl<A, C> RemoteClient<A, C>
+where
+    A: AuthenticationProtocol<C>,
+    C: ClientId,
+{
     pub fn new(
-        id: ClientId,
+        id: C,
         socket: UdpSocket,
         server_addr: SocketAddr,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
@@ -45,8 +50,12 @@ impl<A: AuthenticationProtocol> RemoteClient<A> {
     }
 }
 
-impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
-    fn id(&self) -> ClientId {
+impl<A, C> Client<C> for RemoteClient<A, C>
+where
+    A: AuthenticationProtocol<C>,
+    C: ClientId,
+{
+    fn id(&self) -> C {
         self.id
     }
 
