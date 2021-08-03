@@ -1,59 +1,53 @@
-use crate::ClientId;
 use crate::channel::ChannelConfig;
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
-use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
-
-use log::debug;
+use crate::{ClientId, ConnectionControl, Transport};
 
 use std::collections::HashMap;
-use std::io;
-use std::net::{SocketAddr, UdpSocket};
 
-pub struct RemoteClient<A: AuthenticationProtocol<C>, C> {
-    socket: UdpSocket,
+pub struct RemoteClient<C, T> {
+    transport: T,
     id: C,
-    connection: RemoteConnection<A, C>,
-    buffer: Box<[u8]>,
+    connection: RemoteConnection<C>,
+    connection_control: ConnectionControl<C>,
 }
 
-impl<A, C> RemoteClient<A, C>
+impl<C, T> RemoteClient<C, T>
 where
-    A: AuthenticationProtocol<C>,
     C: ClientId,
+    T: Transport + Transport<ClientId = C>,
 {
     pub fn new(
         id: C,
-        socket: UdpSocket,
-        server_addr: SocketAddr,
+        transport: T,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-        protocol: A,
         connection_config: ConnectionConfig,
-    ) -> Result<Self, std::io::Error> {
-        socket.set_nonblocking(true)?;
-        let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
-        let mut connection = RemoteConnection::new(id, server_addr, connection_config, protocol);
+    ) -> Self {
+        let mut connection = RemoteConnection::new(id, connection_config);
 
         for (channel_id, channel_config) in channels_config.iter() {
             let channel = channel_config.new_channel();
             connection.add_channel(*channel_id, channel);
         }
 
-        Ok(Self {
-            socket,
+        // TODO: how we will impl Transporft for UdpClient without connection_control
+        let connection_control = ConnectionControl::new(crate::server::ConnectionPermission::All);
+
+        Self {
+            connection_control,
             id,
             connection,
-            buffer,
-        })
+            transport,
+        }
     }
 }
 
-impl<A, C> Client<C> for RemoteClient<A, C>
+impl<C, T> Client<C> for RemoteClient<C, T>
 where
-    A: AuthenticationProtocol<C>,
     C: ClientId,
+    T: Transport + Transport<ClientId = C>,
 {
     fn id(&self) -> C {
         self.id
@@ -68,7 +62,7 @@ where
     }
 
     fn disconnect(&mut self) {
-        self.connection.disconnect(&self.socket);
+        self.connection.disconnect(&mut self.transport);
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
@@ -84,7 +78,7 @@ where
     }
 
     fn send_packets(&mut self) -> Result<(), RenetError> {
-        self.connection.send_packets(&self.socket)?;
+        self.connection.send_packets(&mut self.transport)?;
         Ok(())
     }
 
@@ -93,23 +87,12 @@ where
             return Err(RenetError::ConnectionError(connection_error));
         }
 
-        loop {
-            let payload = match self.socket.recv_from(&mut self.buffer) {
-                Ok((len, addr)) => {
-                    if addr == *self.connection.addr() {
-                        &self.buffer[..len]
-                    } else {
-                        debug!("Discarded packet from unknown server {:?}", addr);
-                        continue;
-                    }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetError::IOError(e)),
-            };
-
-            self.connection.process_payload(payload)?;
+        // TODO: How to validate that it's only server payload
+        // Add validation to transport layer?
+        // Ex: UdpClient, client.server_addr, validate that only we can receive from there
+        while let Ok(Some((_, payload))) = self.transport.recv(&self.connection_control) {
+            self.connection.process_payload(&payload)?;
         }
-
         self.connection.update()
     }
 }

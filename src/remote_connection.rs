@@ -1,18 +1,13 @@
 use crate::channel::Channel;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
-use crate::packet::{
-    AckData, Authenticated, ChannelPacketData, HeartBeat, Message, Normal, Packet, Payload,
-    Unauthenticaded,
-};
-use crate::protocol::{AuthenticationProtocol, SecurityService};
+use crate::packet::{AckData, ChannelPacketData, HeartBeat, Message, Normal, Payload};
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::{ClientId, Timer};
+use crate::{ClientId, Timer, Transport};
 
-use log::{debug, error, info, trace};
+use log::{debug, error, info};
 
 use std::collections::HashMap;
-use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -44,9 +39,8 @@ impl ReceivedPacket {
     }
 }
 
-enum ConnectionState<C, P: AuthenticationProtocol<C>> {
-    Connecting { protocol: P },
-    Connected { security_service: P::Service },
+enum ConnectionState {
+    Connected,
     Disconnected { reason: DisconnectionReason },
 }
 
@@ -95,11 +89,10 @@ impl Default for ConnectionConfig {
     }
 }
 
-pub(crate) struct RemoteConnection<P: AuthenticationProtocol<C>, C> {
+pub(crate) struct RemoteConnection<C> {
     client_id: C,
-    state: ConnectionState<C, P>,
+    state: ConnectionState,
     sequence: u16,
-    addr: SocketAddr,
     channels: HashMap<u8, Box<dyn Channel>>,
     heartbeat_timer: Timer,
     timeout_timer: Timer,
@@ -111,30 +104,20 @@ pub(crate) struct RemoteConnection<P: AuthenticationProtocol<C>, C> {
     network_info: NetworkInfo,
 }
 
-impl<P, C> RemoteConnection<P, C>
-where
-    P: AuthenticationProtocol<C>,
-    C: ClientId,
-{
-    pub fn new(
-        client_id: C,
-        addr: SocketAddr,
-        config: ConnectionConfig,
-        protocol: P,
-    ) -> Self {
+impl<C: ClientId> RemoteConnection<C> {
+    pub fn new(client_id: C, config: ConnectionConfig) -> Self {
         let timeout_timer = Timer::new(config.timeout_duration);
         let heartbeat_timer = Timer::new(config.heartbeat_time);
         let reassembly_buffer =
             SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
         let received_buffer = SequenceBuffer::with_capacity(config.received_packets_buffer_size);
-        let state = ConnectionState::Connecting { protocol };
+        let state = ConnectionState::Connected;
 
         Self {
             client_id,
             channels: HashMap::new(),
             state,
-            addr,
             timeout_timer,
             heartbeat_timer,
             sequence: 0,
@@ -145,10 +128,6 @@ where
             acks: vec![],
             network_info: NetworkInfo::default(),
         }
-    }
-
-    pub fn addr(&self) -> &SocketAddr {
-        &self.addr
     }
 
     pub fn network_info(&self) -> &NetworkInfo {
@@ -178,23 +157,23 @@ where
         }
     }
 
-    pub fn disconnect(&mut self, socket: &UdpSocket) {
+    pub fn disconnect<T>(&mut self, transport: &mut T)
+    where
+        T: Transport + Transport<ClientId = C>,
+    {
         if matches!(self.state, ConnectionState::Disconnected { .. }) {
             error!("Trying to disconnect an already disconnected client.");
             return;
         }
 
-        if let Err(e) =
-            self.send_disconnect_packet(socket, DisconnectionReason::DisconnectedByClient)
-        {
-            error!("Failed to send disconnect packet: {}", e);
-        }
+        transport.disconnect(self.client_id, DisconnectionReason::DisconnectedByClient);
 
         self.state = ConnectionState::Disconnected {
             reason: DisconnectionReason::DisconnectedByClient,
         };
     }
 
+    /*
     pub fn create_protocol_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
         match self.state {
             ConnectionState::Connecting { ref mut protocol } => protocol
@@ -203,6 +182,7 @@ where
             _ => Ok(None),
         }
     }
+    */
 
     pub fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
         let channel = self
@@ -245,12 +225,14 @@ where
         }
 
         match self.state {
+            /*
             ConnectionState::Connecting { ref mut protocol } => {
                 if protocol.is_authenticated() {
                     let security_service = protocol.build_security_interface();
                     self.state = ConnectionState::Connected { security_service };
                 }
             }
+            */
             ConnectionState::Connected { .. } => {
                 for ack in self.acks.drain(..) {
                     for channel in self.channels.values_mut() {
@@ -269,121 +251,87 @@ where
 
     pub fn process_payload(&mut self, payload: &[u8]) -> Result<(), RenetError> {
         self.timeout_timer.reset();
-        let packet: Packet = bincode::deserialize(&payload)?;
 
-        match packet {
-            Packet::Unauthenticaded(Unauthenticaded::ConnectionError(error)) => {
-                self.state = ConnectionState::Disconnected { reason: error };
-                Err(RenetError::ConnectionError(error))
-            }
-            Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) => {
-                match self.state {
-                    ConnectionState::Connecting { ref mut protocol } => {
-                        protocol
-                            .read_payload(&payload)
-                            .map_err(RenetError::AuthenticationError)?;
+        match self.state {
+            ConnectionState::Connected => {
+                let message = bincode::deserialize(&payload)?;
+                let channels_packet_data = match message {
+                    Message::Normal(Normal {
+                        sequence,
+                        ack_data,
+                        payload,
+                    }) => {
+                        let received_packet = ReceivedPacket::new(Instant::now(), payload.len());
+                        self.received_buffer.insert(sequence, received_packet);
+                        self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+                        payload
                     }
-                    ConnectionState::Disconnected { .. } => {
-                        return Err(RenetError::ClientDisconnected);
-                    }
-                    ConnectionState::Connected { .. } => {
-                        trace!("Unauthenticaded packet discarted, client is already connected");
-                        return Ok(());
-                    }
-                }
-                Ok(())
-            }
-            Packet::Authenticated(Authenticated { payload }) => match self.state {
-                ConnectionState::Connected {
-                    ref mut security_service,
-                } => {
-                    let payload = security_service
-                        .ss_unwrap(&payload)
-                        .map_err(RenetError::AuthenticationError)?;
-                    let message = bincode::deserialize(&payload)?;
-                    let channels_packet_data = match message {
-                        Message::Normal(Normal {
-                            sequence,
-                            ack_data,
-                            payload,
-                        }) => {
+                    Message::Fragment(fragment) => {
+                        if let Some(received_packet) =
+                            self.received_buffer.get_mut(fragment.sequence)
+                        {
+                            received_packet.size_bytes += payload.len();
+                        } else {
                             let received_packet =
                                 ReceivedPacket::new(Instant::now(), payload.len());
-                            self.received_buffer.insert(sequence, received_packet);
-                            self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
-                            payload
+                            self.received_buffer
+                                .insert(fragment.sequence, received_packet);
                         }
-                        Message::Fragment(fragment) => {
-                            if let Some(received_packet) =
-                                self.received_buffer.get_mut(fragment.sequence)
-                            {
-                                received_packet.size_bytes += payload.len();
-                            } else {
-                                let received_packet =
-                                    ReceivedPacket::new(Instant::now(), payload.len());
-                                self.received_buffer
-                                    .insert(fragment.sequence, received_packet);
-                            }
 
-                            self.update_acket_packets(
-                                fragment.ack_data.ack,
-                                fragment.ack_data.ack_bits,
+                        self.update_acket_packets(
+                            fragment.ack_data.ack,
+                            fragment.ack_data.ack_bits,
+                        );
+
+                        let payload = self
+                            .reassembly_buffer
+                            .handle_fragment(fragment, &self.config.fragment_config)?;
+                        match payload {
+                            None => return Ok(()),
+                            Some(p) => p,
+                        }
+                    }
+                    Message::Heartbeat(HeartBeat { ack_data }) => {
+                        self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+                        return Ok(());
+                    }
+                    Message::Disconnect(error) => {
+                        self.state = ConnectionState::Disconnected { reason: error };
+                        return Err(RenetError::ConnectionError(error));
+                    }
+                };
+
+                for channel_packet_data in channels_packet_data.into_iter() {
+                    let channel = match self.channels.get_mut(&channel_packet_data.channel_id) {
+                        Some(c) => c,
+                        None => {
+                            error!(
+                                "Discarted ChannelPacketData with invalid id: {:?}",
+                                channel_packet_data.channel_id
                             );
-
-                            let payload = self
-                                .reassembly_buffer
-                                .handle_fragment(fragment, &self.config.fragment_config)?;
-                            match payload {
-                                None => return Ok(()),
-                                Some(p) => p,
-                            }
-                        }
-                        Message::Heartbeat(HeartBeat { ack_data }) => {
-                            self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
-                            return Ok(());
-                        }
-                        Message::Disconnect(error) => {
-                            self.state = ConnectionState::Disconnected { reason: error };
-                            return Err(RenetError::ConnectionError(error));
+                            continue;
                         }
                     };
-
-                    for channel_packet_data in channels_packet_data.into_iter() {
-                        let channel = match self.channels.get_mut(&channel_packet_data.channel_id) {
-                            Some(c) => c,
-                            None => {
-                                error!(
-                                    "Discarted ChannelPacketData with invalid id: {:?}",
-                                    channel_packet_data.channel_id
-                                );
-                                continue;
-                            }
-                        };
-                        channel.process_messages(channel_packet_data.messages);
-                    }
-
-                    Ok(())
+                    channel.process_messages(channel_packet_data.messages);
                 }
-                _ => {
-                    info!("Discarted Authenticated Packet, current state is not connected.");
-                    Ok(())
-                }
-            },
+
+                Ok(())
+            }
+            _ => {
+                info!("Discarted Authenticated Packet, current state is not connected.");
+                Ok(())
+            }
         }
     }
 
-    pub fn send_channels_packet_data(
+    pub fn send_channels_packet_data<T>(
         &mut self,
         channels_packet_data: Vec<ChannelPacketData>,
-        socket: &UdpSocket,
-    ) -> Result<(), RenetError> {
-        let security_service = match self.state {
-            ConnectionState::Connected {
-                ref mut security_service,
-            } => security_service,
-            _ => unreachable!(),
-        };
-
+        transport: &mut T,
+    ) -> Result<(), RenetError>
+    where
+        T: Transport + Transport<ClientId = C>,
+    {
         let packet_size = bincode::serialized_size(&channels_packet_data)?;
         let sequence = self.sequence;
         self.sequence += 1;
@@ -412,13 +360,10 @@ where
             vec![packet]
         };
 
-        for packet in payload.iter() {
-            let packet = security_service
-                .ss_wrap(packet)
-                .map_err(RenetError::AuthenticationError)?;
-            let packet = Packet::Authenticated(Authenticated { payload: packet });
+        for packet in payload.into_iter() {
             let packet = bincode::serialize(&packet)?;
-            socket.send_to(&packet, self.addr)?;
+            // TODO(error): unwrap
+            transport.send(self.client_id, &packet).unwrap();
         }
         Ok(())
     }
@@ -450,11 +395,12 @@ where
         }
     }
 
-    pub fn send_packets(&mut self, socket: &UdpSocket) -> Result<(), RenetError> {
+    pub fn send_packets<T>(&mut self, transport: &mut T) -> Result<(), RenetError>
+    where
+        T: Transport + Transport<ClientId = C>,
+    {
         match self.state {
-            ConnectionState::Connected {
-                ref mut security_service,
-            } => {
+            ConnectionState::Connected => {
                 let sequence = self.sequence;
                 let mut channels_packet_data: Vec<ChannelPacketData> = vec![];
                 for (channel_id, channel) in self.channels.iter_mut() {
@@ -472,7 +418,7 @@ where
                 }
 
                 if !channels_packet_data.is_empty() {
-                    self.send_channels_packet_data(channels_packet_data, socket)?;
+                    self.send_channels_packet_data(channels_packet_data, transport)?;
                     self.heartbeat_timer.reset();
                 } else if self.heartbeat_timer.is_finished() {
                     let (ack, ack_bits) = self.received_buffer.ack_bits();
@@ -480,17 +426,13 @@ where
                         ack_data: AckData { ack, ack_bits },
                     });
 
-                    let message = bincode::serialize(&message)?;
-
-                    let payload = security_service
-                        .ss_wrap(&message)
-                        .map_err(RenetError::AuthenticationError)?;
-                    let packet = Packet::Authenticated(Authenticated { payload });
-                    let packet = bincode::serialize(&packet)?;
-                    socket.send_to(&packet, self.addr)?;
+                    let packet = bincode::serialize(&message)?;
+                    // TODO(error): unwrap
+                    transport.send(self.client_id, &packet).unwrap();
                     self.heartbeat_timer.reset();
                 }
             }
+            /*
             ConnectionState::Connecting { ref mut protocol } => {
                 if let Some(payload) = protocol
                     .create_payload()
@@ -498,10 +440,11 @@ where
                 {
                     let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
                     let packet = bincode::serialize(&packet)?;
-                    socket.send_to(&packet, self.addr)?;
+                    transport.send(self.client_id, &packet);
                     self.heartbeat_timer.reset();
                 }
             }
+            */
             ConnectionState::Disconnected { .. } => {
                 return Err(RenetError::ClientDisconnected);
             }
@@ -607,11 +550,15 @@ where
         }
     }
 
+    /*
     pub fn send_disconnect_packet(
         &mut self,
         socket: &UdpSocket,
         reason: DisconnectionReason,
-    ) -> Result<(), RenetError> {
+    ) -> Result<(), RenetError>
+
+        T: Transport + Transport<ClientId = C>,
+    {
         let payload = match self.state {
             ConnectionState::Connected {
                 ref mut security_service,
@@ -637,4 +584,5 @@ where
         socket.send_to(&payload, self.addr)?;
         Ok(())
     }
+    */
 }
