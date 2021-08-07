@@ -3,7 +3,7 @@ use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::{AckData, ChannelPacketData, HeartBeat, Message, Normal, Payload};
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::{ClientId, Timer, Transport};
+use crate::{ClientId, Timer};
 
 use log::{debug, error, info};
 
@@ -157,20 +157,13 @@ impl<C: ClientId> RemoteConnection<C> {
         }
     }
 
-    pub fn disconnect<T>(&mut self, transport: &mut T)
-    where
-        T: Transport + Transport<ClientId = C>,
-    {
+    pub fn disconnect(&mut self, reason: DisconnectionReason) {
         if matches!(self.state, ConnectionState::Disconnected { .. }) {
             error!("Trying to disconnect an already disconnected client.");
             return;
         }
 
-        transport.disconnect(self.client_id, DisconnectionReason::DisconnectedByClient);
-
-        self.state = ConnectionState::Disconnected {
-            reason: DisconnectionReason::DisconnectedByClient,
-        };
+        self.state = ConnectionState::Disconnected { reason };
     }
 
     /*
@@ -324,50 +317,6 @@ impl<C: ClientId> RemoteConnection<C> {
         }
     }
 
-    pub fn send_channels_packet_data<T>(
-        &mut self,
-        channels_packet_data: Vec<ChannelPacketData>,
-        transport: &mut T,
-    ) -> Result<(), RenetError>
-    where
-        T: Transport + Transport<ClientId = C>,
-    {
-        let packet_size = bincode::serialized_size(&channels_packet_data)?;
-        let sequence = self.sequence;
-        self.sequence += 1;
-
-        let (ack, ack_bits) = self.received_buffer.ack_bits();
-
-        let sent_packet = SentPacket::new(Instant::now(), channels_packet_data.len());
-        self.sent_buffer.insert(sequence, sent_packet);
-
-        let payload = if packet_size > self.config.fragment_config.fragment_above as u64 {
-            debug!("Sending fragmented packet {}.", sequence);
-            build_fragments(
-                channels_packet_data,
-                sequence,
-                AckData { ack, ack_bits },
-                &self.config.fragment_config,
-            )?
-        } else {
-            debug!("Sending normal packet {}.", sequence);
-            let packet = Message::Normal(Normal {
-                payload: channels_packet_data.to_vec(),
-                sequence,
-                ack_data: AckData { ack, ack_bits },
-            });
-            let packet = bincode::serialize(&packet)?;
-            vec![packet]
-        };
-
-        for packet in payload.into_iter() {
-            let packet = bincode::serialize(&packet)?;
-            // TODO(error): unwrap
-            transport.send(self.client_id, &packet).unwrap();
-        }
-        Ok(())
-    }
-
     fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {
         let mut ack_bits = ack_bits;
         let now = Instant::now();
@@ -395,10 +344,7 @@ impl<C: ClientId> RemoteConnection<C> {
         }
     }
 
-    pub fn send_packets<T>(&mut self, transport: &mut T) -> Result<(), RenetError>
-    where
-        T: Transport + Transport<ClientId = C>,
-    {
+    pub fn get_packets_to_send(&mut self) -> Result<Vec<Payload>, RenetError> {
         match self.state {
             ConnectionState::Connected => {
                 let sequence = self.sequence;
@@ -418,8 +364,43 @@ impl<C: ClientId> RemoteConnection<C> {
                 }
 
                 if !channels_packet_data.is_empty() {
-                    self.send_channels_packet_data(channels_packet_data, transport)?;
+                    let packet_size = bincode::serialized_size(&channels_packet_data)?;
+                    let sequence = self.sequence;
+                    self.sequence += 1;
+
+                    let (ack, ack_bits) = self.received_buffer.ack_bits();
+
+                    let sent_packet = SentPacket::new(Instant::now(), channels_packet_data.len());
+                    self.sent_buffer.insert(sequence, sent_packet);
+
+                    let payloads =
+                        if packet_size > self.config.fragment_config.fragment_above as u64 {
+                            debug!("Sending fragmented packet {}.", sequence);
+                            build_fragments(
+                                channels_packet_data,
+                                sequence,
+                                AckData { ack, ack_bits },
+                                &self.config.fragment_config,
+                            )?
+                        } else {
+                            debug!("Sending normal packet {}.", sequence);
+                            let packet = Message::Normal(Normal {
+                                payload: channels_packet_data.to_vec(),
+                                sequence,
+                                ack_data: AckData { ack, ack_bits },
+                            });
+                            let packet = bincode::serialize(&packet)?;
+                            vec![packet]
+                        };
+
+                    let mut result = vec![];
+                    for packet in payloads.into_iter() {
+                        let packet = bincode::serialize(&packet)?;
+                        result.push(packet);
+                    }
+
                     self.heartbeat_timer.reset();
+                    return Ok(result);
                 } else if self.heartbeat_timer.is_finished() {
                     let (ack, ack_bits) = self.received_buffer.ack_bits();
                     let message = Message::Heartbeat(HeartBeat {
@@ -427,29 +408,16 @@ impl<C: ClientId> RemoteConnection<C> {
                     });
 
                     let packet = bincode::serialize(&message)?;
-                    // TODO(error): unwrap
-                    transport.send(self.client_id, &packet).unwrap();
                     self.heartbeat_timer.reset();
+                    return Ok(vec![packet]);
+                } else {
+                    return Ok(vec![]);
                 }
             }
-            /*
-            ConnectionState::Connecting { ref mut protocol } => {
-                if let Some(payload) = protocol
-                    .create_payload()
-                    .map_err(RenetError::AuthenticationError)?
-                {
-                    let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                    let packet = bincode::serialize(&packet)?;
-                    transport.send(self.client_id, &packet);
-                    self.heartbeat_timer.reset();
-                }
-            }
-            */
             ConnectionState::Disconnected { .. } => {
                 return Err(RenetError::ClientDisconnected);
             }
         }
-        Ok(())
     }
 
     pub fn update_network_info(&mut self) {
