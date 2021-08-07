@@ -3,7 +3,7 @@ use crate::client::{LocalClient, LocalClientConnected};
 use crate::error::{DisconnectionReason, MessageError};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
-use crate::{ClientId, ConnectionControl, Transport};
+use crate::{ClientId, ConnectionControl, TransportServer};
 
 use log::{error, info};
 
@@ -70,7 +70,7 @@ pub struct Server<C, T> {
 
 impl<C, T> Server<C, T>
 where
-    T: Transport + Transport<ClientId = C>,
+    T: TransportServer + TransportServer<ClientId = C>,
     C: ClientId,
 {
     pub fn new(
@@ -410,8 +410,15 @@ where
 
     pub fn send_packets(&mut self) {
         for (client_id, connection) in self.remote_clients.iter_mut() {
-            if let Err(e) = connection.send_packets(&mut self.transport) {
-                error!("Failed to send packet for Client {}: {:?}", client_id, e);
+            match connection.get_packets_to_send() {
+                Ok(packets) => {
+                    for packet in packets.into_iter() {
+                        if let Err(e) = self.transport.send(*client_id, &packet) {
+                            error!("Error sending packet: {}", e);
+                        }
+                    }
+                }
+                Err(e) => error!("Failed to send packet for Client {}: {:?}", client_id, e),
             }
         }
     }
