@@ -166,17 +166,6 @@ impl<C: ClientId> RemoteConnection<C> {
         self.state = ConnectionState::Disconnected { reason };
     }
 
-    /*
-    pub fn create_protocol_payload(&mut self) -> Result<Option<Vec<u8>>, RenetError> {
-        match self.state {
-            ConnectionState::Connecting { ref mut protocol } => protocol
-                .create_payload()
-                .map_err(RenetError::AuthenticationError),
-            _ => Ok(None),
-        }
-    }
-    */
-
     pub fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
         let channel = self
             .channels
@@ -218,14 +207,6 @@ impl<C: ClientId> RemoteConnection<C> {
         }
 
         match self.state {
-            /*
-            ConnectionState::Connecting { ref mut protocol } => {
-                if protocol.is_authenticated() {
-                    let security_service = protocol.build_security_interface();
-                    self.state = ConnectionState::Connected { security_service };
-                }
-            }
-            */
             ConnectionState::Connected { .. } => {
                 for ack in self.acks.drain(..) {
                     for channel in self.channels.values_mut() {
@@ -247,7 +228,7 @@ impl<C: ClientId> RemoteConnection<C> {
 
         match self.state {
             ConnectionState::Connected => {
-                let message = bincode::deserialize(&payload)?;
+                let message: Message = bincode::deserialize(&payload)?;
                 let channels_packet_data = match message {
                     Message::Normal(Normal {
                         sequence,
@@ -393,14 +374,8 @@ impl<C: ClientId> RemoteConnection<C> {
                             vec![packet]
                         };
 
-                    let mut result = vec![];
-                    for packet in payloads.into_iter() {
-                        let packet = bincode::serialize(&packet)?;
-                        result.push(packet);
-                    }
-
                     self.heartbeat_timer.reset();
-                    return Ok(result);
+                    Ok(payloads)
                 } else if self.heartbeat_timer.is_finished() {
                     let (ack, ack_bits) = self.received_buffer.ack_bits();
                     let message = Message::Heartbeat(HeartBeat {
@@ -409,14 +384,12 @@ impl<C: ClientId> RemoteConnection<C> {
 
                     let packet = bincode::serialize(&message)?;
                     self.heartbeat_timer.reset();
-                    return Ok(vec![packet]);
+                    Ok(vec![packet])
                 } else {
-                    return Ok(vec![]);
+                    Ok(vec![])
                 }
             }
-            ConnectionState::Disconnected { .. } => {
-                return Err(RenetError::ClientDisconnected);
-            }
+            ConnectionState::Disconnected { .. } => Err(RenetError::ClientDisconnected),
         }
     }
 
@@ -517,40 +490,4 @@ impl<C: ClientId> RemoteConnection<C> {
             self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }
     }
-
-    /*
-    pub fn send_disconnect_packet(
-        &mut self,
-        socket: &UdpSocket,
-        reason: DisconnectionReason,
-    ) -> Result<(), RenetError>
-
-        T: Transport + Transport<ClientId = C>,
-    {
-        let payload = match self.state {
-            ConnectionState::Connected {
-                ref mut security_service,
-            } => {
-                let message = Message::Disconnect(reason);
-                let message = bincode::serialize(&message)?;
-                let payload = security_service
-                    .ss_wrap(&message)
-                    .map_err(RenetError::AuthenticationError)?;
-                let packet = Packet::Authenticated(Authenticated { payload });
-
-                bincode::serialize(&packet)?
-            }
-            _ => {
-                let packet = Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
-                    DisconnectionReason::DisconnectedByServer,
-                ));
-
-                bincode::serialize(&packet)?
-            }
-        };
-
-        socket.send_to(&payload, self.addr)?;
-        Ok(())
-    }
-    */
 }

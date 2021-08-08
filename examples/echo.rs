@@ -11,6 +11,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
 
+fn main() {}
+/*
 fn main() {
     println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [CLIENT_ID]");
     let args: Vec<String> = std::env::args().collect();
@@ -122,3 +124,4 @@ fn spawn_stdin_channel() -> Receiver<String> {
     });
     rx
 }
+*/
