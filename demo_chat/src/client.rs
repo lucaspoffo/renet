@@ -6,10 +6,10 @@ use eframe::{
 use log::error;
 use renet::{
     client::{Client, RemoteClient},
+    connection_control::ConnectionPermission,
     protocol::unsecure::UnsecureClientProtocol,
     remote_connection::ConnectionConfig,
-    server::ConnectionPermission,
-    UdpClient,
+    transport::udp::UdpClient,
 };
 
 use std::{

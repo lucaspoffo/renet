@@ -4,11 +4,12 @@ use std::{
 };
 
 use renet::{
+    connection_control::ConnectionPermission,
     error::RenetError,
     protocol::unsecure::UnsecureServerProtocol,
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
-    UdpServer,
+    server::{Server, ServerConfig, ServerEvent},
+    transport::udp::UdpServer,
 };
 
 use crate::{channels_config, ClientMessages, ServerMessages};
