@@ -4,6 +4,7 @@ use renet::{
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
     server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
+    UdpClient, UdpServer,
 };
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
@@ -11,8 +12,6 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
 
-fn main() {}
-/*
 fn main() {
     println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [CLIENT_ID]");
     let args: Vec<String> = std::env::args().collect();
@@ -46,14 +45,14 @@ fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
-    let mut server: Server<UnsecureServerProtocol<u64>, u64> = Server::new(
-        socket,
+    let transport = UdpServer::new(socket);
+    let mut server: Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
+        transport,
         server_config,
         connection_config,
         ConnectionPermission::All,
         channels_config(),
-    )
-    .unwrap();
+    );
     let mut received_messages = vec![];
     loop {
         server.update().unwrap();
@@ -86,15 +85,11 @@ fn server(addr: SocketAddr) {
 fn client(id: u64, server_addr: SocketAddr) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config = ConnectionConfig::default();
-    let mut client = RemoteClient::new(
-        id,
-        socket,
-        server_addr,
-        channels_config(),
-        UnsecureClientProtocol::new(id),
-        connection_config,
-    )
-    .unwrap();
+
+    let protocol = UnsecureClientProtocol::new(id);
+    let transport = UdpClient::new(server_addr, protocol, socket);
+
+    let mut client = RemoteClient::new(id, transport, channels_config(), connection_config);
     let stdin_channel = spawn_stdin_channel();
 
     loop {
@@ -124,4 +119,3 @@ fn spawn_stdin_channel() -> Receiver<String> {
     });
     rx
 }
-*/
