@@ -13,8 +13,9 @@ use renet::{
     error::{DisconnectionReason, RenetError},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
-    UdpClient, UdpServer,
+    server::{ Server, ServerConfig, ServerEvent},
+    connection_control::ConnectionPermission,
+    transport::{UdpClient, UdpServer},
 };
 
 use bincode;

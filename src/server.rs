@@ -1,25 +1,17 @@
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
+use crate::connection_control::{ConnectionControl, ConnectionPermission};
 use crate::error::{DisconnectionReason, MessageError};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
-use crate::{ClientId, ConnectionControl, TransportServer};
+use crate::transport::TransportServer;
+use crate::ClientId;
 
 use log::{error, info};
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConnectionPermission {
-    /// All connection are allowed, excepet clients that are denied.
-    All,
-    /// Only clients in the allow list can connect.
-    OnlyAllowed,
-    /// No connection can be stablished.
-    None,
-}
 
 impl Default for ConnectionPermission {
     fn default() -> Self {
