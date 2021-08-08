@@ -279,7 +279,7 @@ where
             self.remote_clients.remove(&client_id);
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id));
-            info!("Remote Client {} disconnected.", client_id);
+            info!("Remote Client {:?} disconnected.", client_id);
         }
 
         let mut disconnected_local_clients: Vec<C> = vec![];
@@ -293,16 +293,21 @@ where
             self.local_clients.remove(&client_id);
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id));
-            info!("Local Client {} disconnected.", client_id);
+            info!("Local Client {:?} disconnected.", client_id);
         }
 
         // TODO(transport): review the connection state
-        for client_id in self.transport.update() {
+        let (connected, disconnected) = self.transport.update(&self.connection_control);
+        for (client_id, reason) in disconnected.into_iter() {
+            self.disconnect_with_reason(&client_id, reason);
+        }
+
+        for client_id in connected.into_iter() {
             if self.remote_clients.len() + self.local_clients.len() >= self.config.max_clients {
                 self.transport
                     .disconnect(&client_id, DisconnectionReason::MaxPlayer);
                 info!(
-                    "Connection from {} successfuly stablished but server was full.",
+                    "Connection from {:?} successfuly stablished but server was full.",
                     client_id
                 );
 
@@ -311,13 +316,17 @@ where
 
             if self.is_client_connected(&client_id) {
                 info!(
-                    "Client with id {} already connected, discarded connection attempt.",
+                    "Client with id {:?} already connected, discarded connection attempt.",
                     client_id
                 );
                 self.transport
                     .disconnect(&client_id, DisconnectionReason::ClientIdAlreadyConnected);
 
                 continue;
+            }
+
+            if !self.connection_control.is_client_permitted(&client_id) {
+                self.transport.disconnect(&client_id, DisconnectionReason::Denied);
             }
 
             self.transport.confirm_connect(client_id);
@@ -344,7 +353,7 @@ where
                         }
                     }
                 }
-                Err(e) => error!("Failed to send packet for Client {}: {:?}", client_id, e),
+                Err(e) => error!("Failed to send packet for Client {:?}: {:?}", client_id, e),
             }
         }
     }

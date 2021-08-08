@@ -4,6 +4,8 @@ use crate::packet::Payload;
 
 use std::error::Error;
 
+#[cfg(feature = "steam")]
+pub mod steam;
 pub mod udp;
 
 pub trait TransportClient {
@@ -34,5 +36,8 @@ pub trait TransportServer {
     fn disconnect(&mut self, client_id: &Self::ClientId, reason: DisconnectionReason);
     fn is_authenticated(&self, client_id: Self::ClientId) -> bool;
     fn connection_id(&self) -> Self::ConnectionId;
-    fn update(&mut self) -> Vec<Self::ClientId>;
+    fn update(
+        &mut self,
+        connection_control: &ConnectionControl<Self::ClientId>,
+    ) -> (Vec<Self::ClientId>, Vec<(Self::ClientId, DisconnectionReason)>);
 }

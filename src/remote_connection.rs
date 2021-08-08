@@ -293,7 +293,7 @@ impl<C: ClientId> RemoteConnection<C> {
                 Ok(())
             }
             _ => {
-                info!("Discarted Authenticated Packet, current state is not connected.");
+                info!("Discarted packet, current state is not connected.");
                 Ok(())
             }
         }

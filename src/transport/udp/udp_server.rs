@@ -8,8 +8,8 @@ use crate::ClientId;
 use log::{debug, error};
 
 use std::collections::HashMap;
-use std::net::{SocketAddr, UdpSocket};
 use std::error::Error;
+use std::net::{SocketAddr, UdpSocket};
 
 struct Connecting<P> {
     addr: SocketAddr,
@@ -55,7 +55,6 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> UdpServer<C, P> {
     }
 }
 
-
 impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpServer<C, P> {
     type ClientId = C;
     type ConnectionId = SocketAddr;
@@ -68,7 +67,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
         &mut self,
         connection_control: &ConnectionControl<Self::ClientId>,
     ) -> Result<Option<(Self::ClientId, Payload)>, Box<dyn Error + Send + Sync + 'static>> {
-        let mut buffer = vec![0u8; 1200];
+        let mut buffer = vec![0u8; 1600];
 
         loop {
             match self.socket.recv_from(&mut buffer) {
@@ -83,7 +82,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                                 Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
                                     error,
                                 )) => {
-                                    error!("Client {} disconnected: {}", client_id, error);
+                                    error!("Client {:?} disconnected: {}", client_id, error);
                                     connecting.disconnect_reason = Some(error)
                                 }
                                 Packet::Unauthenticaded(Unauthenticaded::Protocol {
@@ -114,7 +113,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                         }) = packet
                         {
                             if let Ok(protocol) = P::from_payload(payload) {
-                                if connection_control.is_client_permitted(protocol.id()) {
+                                if connection_control.is_client_permitted(&protocol.id()) {
                                     let connecting = Connecting {
                                         protocol,
                                         addr,
@@ -159,19 +158,33 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
         Ok(())
     }
 
-    fn update(&mut self) -> Vec<Self::ClientId> {
+    fn update(
+        &mut self,
+        connection_control: &ConnectionControl<Self::ClientId>,
+    ) -> (
+        Vec<Self::ClientId>,
+        Vec<(Self::ClientId, DisconnectionReason)>,
+    ) {
         let mut new_connections = vec![];
         let mut disconnected = vec![];
 
         for (client_id, connecting) in self.connecting_clients.iter_mut() {
+            if let Some(reason) = connecting.disconnect_reason {
+                disconnected.push((*client_id, reason));
+                continue;
+            }
+            if !connection_control.is_client_permitted(client_id) {
+                disconnected.push((*client_id, DisconnectionReason::Denied));
+                continue;
+            }
             if connecting.protocol.is_authenticated() {
-                debug!("Client {} has been authenticated.", client_id);
+                debug!("Client {:?} has been authenticated.", client_id);
                 new_connections.push(*client_id);
             } else {
                 match connecting.protocol.create_payload() {
                     Err(e) => {
                         error!("Protocol error: {}", e);
-                        disconnected.push(client_id);
+                        disconnected.push((*client_id, DisconnectionReason::TransportError));
                     }
                     Ok(Some(payload)) => {
                         let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
@@ -186,7 +199,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
             }
         }
 
-        new_connections
+        (new_connections, disconnected)
     }
 
     fn disconnect(&mut self, client_id: &Self::ClientId, reason: DisconnectionReason) {
@@ -234,7 +247,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                 service,
             };
             self.connected_clients.insert(client_id, connected);
-            debug!("Confirmed Client {} connection", client_id);
+            debug!("Confirmed Client {:?} connection", client_id);
         }
     }
 }

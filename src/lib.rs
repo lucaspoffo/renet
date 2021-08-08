@@ -11,8 +11,5 @@ pub mod server;
 mod timer;
 pub mod transport;
 
-pub trait ClientId:
-    std::fmt::Display + Clone + Copy + std::fmt::Debug + std::hash::Hash + Eq
-{
-}
-impl<T> ClientId for T where T: std::fmt::Display + Copy + std::fmt::Debug + std::hash::Hash + Eq {}
+pub trait ClientId: Clone + Copy + std::fmt::Debug + std::hash::Hash + Eq {}
+impl<T> ClientId for T where T: Copy + std::fmt::Debug + std::hash::Hash + Eq {}

@@ -45,8 +45,8 @@ impl<C: ClientId> ConnectionControl<C> {
         &self.connection_permission
     }
 
-    pub fn is_client_permitted(&self, client_id: C) -> bool {
-        if self.deny_clients.contains(&client_id) {
+    pub fn is_client_permitted(&self, client_id: &C) -> bool {
+        if self.deny_clients.contains(client_id) {
             return false;
         }
 
