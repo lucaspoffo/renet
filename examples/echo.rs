@@ -1,10 +1,11 @@
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannelConfig},
     client::{Client, RemoteClient},
+    connection_control::ConnectionPermission,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
-    UdpClient, UdpServer,
+    server::{Server, ServerConfig, ServerEvent},
+    transport::{UdpClient, UdpServer},
 };
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};

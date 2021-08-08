@@ -3,7 +3,8 @@ use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::{AckData, ChannelPacketData, HeartBeat, Message, Normal, Payload};
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::{ClientId, Timer};
+use crate::timer::Timer;
+use crate::ClientId;
 
 use log::{debug, error, info};
 

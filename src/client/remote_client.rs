@@ -3,7 +3,8 @@ use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
-use crate::{ClientId, TransportClient};
+use crate::transport::TransportClient;
+use crate::ClientId;
 
 use std::collections::HashMap;
 
