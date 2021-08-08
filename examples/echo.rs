@@ -47,7 +47,7 @@ fn server(addr: SocketAddr) {
     let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
     let transport = UdpServer::new(socket);
-    let mut server: Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
+    let mut server: Server<UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
         transport,
         server_config,
         connection_config,

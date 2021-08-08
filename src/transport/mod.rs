@@ -39,5 +39,8 @@ pub trait TransportServer {
     fn update(
         &mut self,
         connection_control: &ConnectionControl<Self::ClientId>,
-    ) -> (Vec<Self::ClientId>, Vec<(Self::ClientId, DisconnectionReason)>);
+    ) -> (
+        Vec<Self::ClientId>,
+        Vec<(Self::ClientId, DisconnectionReason)>,
+    );
 }

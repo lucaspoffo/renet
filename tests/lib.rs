@@ -10,11 +10,11 @@ use renet::{
         UnreliableUnorderedChannelConfig,
     },
     client::{Client, RemoteClient},
+    connection_control::ConnectionPermission,
     error::{DisconnectionReason, RenetError},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{ Server, ServerConfig, ServerEvent},
-    connection_control::ConnectionPermission,
+    server::{Server, ServerConfig, ServerEvent},
     transport::udp::{UdpClient, UdpServer},
 };
 
@@ -59,14 +59,14 @@ fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
     channels_config
 }
 
-fn setup_server() -> Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>> {
+fn setup_server() -> Server<UdpServer<u64, UnsecureServerProtocol<u64>>> {
     setup_server_with_config(Default::default(), ConnectionPermission::All)
 }
 
 fn setup_server_with_config(
     server_config: ServerConfig,
     connection_permission: ConnectionPermission,
-) -> Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>> {
+) -> Server<UdpServer<u64, UnsecureServerProtocol<u64>>> {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
@@ -74,7 +74,7 @@ fn setup_server_with_config(
         ..Default::default()
     };
     let transport = UdpServer::new(socket);
-    let server: Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
+    let server: Server<UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
         transport,
         server_config,
         connection_config,
@@ -103,7 +103,7 @@ fn request_remote_connection(
 }
 
 fn connect_to_server(
-    server: &mut Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>>,
+    server: &mut Server<UdpServer<u64, UnsecureServerProtocol<u64>>>,
     request: &mut RemoteClient<u64, UdpClient<u64, UnsecureClientProtocol<u64>>>,
 ) -> Result<(), RenetError> {
     loop {

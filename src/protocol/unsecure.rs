@@ -154,7 +154,10 @@ impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
         match (packet, &self.state) {
             (Packet::<C>::ConnectionRequest(_), _) => {}
             (Packet::<C>::KeepAlive, ServerState::SendingKeepAlive) => {
-                debug!("Received KeepAlive from {:?}, accepted connection.", self.id);
+                debug!(
+                    "Received KeepAlive from {:?}, accepted connection.",
+                    self.id
+                );
                 self.state = ServerState::Accepted;
             }
             (Packet::<C>::Payload(_), ServerState::SendingKeepAlive) => {

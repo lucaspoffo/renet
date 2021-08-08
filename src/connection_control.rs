@@ -65,4 +65,3 @@ impl<C: ClientId> ConnectionControl<C> {
         self.deny_clients.iter().copied().collect()
     }
 }
-

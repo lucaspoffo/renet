@@ -48,22 +48,21 @@ pub enum ServerEvent<C> {
     ClientDisconnected(C),
 }
 
-pub struct Server<C, T> {
+pub struct Server<T: TransportServer> {
     config: ServerConfig,
     transport: T,
-    remote_clients: HashMap<C, RemoteConnection<C>>,
-    local_clients: HashMap<C, LocalClient<C>>,
-    // connecting: HashMap<C, RemoteConnection<P, C>>,
+    remote_clients: HashMap<T::ClientId, RemoteConnection<T::ClientId>>,
+    local_clients: HashMap<T::ClientId, LocalClient<T::ClientId>>,
     channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-    events: VecDeque<ServerEvent<C>>,
+    events: VecDeque<ServerEvent<T::ClientId>>,
     connection_config: ConnectionConfig,
-    connection_control: ConnectionControl<C>,
+    connection_control: ConnectionControl<T::ClientId>,
 }
 
-impl<C, T> Server<C, T>
+impl<T> Server<T>
 where
-    T: TransportServer + TransportServer<ClientId = C>,
-    C: ClientId,
+    T: TransportServer,
+    T::ClientId: ClientId,
 {
     pub fn new(
         transport: T,
@@ -94,11 +93,11 @@ where
         !self.remote_clients.is_empty() || !self.local_clients.is_empty()
     }
 
-    pub fn get_event(&mut self) -> Option<ServerEvent<C>> {
+    pub fn get_event(&mut self) -> Option<ServerEvent<T::ClientId>> {
         self.events.pop_front()
     }
 
-    pub fn allow_client(&mut self, client_id: &C) {
+    pub fn allow_client(&mut self, client_id: &T::ClientId) {
         self.connection_control.allow_client(client_id);
     }
 
@@ -108,7 +107,7 @@ where
         }
     }
 
-    pub fn deny_client(&mut self, client_id: &C) {
+    pub fn deny_client(&mut self, client_id: &T::ClientId) {
         self.connection_control.deny_client(client_id);
         self.disconnect_with_reason(client_id, DisconnectionReason::Denied);
     }
@@ -122,22 +121,25 @@ where
         self.connection_control.connection_permission()
     }
 
-    pub fn allowed_clients(&self) -> Vec<C> {
+    pub fn allowed_clients(&self) -> Vec<T::ClientId> {
         self.connection_control.allowed_clients()
     }
 
-    pub fn denied_clients(&self) -> Vec<C> {
+    pub fn denied_clients(&self) -> Vec<T::ClientId> {
         self.connection_control.denied_clients()
     }
 
-    pub fn network_info(&self, client_id: C) -> Option<&NetworkInfo> {
+    pub fn network_info(&self, client_id: T::ClientId) -> Option<&NetworkInfo> {
         if let Some(connection) = self.remote_clients.get(&client_id) {
             return Some(connection.network_info());
         }
         None
     }
 
-    pub fn create_local_client(&mut self, client_id: C) -> LocalClientConnected<C> {
+    pub fn create_local_client(
+        &mut self,
+        client_id: T::ClientId,
+    ) -> LocalClientConnected<T::ClientId> {
         let channels = self.channels_config.keys().copied().collect();
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
@@ -146,11 +148,11 @@ where
         local_client_connected
     }
 
-    pub fn disconnect(&mut self, client_id: &C) {
+    pub fn disconnect(&mut self, client_id: &T::ClientId) {
         self.disconnect_with_reason(client_id, DisconnectionReason::DisconnectedByServer);
     }
 
-    fn disconnect_with_reason(&mut self, client_id: &C, reason: DisconnectionReason) {
+    fn disconnect_with_reason(&mut self, client_id: &T::ClientId, reason: DisconnectionReason) {
         if let Some(remote_client) = self.remote_clients.remove(&client_id) {
             self.events
                 .push_back(ServerEvent::ClientDisconnected(*client_id));
@@ -171,7 +173,7 @@ where
 
     pub fn send_message<ChannelId: Into<u8>>(
         &mut self,
-        client_id: C,
+        client_id: T::ClientId,
         channel_id: ChannelId,
         message: Vec<u8>,
     ) -> Result<(), MessageError> {
@@ -232,7 +234,7 @@ where
 
     pub fn receive_message<ChannelId: Into<u8>>(
         &mut self,
-        client_id: C,
+        client_id: T::ClientId,
         channel_id: ChannelId,
     ) -> Result<Option<Payload>, MessageError> {
         let channel_id = channel_id.into();
@@ -245,7 +247,7 @@ where
         }
     }
 
-    pub fn get_clients_id(&self) -> Vec<C> {
+    pub fn get_clients_id(&self) -> Vec<T::ClientId> {
         self.remote_clients
             .keys()
             .copied()
@@ -253,7 +255,7 @@ where
             .collect()
     }
 
-    pub fn is_client_connected(&self, client_id: &C) -> bool {
+    pub fn is_client_connected(&self, client_id: &T::ClientId) -> bool {
         self.remote_clients.contains_key(client_id) || self.local_clients.contains_key(client_id)
     }
 
@@ -268,7 +270,7 @@ where
 
         // TODO(transport): Check if there is disconnect on the transport layer
 
-        let mut disconnected_remote_clients: Vec<C> = vec![];
+        let mut disconnected_remote_clients: Vec<T::ClientId> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
             if connection.update().is_err() || !connection.is_connected() {
                 disconnected_remote_clients.push(client_id);
@@ -282,7 +284,7 @@ where
             info!("Remote Client {:?} disconnected.", client_id);
         }
 
-        let mut disconnected_local_clients: Vec<C> = vec![];
+        let mut disconnected_local_clients: Vec<T::ClientId> = vec![];
         for (&client_id, connection) in self.local_clients.iter() {
             if !connection.is_connected() {
                 disconnected_local_clients.push(client_id);
@@ -326,7 +328,8 @@ where
             }
 
             if !self.connection_control.is_client_permitted(&client_id) {
-                self.transport.disconnect(&client_id, DisconnectionReason::Denied);
+                self.transport
+                    .disconnect(&client_id, DisconnectionReason::Denied);
             }
 
             self.transport.confirm_connect(client_id);

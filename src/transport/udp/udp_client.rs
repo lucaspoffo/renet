@@ -7,7 +7,6 @@ use crate::ClientId;
 use log::{debug, error};
 use std::net::{SocketAddr, UdpSocket};
 
-
 enum ClientState<C, P: AuthenticationProtocol<C>> {
     Connecting { protocol: P },
     Connected { security_service: P::Service },
