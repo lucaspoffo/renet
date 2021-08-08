@@ -53,7 +53,9 @@ where
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
-        self.connection.connection_error()
+        self.connection
+            .connection_error()
+            .or_else(|| self.transport.connection_error())
     }
 
     fn disconnect(&mut self) {

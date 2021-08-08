@@ -118,6 +118,7 @@ where
 
     pub fn deny_client(&mut self, client_id: &C) {
         self.connection_control.deny_client(client_id);
+        self.disconnect_with_reason(client_id, DisconnectionReason::Denied);
     }
 
     pub fn set_connection_permission(&mut self, connection_permission: ConnectionPermission) {
@@ -154,13 +155,15 @@ where
     }
 
     pub fn disconnect(&mut self, client_id: &C) {
+        self.disconnect_with_reason(client_id, DisconnectionReason::DisconnectedByServer);
+    }
+
+    fn disconnect_with_reason(&mut self, client_id: &C, reason: DisconnectionReason) {
         if let Some(remote_client) = self.remote_clients.remove(&client_id) {
             self.events
                 .push_back(ServerEvent::ClientDisconnected(*client_id));
-            self.transport.disconnect(
-                remote_client.client_id(),
-                DisconnectionReason::DisconnectedByServer,
-            );
+            self.transport
+                .disconnect(&remote_client.client_id(), reason);
         } else if let Some(mut local_client) = self.local_clients.remove(&client_id) {
             local_client.disconnect();
             self.events
@@ -305,25 +308,35 @@ where
         for client_id in self.transport.update() {
             if self.remote_clients.len() + self.local_clients.len() >= self.config.max_clients {
                 self.transport
-                    .disconnect(client_id, DisconnectionReason::MaxPlayer);
+                    .disconnect(&client_id, DisconnectionReason::MaxPlayer);
                 info!(
                     "Connection from {} successfuly stablished but server was full.",
                     client_id
                 );
 
                 continue;
-            } else {
-                self.transport.confirm_connect(client_id);
-                let mut connection =
-                    RemoteConnection::new(client_id, self.connection_config.clone());
-                for (channel_id, channel_config) in self.channels_config.iter() {
-                    let channel = channel_config.new_channel();
-                    connection.add_channel(*channel_id, channel);
-                }
-                self.events
-                    .push_back(ServerEvent::ClientConnected(connection.client_id()));
-                self.remote_clients.insert(client_id, connection);
             }
+
+            if self.is_client_connected(&client_id) {
+                info!(
+                    "Client with id {} already connected, discarded connection attempt.",
+                    client_id
+                );
+                self.transport
+                    .disconnect(&client_id, DisconnectionReason::ClientIdAlreadyConnected);
+
+                continue;
+            }
+
+            self.transport.confirm_connect(client_id);
+            let mut connection = RemoteConnection::new(client_id, self.connection_config.clone());
+            for (channel_id, channel_config) in self.channels_config.iter() {
+                let channel = channel_config.new_channel();
+                connection.add_channel(*channel_id, channel);
+            }
+            self.events
+                .push_back(ServerEvent::ClientConnected(connection.client_id()));
+            self.remote_clients.insert(client_id, connection);
         }
 
         Ok(())

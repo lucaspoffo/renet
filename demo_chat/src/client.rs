@@ -9,6 +9,7 @@ use renet::{
     protocol::unsecure::UnsecureClientProtocol,
     remote_connection::ConnectionConfig,
     server::ConnectionPermission,
+    UdpClient,
 };
 
 use std::{
@@ -41,7 +42,7 @@ pub struct ChatApp {
     clients: HashMap<u64, String>,
     messages: Vec<(u64, String)>,
     chat_server: Option<ChatServer>,
-    client: Option<Box<dyn Client>>,
+    client: Option<Box<dyn Client<u64>>>,
     connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     connection_permission: ConnectionPermission,
     text_input: String,
@@ -152,17 +153,19 @@ impl ChatApp {
                     match server_addr.parse::<SocketAddr>() {
                         Ok(addr) => {
                             *state = AppState::Connecting;
+
                             let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
                             let connection_config = ConnectionConfig::default();
+
+                            let protocol = UnsecureClientProtocol::new(*client_id);
+                            let transport = UdpClient::new(addr, protocol, socket);
+
                             let mut remote_client = RemoteClient::new(
                                 *client_id,
-                                socket,
-                                addr,
+                                transport,
                                 channels_config(),
-                                UnsecureClientProtocol::new(*client_id),
                                 connection_config,
-                            )
-                            .unwrap();
+                            );
 
                             let init_message = ClientMessages::Init { nick: nick.clone() };
                             let init_message = bincode::serialize(&init_message).unwrap();
@@ -295,17 +298,16 @@ fn draw_host_commands(
     });
 
     ui.separator();
-    if let Some(addr) = chat_server.server.addr() {
-        ui.horizontal(|ui| {
-            ui.label(format!("Address: {}", addr));
-            let tooltip = "Click to copy the server address";
-            if ui.button("📋").on_hover_text(tooltip).clicked() {
-                ui.output().copied_text = addr.to_string();
-            }
-        });
+    let addr = chat_server.server.connection_id();
+    ui.horizontal(|ui| {
+        ui.label(format!("Address: {}", addr));
+        let tooltip = "Click to copy the server address";
+        if ui.button("📋").on_hover_text(tooltip).clicked() {
+            ui.output().copied_text = addr.to_string();
+        }
+    });
 
-        ui.separator();
-    }
+    ui.separator();
 
     egui::ComboBox::from_label("Take your pick")
         .selected_text(format!("{:?}", connection_permission))
