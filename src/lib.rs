@@ -11,7 +11,7 @@ mod timer;
 // pub mod transport;
 
 use crate::{
-    error::DisconnectionReason,
+    error::{DisconnectionReason, RenetError},
     packet::{Authenticated, Packet, Unauthenticaded},
 };
 use packet::{Message, Payload};
@@ -29,7 +29,6 @@ use std::{
 };
 
 use crate::protocol::SecurityService;
-use thiserror::Error;
 
 pub trait ClientId: Display + Clone + Copy + Debug + Hash + Eq {}
 impl<T> ClientId for T where T: Display + Copy + Debug + Hash + Eq {}
@@ -89,12 +88,12 @@ impl<C: ClientId> ConnectionControl<C> {
 }
 
 pub trait TransportClient {
-    fn recv(&mut self) -> Option<Payload>;
+    fn recv(&mut self) -> Result<Option<Payload>, RenetError>;
     fn update(&mut self);
     fn connection_error(&self) -> Option<&(dyn std::error::Error + 'static)>;
     fn send_to_server(&mut self, payload: &[u8]);
     fn disconnect(&mut self, reason: DisconnectionReason);
-    fn is_authenticated(&self) -> bool;
+    fn is_connected(&self) -> bool;
 }
 
 enum ClientState<C, P: AuthenticationProtocol<C>> {
@@ -103,11 +102,11 @@ enum ClientState<C, P: AuthenticationProtocol<C>> {
     Disconnected,
 }
 
-struct UdpClient<C, P: AuthenticationProtocol<C>> {
+pub struct UdpClient<C, P: AuthenticationProtocol<C>> {
     socket: UdpSocket,
     server_addr: SocketAddr,
     state: ClientState<C, P>,
-    error: Option<UdpError>,
+    disconnect_reason: Option<DisconnectionReason>,
 }
 
 impl<C, P: AuthenticationProtocol<C>> UdpClient<C, P> {
@@ -119,7 +118,7 @@ impl<C, P: AuthenticationProtocol<C>> UdpClient<C, P> {
             socket,
             server_addr,
             state,
-            error: None,
+            disconnect_reason: None,
         }
     }
 }
@@ -129,9 +128,9 @@ where
     C: ClientId,
     P: AuthenticationProtocol<C>,
 {
-    fn recv(&mut self) -> Option<Payload> {
-        if self.error.is_some() || matches!(self.state, ClientState::Disconnected) {
-            return None;
+    fn recv(&mut self) -> Result<Option<Payload>, RenetError> {
+        if let Some(reason) = self.disconnect_reason {
+            return Err(RenetError::ConnectionError(reason));
         }
 
         loop {
@@ -145,14 +144,16 @@ where
                         continue;
                     }
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => return None,
-                Err(e) => {
-                    self.error = Some(e.into());
-                    return None;
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+                Err(_) => {
+                    let reason = DisconnectionReason::TransportError;
+                    self.disconnect_reason = Some(reason);
+                    return Err(RenetError::ConnectionError(reason));
                 }
             };
 
             if let Ok(packet) = bincode::deserialize::<Packet>(&payload) {
+                debug!("Deserialized packet from server");
                 match self.state {
                     ClientState::Disconnected => unreachable!(),
                     ClientState::Connected {
@@ -163,13 +164,16 @@ where
                         }
                         Packet::Authenticated(Authenticated { payload }) => {
                             if let Ok(payload) = security_service.ss_unwrap(&payload) {
-                                return Some(payload);
+                                return Ok(Some(payload));
+                            } else {
+                                error!("Error security unwrap");
                             }
                         }
                     },
                     ClientState::Connecting { ref mut protocol } => match packet {
-                        Packet::Unauthenticaded(Unauthenticaded::ConnectionError(_)) => {
-                            self.error = Some(UdpError::Disconnected);
+                        Packet::Unauthenticaded(Unauthenticaded::ConnectionError(reason)) => {
+                            self.disconnect_reason = Some(reason);
+                            return Err(RenetError::ConnectionError(reason));
                         }
 
                         Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) => {
@@ -187,15 +191,22 @@ where
     }
 
     fn update(&mut self) {
-        if self.error.is_some() {
+        if self.disconnect_reason.is_some() {
             self.state = ClientState::Disconnected;
             return;
         }
 
-        if let ClientState::Connecting { ref protocol } = self.state {
+        if let ClientState::Connecting { ref mut protocol } = self.state {
             if protocol.is_authenticated() {
                 let security_service = protocol.build_security_interface();
                 self.state = ClientState::Connected { security_service };
+            } else if let Ok(Some(payload)) = protocol.create_payload() {
+                let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
+                let payload = bincode::serialize(&packet).unwrap();
+
+                if let Err(e) = self.socket.send_to(&payload, &self.server_addr) {
+                    error!("Error sending packet to server: {}", e);
+                }
             }
         }
     }
@@ -206,15 +217,11 @@ where
             ClientState::Connected {
                 ref mut security_service,
             } => {
-                if let Ok(payload) = security_service.ss_wrap(payload) {
-                    let packet = Packet::Authenticated(Authenticated {
-                        payload: payload.to_vec(),
-                    });
-                    if let Ok(payload) = bincode::serialize(&packet) {
-                        if let Err(e) = self.socket.send_to(&payload, &self.server_addr) {
-                            error!("Error sending packet to server: {}", e);
-                        }
-                    }
+                let payload = security_service.ss_wrap(payload).unwrap();
+                let packet = Packet::Authenticated(Authenticated { payload });
+                let payload = bincode::serialize(&packet).unwrap();
+                if let Err(e) = self.socket.send_to(&payload, &self.server_addr) {
+                    error!("Error sending packet to server: {}", e);
                 }
             }
             ClientState::Disconnected => {}
@@ -222,7 +229,7 @@ where
     }
 
     fn connection_error(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        if let Some(e) = self.error.as_ref() {
+        if let Some(e) = self.disconnect_reason.as_ref() {
             let error: &(dyn std::error::Error + 'static) = e;
             return Some(error);
         }
@@ -259,14 +266,14 @@ where
         self.state = ClientState::Disconnected;
     }
 
-    fn is_authenticated(&self) -> bool {
+    fn is_connected(&self) -> bool {
         matches!(self.state, ClientState::Connected { .. })
     }
 }
 
 struct Connecting<P> {
     addr: SocketAddr,
-    error: Option<DisconnectionReason>,
+    disconnect_reason: Option<DisconnectionReason>,
     protocol: P,
 }
 
@@ -275,15 +282,7 @@ struct Connected<S> {
     service: S,
 }
 
-#[derive(Debug, Error)]
-pub enum UdpError {
-    #[error("socket disconnected: {0}")]
-    IOError(#[from] std::io::Error),
-    #[error("Client disconnected")]
-    Disconnected,
-}
-
-struct UdpServer<C, P: ServerAuthenticationProtocol<C>> {
+pub struct UdpServer<C, P: ServerAuthenticationProtocol<C>> {
     socket: UdpSocket,
     connecting_clients: HashMap<C, Connecting<P>>,
     connected_clients: HashMap<C, Connected<P::Service>>,
@@ -318,6 +317,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> UdpServer<C, P> {
 
 pub trait TransportServer {
     type ClientId;
+    type ConnectionId;
 
     fn recv(
         &mut self,
@@ -333,20 +333,28 @@ pub trait TransportServer {
     fn confirm_connect(&mut self, client_id: Self::ClientId);
     fn disconnect(&mut self, client_id: Self::ClientId, reason: DisconnectionReason);
     fn is_authenticated(&self, client_id: Self::ClientId) -> bool;
+    fn connection_id(&self) -> Self::ConnectionId;
     fn update(&mut self) -> Vec<Self::ClientId>;
 }
 
 impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpServer<C, P> {
     type ClientId = C;
+    type ConnectionId = SocketAddr;
+
+    fn connection_id(&self) -> Self::ConnectionId {
+        self.socket.local_addr().unwrap()
+    }
 
     fn recv(
         &mut self,
         connection_control: &ConnectionControl<Self::ClientId>,
     ) -> Result<Option<(Self::ClientId, Payload)>, Box<dyn Error + Send + Sync + 'static>> {
         let mut buffer = vec![0u8; 1200];
+
         loop {
             match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
+                    // debug!("Received packet from addr: {}", addr);
                     if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..len]) {
                         if let Some((client_id, connecting)) = self.find_connecting_by_addr(addr) {
                             match packet {
@@ -357,11 +365,12 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                                     error,
                                 )) => {
                                     error!("Client {} disconnected: {}", client_id, error);
-                                    connecting.error = Some(error)
+                                    connecting.disconnect_reason = Some(error)
                                 }
                                 Packet::Unauthenticaded(Unauthenticaded::Protocol {
                                     ref payload,
                                 }) => {
+                                    debug!("Received protocol packet");
                                     if let Err(e) = connecting.protocol.read_payload(payload) {
                                         error!("Error reading protocol payload: {}", e);
                                     }
@@ -390,10 +399,20 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                                     let connecting = Connecting {
                                         protocol,
                                         addr,
-                                        error: None,
+                                        disconnect_reason: None,
                                     };
                                     self.connecting_clients
                                         .insert(connecting.protocol.id(), connecting);
+                                } else {
+                                    let packet =
+                                        Packet::Unauthenticaded(Unauthenticaded::ConnectionError(
+                                            DisconnectionReason::Denied,
+                                        ));
+                                    if let Ok(packet) = bincode::serialize(&packet) {
+                                        if let Err(e) = self.socket.send_to(&packet, addr) {
+                                            error!("Error sending disconnect packet: {}", e);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -410,10 +429,10 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
         client_id: Self::ClientId,
         payload: &[u8],
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        if let Some(connected) = self.connected_clients.get(&client_id) {
-            let packet = Packet::Authenticated(Authenticated {
-                payload: payload.to_vec(),
-            });
+        debug!("Sending packet to {}", client_id);
+        if let Some(connected) = self.connected_clients.get_mut(&client_id) {
+            let payload = connected.service.ss_wrap(payload).unwrap();
+            let packet = Packet::Authenticated(Authenticated { payload });
             let payload = bincode::serialize(&packet).map_err(Box::new)?;
             self.socket
                 .send_to(&payload, connected.addr)
@@ -428,6 +447,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
 
         for (client_id, connecting) in self.connecting_clients.iter_mut() {
             if connecting.protocol.is_authenticated() {
+                debug!("Client {} has been authenticated.", client_id);
                 new_connections.push(*client_id);
             } else {
                 match connecting.protocol.create_payload() {
@@ -436,6 +456,9 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                         disconnected.push(client_id);
                     }
                     Ok(Some(payload)) => {
+                        let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
+                        let payload = bincode::serialize(&packet).unwrap();
+
                         if let Err(e) = self.socket.send_to(&payload, connecting.addr) {
                             error!("Error sending protocol packet: {}", e);
                         }
@@ -493,6 +516,7 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
                 service,
             };
             self.connected_clients.insert(client_id, connected);
+            debug!("Confirmed Client {} connection", client_id);
         }
     }
 }

@@ -33,8 +33,8 @@ where
 
         Self {
             id,
-            connection,
             transport,
+            connection,
         }
     }
 }
@@ -49,7 +49,7 @@ where
     }
 
     fn is_connected(&self) -> bool {
-        self.connection.is_connected()
+        self.transport.is_connected() && self.connection.is_connected()
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
@@ -58,6 +58,8 @@ where
 
     fn disconnect(&mut self) {
         self.connection
+            .disconnect(DisconnectionReason::DisconnectedByClient);
+        self.transport
             .disconnect(DisconnectionReason::DisconnectedByClient);
     }
 
@@ -86,10 +88,11 @@ where
             return Err(RenetError::ConnectionError(connection_error));
         }
 
-        while let Some(payload) = self.transport.recv() {
+        while let Some(payload) = self.transport.recv()? {
             self.connection.process_payload(&payload)?;
         }
 
+        self.transport.update();
         self.connection.update()
     }
 }

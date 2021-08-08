@@ -86,7 +86,6 @@ where
             transport,
             remote_clients: HashMap::new(),
             local_clients: HashMap::new(),
-            // connecting: HashMap::new(),
             config,
             channels_config,
             connection_config,
@@ -95,9 +94,9 @@ where
         }
     }
 
-    //pub fn addr(&self) -> Option<SocketAddr> {
-    //    self.socket.local_addr().ok()
-    //}
+    pub fn connection_id(&self) -> T::ConnectionId {
+        self.transport.connection_id()
+    }
 
     pub fn has_clients(&self) -> bool {
         !self.remote_clients.is_empty() || !self.local_clients.is_empty()
@@ -106,20 +105,7 @@ where
     pub fn get_event(&mut self) -> Option<ServerEvent<C>> {
         self.events.pop_front()
     }
-    /*
-        fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P, C>> {
-            self.remote_clients
-                .values_mut()
-                .find(|c| *c.addr() == *addr)
-        }
 
-        fn find_connecting_by_addr(
-            &mut self,
-            addr: &SocketAddr,
-        ) -> Option<&mut RemoteConnection<P, C>> {
-            self.connecting.values_mut().find(|c| c.addr() == addr)
-        }
-    */
     pub fn allow_client(&mut self, client_id: &C) {
         self.connection_control.allow_client(client_id);
     }
@@ -289,7 +275,7 @@ where
 
         let mut disconnected_remote_clients: Vec<C> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
-            if connection.update().is_err() {
+            if connection.update().is_err() || !connection.is_connected() {
                 disconnected_remote_clients.push(client_id);
             }
         }
@@ -328,85 +314,20 @@ where
                 continue;
             } else {
                 self.transport.confirm_connect(client_id);
-            }
-        }
-
-        /*
-        match self.update_pending_connections() {
-            Err(RenetError::IOError(e)) => Err(e),
-            Err(e) => {
-                error!("Error updating pending connections: {}", e);
-                Ok(())
-            }
-            Ok(()) => Ok(()),
-        }
-        */
-        Ok(())
-    }
-
-    /*
-        fn update_pending_connections(&mut self) -> Result<(), RenetError> {
-            let mut connected_clients = vec![];
-            let mut disconnected_clients = vec![];
-            for connection in self.connecting.values_mut() {
-                if connection.update().is_err() {
-                    disconnected_clients.push(connection.client_id());
-                    continue;
-                }
-
-                if connection.is_connected() {
-                    connected_clients.push(connection.client_id());
-                } else if let Ok(Some(payload)) = connection.create_protocol_payload() {
-                    let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                    try_send_packet(&self.socket, packet, connection.addr())?;
-                }
-            }
-
-
-            for client_id in disconnected_clients {
-                self.connecting
-                    .remove(&client_id)
-                    .expect("Disconnected Clients always exists");
-                info!("Request connection {} failed.", client_id);
-            }
-
-            for client_id in connected_clients {
-                let mut connection = self
-                    .connecting
-                    .remove(&client_id)
-                    .expect("Connected Client always exist");
-                if self.remote_clients.len() >= self.config.max_clients {
-                    info!(
-                        "Connection from {} successfuly stablished but server was full.",
-                        connection.addr()
-                    );
-                    let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-                    try_send_packet(&self.socket, packet, connection.addr())?;
-
-                    continue;
-                }
-
-                info!(
-                    "Connection stablished with client {} ({}).",
-                    connection.client_id(),
-                    connection.addr(),
-                );
-
+                let mut connection =
+                    RemoteConnection::new(client_id, self.connection_config.clone());
                 for (channel_id, channel_config) in self.channels_config.iter() {
                     let channel = channel_config.new_channel();
                     connection.add_channel(*channel_id, channel);
                 }
-
                 self.events
                     .push_back(ServerEvent::ClientConnected(connection.client_id()));
-                self.remote_clients
-                    .insert(connection.client_id(), connection);
+                self.remote_clients.insert(client_id, connection);
             }
-
-
-            Ok(())
         }
-    */
+
+        Ok(())
+    }
 
     pub fn send_packets(&mut self) {
         for (client_id, connection) in self.remote_clients.iter_mut() {
@@ -422,67 +343,4 @@ where
             }
         }
     }
-    /*
-        fn process_payload_from(
-            &mut self,
-            payload: &[u8],
-            addr: &SocketAddr,
-        ) -> Result<(), RenetError> {
-            if let Some(client) = self.find_client_by_addr(addr) {
-                return client.process_payload(payload);
-            }
-
-            if self.remote_clients.len() >= self.config.max_clients {
-                let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-                try_send_packet(&self.socket, packet, addr)?;
-                debug!("Connection Denied to addr {}, server is full.", addr);
-                return Ok(());
-            }
-
-            match self.find_connecting_by_addr(addr) {
-                Some(connection) => {
-                    return connection.process_payload(payload);
-                }
-                None => {
-                    let packet = bincode::deserialize::<Packet>(payload)?;
-                    if let Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) = packet {
-                        let protocol =
-                            P::from_payload(&payload).map_err(RenetError::AuthenticationError)?;
-                        let id = protocol.id();
-                        if !self.can_client_connect(id) {
-                            info!(
-                                "Client with id {} is not allowed to connect the server.",
-                                id
-                            );
-
-                            let packet = Unauthenticaded::ConnectionError(DisconnectionReason::Denied);
-                            try_send_packet(&self.socket, packet, addr)?;
-                        }
-
-                        if self.is_client_connected(&id) {
-                            info!(
-                                "Client with id {} already connected, discarded connection attempt.",
-                                id
-                            );
-                            let packet = Unauthenticaded::ConnectionError(
-                                DisconnectionReason::ClientIdAlreadyConnected,
-                            );
-                            try_send_packet(&self.socket, packet, addr)?;
-                        } else {
-                            info!("Created new protocol from payload with client id {}", id);
-                            let new_connection = RemoteConnection::new(
-                                protocol.id(),
-                                self.connection_config.clone(),
-                                protocol,
-                            );
-                            self.connecting.insert(id, new_connection);
-                        }
-                    }
-                }
-            };
-
-            Ok(())
-        }
-
-    */
 }
