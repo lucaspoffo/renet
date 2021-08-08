@@ -8,13 +8,14 @@ use renet::{
     protocol::unsecure::UnsecureServerProtocol,
     remote_connection::ConnectionConfig,
     server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
+    UdpServer,
 };
 
 use crate::{channels_config, ClientMessages, ServerMessages};
 use log::info;
 
 pub struct ChatServer {
-    pub server: Server<UnsecureServerProtocol>,
+    pub server: Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>>,
     clients_initializing: HashSet<u64>,
     clients: HashMap<u64, String>,
 }
@@ -24,14 +25,14 @@ impl ChatServer {
         let socket = UdpSocket::bind(addr).unwrap();
         let server_config = ServerConfig::default();
         let connection_config = ConnectionConfig::default();
-        let server: Server<UnsecureServerProtocol> = Server::new(
-            socket,
+        let transport = UdpServer::new(socket);
+        let server: Server<u64, UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
+            transport,
             server_config,
             connection_config,
             ConnectionPermission::All,
             channels_config(),
-        )
-        .unwrap();
+        );
 
         Self {
             server,

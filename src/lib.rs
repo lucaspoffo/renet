@@ -90,7 +90,7 @@ impl<C: ClientId> ConnectionControl<C> {
 pub trait TransportClient {
     fn recv(&mut self) -> Result<Option<Payload>, RenetError>;
     fn update(&mut self);
-    fn connection_error(&self) -> Option<&(dyn std::error::Error + 'static)>;
+    fn connection_error(&self) -> Option<DisconnectionReason>;
     fn send_to_server(&mut self, payload: &[u8]);
     fn disconnect(&mut self, reason: DisconnectionReason);
     fn is_connected(&self) -> bool;
@@ -153,7 +153,6 @@ where
             };
 
             if let Ok(packet) = bincode::deserialize::<Packet>(&payload) {
-                debug!("Deserialized packet from server");
                 match self.state {
                     ClientState::Disconnected => unreachable!(),
                     ClientState::Connected {
@@ -205,6 +204,7 @@ where
                 let payload = bincode::serialize(&packet).unwrap();
 
                 if let Err(e) = self.socket.send_to(&payload, &self.server_addr) {
+                    self.disconnect_reason = Some(DisconnectionReason::TransportError);
                     error!("Error sending packet to server: {}", e);
                 }
             }
@@ -228,12 +228,8 @@ where
         }
     }
 
-    fn connection_error(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        if let Some(e) = self.disconnect_reason.as_ref() {
-            let error: &(dyn std::error::Error + 'static) = e;
-            return Some(error);
-        }
-        None
+    fn connection_error(&self) -> Option<DisconnectionReason> {
+        self.disconnect_reason
     }
 
     fn disconnect(&mut self, reason: DisconnectionReason) {
@@ -331,7 +327,7 @@ pub trait TransportServer {
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>>;
 
     fn confirm_connect(&mut self, client_id: Self::ClientId);
-    fn disconnect(&mut self, client_id: Self::ClientId, reason: DisconnectionReason);
+    fn disconnect(&mut self, client_id: &Self::ClientId, reason: DisconnectionReason);
     fn is_authenticated(&self, client_id: Self::ClientId) -> bool;
     fn connection_id(&self) -> Self::ConnectionId;
     fn update(&mut self) -> Vec<Self::ClientId>;
@@ -429,7 +425,6 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
         client_id: Self::ClientId,
         payload: &[u8],
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        debug!("Sending packet to {}", client_id);
         if let Some(connected) = self.connected_clients.get_mut(&client_id) {
             let payload = connected.service.ss_wrap(payload).unwrap();
             let packet = Packet::Authenticated(Authenticated { payload });
@@ -471,8 +466,8 @@ impl<C: ClientId, P: ServerAuthenticationProtocol<C>> TransportServer for UdpSer
         new_connections
     }
 
-    fn disconnect(&mut self, client_id: Self::ClientId, reason: DisconnectionReason) {
-        if let Some(mut client) = self.connected_clients.remove(&client_id) {
+    fn disconnect(&mut self, client_id: &Self::ClientId, reason: DisconnectionReason) {
+        if let Some(mut client) = self.connected_clients.remove(client_id) {
             let message = Message::Disconnect(reason);
             if let Ok(payload) = bincode::serialize(&message) {
                 if let Ok(payload) = client.service.ss_wrap(&payload) {
