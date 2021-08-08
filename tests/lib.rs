@@ -15,7 +15,7 @@ use renet::{
     remote_connection::ConnectionConfig,
     server::{ Server, ServerConfig, ServerEvent},
     connection_control::ConnectionPermission,
-    transport::{UdpClient, UdpServer},
+    transport::udp::{UdpClient, UdpServer},
 };
 
 use bincode;
