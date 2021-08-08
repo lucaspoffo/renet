@@ -5,7 +5,7 @@ use renet::{
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
     server::{Server, ServerConfig, ServerEvent},
-    transport::{UdpClient, UdpServer},
+    transport::udp::{UdpClient, UdpServer},
 };
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
