@@ -1,6 +1,6 @@
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
-use crate::remote_connection::{ClientId, NetworkInfo};
+use crate::remote_connection::NetworkInfo;
 
 mod local_client;
 mod remote_client;
@@ -9,8 +9,8 @@ pub(crate) use local_client::LocalClient;
 pub use local_client::LocalClientConnected;
 pub use remote_client::RemoteClient;
 
-pub trait Client {
-    fn id(&self) -> ClientId;
+pub trait Client<C> {
+    fn id(&self) -> C;
 
     fn is_connected(&self) -> bool;
 

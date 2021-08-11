@@ -3,7 +3,7 @@ use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
 use crate::protocol::AuthenticationProtocol;
-use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
+use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::debug;
 
@@ -13,14 +13,14 @@ use std::net::{SocketAddr, UdpSocket};
 
 pub struct RemoteClient<A: AuthenticationProtocol> {
     socket: UdpSocket,
-    id: ClientId,
+    id: A::ClientId,
     connection: RemoteConnection<A>,
     buffer: Box<[u8]>,
 }
 
 impl<A: AuthenticationProtocol> RemoteClient<A> {
     pub fn new(
-        id: ClientId,
+        id: A::ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
@@ -45,8 +45,8 @@ impl<A: AuthenticationProtocol> RemoteClient<A> {
     }
 }
 
-impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
-    fn id(&self) -> ClientId {
+impl<A: AuthenticationProtocol> Client<A::ClientId> for RemoteClient<A> {
+    fn id(&self) -> A::ClientId {
         self.id
     }
 

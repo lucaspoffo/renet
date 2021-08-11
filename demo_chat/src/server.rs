@@ -14,7 +14,7 @@ use crate::{channels_config, ClientMessages, ServerMessages};
 use log::info;
 
 pub struct ChatServer {
-    pub server: Server<UnsecureServerProtocol>,
+    pub server: Server<UnsecureServerProtocol<u64>>,
     clients_initializing: HashSet<u64>,
     clients: HashMap<u64, String>,
 }
@@ -24,7 +24,7 @@ impl ChatServer {
         let socket = UdpSocket::bind(addr).unwrap();
         let server_config = ServerConfig::default();
         let connection_config = ConnectionConfig::default();
-        let server: Server<UnsecureServerProtocol> = Server::new(
+        let server: Server<UnsecureServerProtocol<u64>> = Server::new(
             socket,
             server_config,
             connection_config,
