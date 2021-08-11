@@ -10,3 +10,8 @@ pub mod server;
 mod timer;
 
 pub(crate) use timer::Timer;
+
+use std::{fmt::Debug, hash::Hash};
+
+pub trait ClientId: Copy + Debug + Hash + Eq {}
+impl<T> ClientId for T where T: Copy + Debug + Hash + Eq {}

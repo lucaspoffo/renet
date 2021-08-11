@@ -57,21 +57,21 @@ fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
     channels_config
 }
 
-fn setup_server() -> Server<UnsecureServerProtocol> {
+fn setup_server() -> Server<UnsecureServerProtocol<u64>> {
     setup_server_with_config(Default::default(), ConnectionPermission::All)
 }
 
 fn setup_server_with_config(
     server_config: ServerConfig,
     connection_permission: ConnectionPermission,
-) -> Server<UnsecureServerProtocol> {
+) -> Server<UnsecureServerProtocol<u64>> {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
         heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
-    let server: Server<UnsecureServerProtocol> = Server::new(
+    let server: Server<UnsecureServerProtocol<u64>> = Server::new(
         socket,
         server_config,
         connection_config,
@@ -86,7 +86,7 @@ fn setup_server_with_config(
 fn request_remote_connection(
     id: u64,
     server_addr: SocketAddr,
-) -> RemoteClient<UnsecureClientProtocol> {
+) -> RemoteClient<UnsecureClientProtocol<u64>> {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
@@ -107,8 +107,8 @@ fn request_remote_connection(
 }
 
 fn connect_to_server(
-    server: &mut Server<UnsecureServerProtocol>,
-    request: &mut RemoteClient<UnsecureClientProtocol>,
+    server: &mut Server<UnsecureServerProtocol<u64>>,
+    request: &mut RemoteClient<UnsecureClientProtocol<u64>>,
 ) -> Result<(), RenetError> {
     loop {
         request.update()?;

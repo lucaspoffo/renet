@@ -15,8 +15,6 @@ use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
-pub type ClientId = u64;
-
 #[derive(Debug, Clone)]
 struct SentPacket {
     time: Instant,
@@ -98,7 +96,7 @@ impl Default for ConnectionConfig {
 }
 
 pub(crate) struct RemoteConnection<P: AuthenticationProtocol> {
-    client_id: ClientId,
+    client_id: P::ClientId,
     state: ConnectionState<P>,
     sequence: u16,
     addr: SocketAddr,
@@ -115,7 +113,7 @@ pub(crate) struct RemoteConnection<P: AuthenticationProtocol> {
 
 impl<P: AuthenticationProtocol> RemoteConnection<P> {
     pub fn new(
-        client_id: ClientId,
+        client_id: P::ClientId,
         addr: SocketAddr,
         config: ConnectionConfig,
         protocol: P,
@@ -153,7 +151,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         &self.network_info
     }
 
-    pub fn client_id(&self) -> ClientId {
+    pub fn client_id(&self) -> P::ClientId {
         self.client_id
     }
 

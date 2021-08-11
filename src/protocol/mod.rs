@@ -1,4 +1,4 @@
-use crate::remote_connection::ClientId;
+use crate::ClientId;
 use std::error::Error;
 
 pub mod unsecure;
@@ -12,16 +12,15 @@ pub trait SecurityService {
 
 pub trait AuthenticationProtocol {
     type Service: SecurityService;
+    type ClientId: ClientId;
 
     fn create_payload(&mut self) -> Result<Option<Vec<u8>>>;
     fn read_payload(&mut self, payload: &[u8]) -> Result<()>;
     fn is_authenticated(&self) -> bool;
     fn build_security_interface(&self) -> Self::Service;
-    fn id(&self) -> ClientId;
+    fn id(&self) -> Self::ClientId;
 }
 
-// TODO: review name
 pub trait ServerAuthenticationProtocol: AuthenticationProtocol + Sized {
     fn from_payload(payload: &[u8]) -> Result<Self>;
-    // TODO: add deny connection fn
 }

@@ -41,7 +41,7 @@ pub struct ChatApp {
     clients: HashMap<u64, String>,
     messages: Vec<(u64, String)>,
     chat_server: Option<ChatServer>,
-    client: Option<Box<dyn Client>>,
+    client: Option<Box<dyn Client<u64>>>,
     connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     connection_permission: ConnectionPermission,
     text_input: String,
