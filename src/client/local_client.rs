@@ -4,20 +4,19 @@ use std::sync::{Arc, RwLock};
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
-use crate::remote_connection::NetworkInfo;
-use crate::ClientId;
+use crate::remote_connection::{ClientId, NetworkInfo};
 
 use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 use log::error;
 
-pub struct LocalClient<C> {
-    pub id: C,
+pub struct LocalClient {
+    pub id: u64,
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
     disconnect_reason: Arc<RwLock<Option<DisconnectionReason>>>,
 }
 
-impl<C> LocalClient<C> {
+impl LocalClient {
     pub fn is_connected(&self) -> bool {
         self.disconnect_reason.read().unwrap().is_none()
     }
@@ -66,16 +65,16 @@ impl<C> LocalClient<C> {
     }
 }
 
-pub struct LocalClientConnected<C> {
-    id: C,
+pub struct LocalClientConnected {
+    id: ClientId,
     sender: HashMap<u8, Sender<Payload>>,
     receiver: HashMap<u8, Receiver<Payload>>,
     network_info: NetworkInfo,
     disconnect_reason: Arc<RwLock<Option<DisconnectionReason>>>,
 }
 
-impl<C: ClientId> LocalClientConnected<C> {
-    pub fn new(client_id: C, channels: Vec<u8>) -> (LocalClientConnected<C>, LocalClient<C>) {
+impl LocalClientConnected {
+    pub fn new(client_id: u64, channels: Vec<u8>) -> (LocalClientConnected, LocalClient) {
         let mut client_channels_send = HashMap::new();
         let mut host_channels_send = HashMap::new();
         let mut client_channels_recv = HashMap::new();
@@ -112,8 +111,8 @@ impl<C: ClientId> LocalClientConnected<C> {
     }
 }
 
-impl<C: ClientId> Client<C> for LocalClientConnected<C> {
-    fn id(&self) -> C {
+impl Client for LocalClientConnected {
+    fn id(&self) -> ClientId {
         self.id
     }
 

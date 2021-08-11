@@ -21,8 +21,6 @@ pub enum DisconnectionReason {
     // TODO: Should the actual error be in this struct?
     #[error("error in channel {channel_id}")]
     ChannelError { channel_id: u8 },
-    #[error("error in the transport layer")]
-    TransportError,
 }
 
 // TODO: Can this be separated into Server/Client Error or Server/Connection Error

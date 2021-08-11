@@ -1,11 +1,9 @@
 use renet::{
     channel::{ChannelConfig, ReliableOrderedChannelConfig},
     client::{Client, RemoteClient},
-    connection_control::ConnectionPermission,
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{Server, ServerConfig, ServerEvent},
-    transport::udp::{UdpClient, UdpServer},
+    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
 };
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
@@ -46,14 +44,14 @@ fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
-    let transport = UdpServer::new(socket);
-    let mut server: Server<UdpServer<u64, UnsecureServerProtocol<u64>>> = Server::new(
-        transport,
+    let mut server: Server<UnsecureServerProtocol> = Server::new(
+        socket,
         server_config,
         connection_config,
         ConnectionPermission::All,
         channels_config(),
-    );
+    )
+    .unwrap();
     let mut received_messages = vec![];
     loop {
         server.update().unwrap();
@@ -86,11 +84,15 @@ fn server(addr: SocketAddr) {
 fn client(id: u64, server_addr: SocketAddr) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config = ConnectionConfig::default();
-
-    let protocol = UnsecureClientProtocol::new(id);
-    let transport = UdpClient::new(server_addr, protocol, socket);
-
-    let mut client = RemoteClient::new(id, transport, channels_config(), connection_config);
+    let mut client = RemoteClient::new(
+        id,
+        socket,
+        server_addr,
+        channels_config(),
+        UnsecureClientProtocol::new(id),
+        connection_config,
+    )
+    .unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     loop {

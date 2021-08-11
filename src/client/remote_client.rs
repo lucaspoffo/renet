@@ -2,68 +2,64 @@ use crate::channel::ChannelConfig;
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
-use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
-use crate::transport::TransportClient;
-use crate::ClientId;
+use crate::protocol::AuthenticationProtocol;
+use crate::remote_connection::{ClientId, ConnectionConfig, NetworkInfo, RemoteConnection};
+
+use log::debug;
 
 use std::collections::HashMap;
+use std::io;
+use std::net::{SocketAddr, UdpSocket};
 
-pub struct RemoteClient<C, T> {
-    id: C,
-    transport: T,
-    connection: RemoteConnection<C>,
+pub struct RemoteClient<A: AuthenticationProtocol> {
+    socket: UdpSocket,
+    id: ClientId,
+    connection: RemoteConnection<A>,
+    buffer: Box<[u8]>,
 }
 
-impl<C, T> RemoteClient<C, T>
-where
-    C: ClientId,
-    T: TransportClient,
-{
+impl<A: AuthenticationProtocol> RemoteClient<A> {
     pub fn new(
-        id: C,
-        transport: T,
+        id: ClientId,
+        socket: UdpSocket,
+        server_addr: SocketAddr,
         channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
+        protocol: A,
         connection_config: ConnectionConfig,
-    ) -> Self {
-        let mut connection = RemoteConnection::new(id, connection_config);
+    ) -> Result<Self, std::io::Error> {
+        socket.set_nonblocking(true)?;
+        let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
+        let mut connection = RemoteConnection::new(id, server_addr, connection_config, protocol);
 
         for (channel_id, channel_config) in channels_config.iter() {
             let channel = channel_config.new_channel();
             connection.add_channel(*channel_id, channel);
         }
 
-        Self {
+        Ok(Self {
+            socket,
             id,
-            transport,
             connection,
-        }
+            buffer,
+        })
     }
 }
 
-impl<C, T> Client<C> for RemoteClient<C, T>
-where
-    C: ClientId,
-    T: TransportClient,
-{
-    fn id(&self) -> C {
+impl<A: AuthenticationProtocol> Client for RemoteClient<A> {
+    fn id(&self) -> ClientId {
         self.id
     }
 
     fn is_connected(&self) -> bool {
-        self.transport.is_connected() && self.connection.is_connected()
+        self.connection.is_connected()
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
-        self.connection
-            .connection_error()
-            .or_else(|| self.transport.connection_error())
+        self.connection.connection_error()
     }
 
     fn disconnect(&mut self) {
-        self.connection
-            .disconnect(DisconnectionReason::DisconnectedByClient);
-        self.transport
-            .disconnect(DisconnectionReason::DisconnectedByClient);
+        self.connection.disconnect(&self.socket);
     }
 
     fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
@@ -79,10 +75,7 @@ where
     }
 
     fn send_packets(&mut self) -> Result<(), RenetError> {
-        let packets = self.connection.get_packets_to_send()?;
-        for packet in packets.into_iter() {
-            self.transport.send_to_server(&packet);
-        }
+        self.connection.send_packets(&self.socket)?;
         Ok(())
     }
 
@@ -91,11 +84,23 @@ where
             return Err(RenetError::ConnectionError(connection_error));
         }
 
-        while let Some(payload) = self.transport.recv()? {
-            self.connection.process_payload(&payload)?;
+        loop {
+            let payload = match self.socket.recv_from(&mut self.buffer) {
+                Ok((len, addr)) => {
+                    if addr == *self.connection.addr() {
+                        &self.buffer[..len]
+                    } else {
+                        debug!("Discarded packet from unknown server {:?}", addr);
+                        continue;
+                    }
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(RenetError::IOError(e)),
+            };
+
+            self.connection.process_payload(payload)?;
         }
 
-        self.transport.update();
         self.connection.update()
     }
 }

@@ -1,18 +1,16 @@
-use std::marker::PhantomData;
-
-use crate::{
-    protocol::{AuthenticationProtocol, Result, SecurityService, ServerAuthenticationProtocol},
-    ClientId,
+use crate::protocol::{
+    AuthenticationProtocol, Result, SecurityService, ServerAuthenticationProtocol,
 };
+use crate::remote_connection::ClientId;
 
 use log::debug;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 // TODO: Add version verification
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-enum Packet<C> {
-    ConnectionRequest(C),
+enum Packet {
+    ConnectionRequest(ClientId),
     ConnectionDenied,
     KeepAlive,
     Payload(Vec<u8>),
@@ -33,13 +31,15 @@ enum ClientState {
     SendingConnectionRequest,
 }
 
-pub struct UnsecureClientProtocol<C> {
-    id: C,
+pub struct UnsecureClientProtocol {
+    id: ClientId,
     state: ClientState,
 }
 
-impl<C> UnsecureClientProtocol<C> {
-    pub fn new(id: C) -> Self {
+pub struct UnsecureService;
+
+impl UnsecureClientProtocol {
+    pub fn new(id: ClientId) -> Self {
         Self {
             id,
             state: ClientState::SendingConnectionRequest,
@@ -47,18 +47,31 @@ impl<C> UnsecureClientProtocol<C> {
     }
 }
 
-impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
-    for UnsecureClientProtocol<C>
-{
-    type Service = UnsecureService<C>;
+impl SecurityService for UnsecureService {
+    fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>> {
+        let packet = Packet::Payload(data.into());
+        Ok(bincode::serialize(&packet)?)
+    }
 
-    fn id(&self) -> C {
+    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>> {
+        let packet = bincode::deserialize(data)?;
+        match packet {
+            Packet::Payload(payload) => Ok(payload),
+            _ => Err(Box::new(ConnectionError::InvalidPacket)),
+        }
+    }
+}
+
+impl AuthenticationProtocol for UnsecureClientProtocol {
+    type Service = UnsecureService;
+
+    fn id(&self) -> ClientId {
         self.id
     }
 
     fn create_payload(&mut self) -> Result<Option<Vec<u8>>> {
         let packet = match self.state {
-            ClientState::SendingConnectionRequest => Packet::<C>::ConnectionRequest(self.id),
+            ClientState::SendingConnectionRequest => Packet::ConnectionRequest(self.id),
             ClientState::Accepted => {
                 // Send one confirmation KeepAlive packet always
                 self.state = ClientState::Confirmed;
@@ -74,14 +87,14 @@ impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
     fn read_payload(&mut self, payload: &[u8]) -> Result<()> {
         let packet = bincode::deserialize(payload)?;
         match (packet, &self.state) {
-            (Packet::<C>::KeepAlive, ClientState::SendingConnectionRequest) => {
+            (Packet::KeepAlive, ClientState::SendingConnectionRequest) => {
                 debug!("Received KeepAlive, moving to State Accepted");
                 self.state = ClientState::Accepted;
             }
-            (Packet::<C>::KeepAlive, ClientState::Accepted) => {
+            (Packet::KeepAlive, ClientState::Accepted) => {
                 debug!("Received KeepAlive, but state is already Accepted");
             }
-            (Packet::<C>::ConnectionDenied, _) => {
+            (Packet::ConnectionDenied, _) => {
                 debug!("Received ConnectionDenied Package");
                 self.state = ClientState::Denied;
             }
@@ -95,28 +108,7 @@ impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
     }
 
     fn build_security_interface(&self) -> Self::Service {
-        UnsecureService {
-            _client_id: PhantomData,
-        }
-    }
-}
-
-pub struct UnsecureService<C> {
-    _client_id: PhantomData<C>,
-}
-
-impl<C: ClientId + Serialize + DeserializeOwned> SecurityService for UnsecureService<C> {
-    fn ss_wrap(&mut self, data: &[u8]) -> Result<Vec<u8>> {
-        let packet: Packet<C> = Packet::Payload(data.into());
-        Ok(bincode::serialize(&packet)?)
-    }
-
-    fn ss_unwrap(&mut self, data: &[u8]) -> Result<Vec<u8>> {
-        let packet: Packet<C> = bincode::deserialize(data)?;
-        match packet {
-            Packet::Payload(payload) => Ok(payload),
-            _ => Err(Box::new(ConnectionError::InvalidPacket)),
-        }
+        UnsecureService
     }
 }
 
@@ -126,22 +118,20 @@ enum ServerState {
     Accepted,
 }
 
-pub struct UnsecureServerProtocol<C> {
-    id: C,
+pub struct UnsecureServerProtocol {
+    id: ClientId,
     state: ServerState,
 }
 
-impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
-    for UnsecureServerProtocol<C>
-{
-    type Service = UnsecureService<C>;
+impl AuthenticationProtocol for UnsecureServerProtocol {
+    type Service = UnsecureService;
 
-    fn id(&self) -> C {
+    fn id(&self) -> ClientId {
         self.id
     }
 
     fn create_payload(&mut self) -> Result<Option<Vec<u8>>> {
-        let packet: Packet<C> = match self.state {
+        let packet = match self.state {
             ServerState::SendingKeepAlive => Packet::KeepAlive,
             _ => return Ok(None),
         };
@@ -152,16 +142,13 @@ impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
     fn read_payload(&mut self, payload: &[u8]) -> Result<()> {
         let packet = bincode::deserialize(payload)?;
         match (packet, &self.state) {
-            (Packet::<C>::ConnectionRequest(_), _) => {}
-            (Packet::<C>::KeepAlive, ServerState::SendingKeepAlive) => {
-                debug!(
-                    "Received KeepAlive from {:?}, accepted connection.",
-                    self.id
-                );
+            (Packet::ConnectionRequest(_), _) => {}
+            (Packet::KeepAlive, ServerState::SendingKeepAlive) => {
+                debug!("Received KeepAlive from {}, accepted connection.", self.id);
                 self.state = ServerState::Accepted;
             }
-            (Packet::<C>::Payload(_), ServerState::SendingKeepAlive) => {
-                debug!("Received Payload from {:?}, accepted connection.", self.id);
+            (Packet::Payload(_), ServerState::SendingKeepAlive) => {
+                debug!("Received Payload from {}, accepted connection.", self.id);
                 self.state = ServerState::Accepted;
             }
             _ => {}
@@ -175,17 +162,13 @@ impl<C: ClientId + Serialize + DeserializeOwned> AuthenticationProtocol<C>
     }
 
     fn build_security_interface(&self) -> Self::Service {
-        UnsecureService {
-            _client_id: PhantomData,
-        }
+        UnsecureService
     }
 }
 
-impl<C: ClientId + Serialize + DeserializeOwned> ServerAuthenticationProtocol<C>
-    for UnsecureServerProtocol<C>
-{
+impl ServerAuthenticationProtocol for UnsecureServerProtocol {
     fn from_payload(payload: &[u8]) -> Result<Self> {
-        let packet: Packet<C> = bincode::deserialize(payload)?;
+        let packet = bincode::deserialize(payload)?;
         if let Packet::ConnectionRequest(client_id) = packet {
             Ok(Self {
                 id: client_id,
@@ -203,11 +186,11 @@ mod tests {
 
     #[test]
     fn protocol_success() {
-        let mut client_protocol: UnsecureClientProtocol<u64> = UnsecureClientProtocol::new(1);
+        let mut client_protocol = UnsecureClientProtocol::new(1);
 
         let connection_payload = client_protocol.create_payload().unwrap().unwrap();
 
-        let mut server_protocol: UnsecureServerProtocol<u64> =
+        let mut server_protocol =
             UnsecureServerProtocol::from_payload(&connection_payload).unwrap();
 
         let server_keep_alive_payload = server_protocol.create_payload().unwrap().unwrap();
