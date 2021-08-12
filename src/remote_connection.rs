@@ -268,10 +268,17 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
         let packet: Packet = bincode::deserialize(&payload)?;
 
         match packet {
-            Packet::Unauthenticaded(Unauthenticaded::ConnectionError(error)) => {
-                self.state = ConnectionState::Disconnected { reason: error };
-                Err(RenetError::ConnectionError(error))
-            }
+            Packet::Unauthenticaded(Unauthenticaded::ConnectionError(error)) => match self.state {
+                ConnectionState::Connecting { .. } => {
+                    self.state = ConnectionState::Disconnected { reason: error };
+                    Err(RenetError::ConnectionError(error))
+                }
+                ConnectionState::Disconnected { .. } => Err(RenetError::ClientDisconnected),
+                ConnectionState::Connected { .. } => {
+                    trace!("Unauthenticaded packet discarted, client is already connected");
+                    Ok(())
+                }
+            },
             Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) => {
                 match self.state {
                     ConnectionState::Connecting { ref mut protocol } => {

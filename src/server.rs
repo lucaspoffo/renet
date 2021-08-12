@@ -1,10 +1,10 @@
-use crate::ClientId;
 use crate::channel::ChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::{Packet, Payload, Unauthenticaded};
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
+use crate::ClientId;
 
 use log::{debug, error, info};
 
@@ -15,7 +15,7 @@ use std::net::{SocketAddr, UdpSocket};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionPermission {
-    /// All connection are allowed, excepet clients that are denied.
+    /// All connection are allowed, except clients that are denied.
     All,
     /// Only clients in the allow list can connect.
     OnlyAllowed,
@@ -174,7 +174,10 @@ where
         None
     }
 
-    pub fn create_local_client(&mut self, client_id: P::ClientId) -> LocalClientConnected<P::ClientId> {
+    pub fn create_local_client(
+        &mut self,
+        client_id: P::ClientId,
+    ) -> LocalClientConnected<P::ClientId> {
         let channels = self.channels_config.keys().copied().collect();
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
@@ -285,7 +288,7 @@ where
     }
 
     pub fn update(&mut self) -> Result<(), io::Error> {
-        let mut buffer = vec![0u8; self.config.max_payload_size];
+        let mut buffer = vec![0u8; self.connection_config.max_packet_size];
         loop {
             match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => match self.process_payload_from(&buffer[..len], &addr) {

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use crate::ClientId;
 use crate::client::Client;
 use crate::error::{DisconnectionReason, MessageError, RenetError};
 use crate::packet::Payload;
 use crate::remote_connection::NetworkInfo;
+use crate::ClientId;
 
 use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 use log::error;
