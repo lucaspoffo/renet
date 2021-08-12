@@ -9,8 +9,6 @@ mod sequence_buffer;
 pub mod server;
 mod timer;
 
-pub(crate) use timer::Timer;
-
 use std::{fmt::Debug, hash::Hash};
 
 pub trait ClientId: Copy + Debug + Hash + Eq {}

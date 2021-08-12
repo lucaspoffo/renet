@@ -7,7 +7,7 @@ use crate::packet::{
 use crate::protocol::{AuthenticationProtocol, SecurityService};
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::Timer;
+use crate::timer::Timer;
 
 use log::{debug, error, info, trace};
 
