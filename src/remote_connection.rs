@@ -87,7 +87,7 @@ impl Default for ConnectionConfig {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
-            measure_smoothing_factor: 0.05,
+            measure_smoothing_factor: 0.1,
             timeout_duration: Duration::from_secs(5),
             heartbeat_time: Duration::from_millis(200),
             fragment_config: FragmentConfig::default(),
@@ -300,6 +300,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                 ConnectionState::Connected {
                     ref mut security_service,
                 } => {
+                    let received_bytes = payload.len();
                     let payload = security_service
                         .ss_unwrap(&payload)
                         .map_err(RenetError::AuthenticationError)?;
@@ -311,7 +312,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                             payload,
                         }) => {
                             let received_packet =
-                                ReceivedPacket::new(Instant::now(), payload.len());
+                                ReceivedPacket::new(Instant::now(), received_bytes);
                             self.received_buffer.insert(sequence, received_packet);
                             self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
                             payload
@@ -320,7 +321,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
                             if let Some(received_packet) =
                                 self.received_buffer.get_mut(fragment.sequence)
                             {
-                                received_packet.size_bytes += payload.len();
+                                received_packet.size_bytes += received_bytes;
                             } else {
                                 let received_packet =
                                     ReceivedPacket::new(Instant::now(), payload.len());
@@ -393,7 +394,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
 
         let (ack, ack_bits) = self.received_buffer.ack_bits();
 
-        let sent_packet = SentPacket::new(Instant::now(), channels_packet_data.len());
+        let sent_packet = SentPacket::new(Instant::now(), packet_size as usize);
         self.sent_buffer.insert(sequence, sent_packet);
 
         let payload = if packet_size > self.config.fragment_config.fragment_above as u64 {
