@@ -389,7 +389,7 @@ impl<P: AuthenticationProtocol> RemoteConnection<P> {
 
         let packet_size = bincode::serialized_size(&channels_packet_data)?;
         let sequence = self.sequence;
-        self.sequence += 1;
+        self.sequence = self.sequence.wrapping_add(1);
 
         let (ack, ack_bits) = self.received_buffer.ack_bits();
 
