@@ -1,3 +1,5 @@
+use crate::packet::AckData;
+
 pub struct SequenceBuffer<T> {
     sequence: u16,
     entry_sequences: Box<[Option<u16>]>,
@@ -112,7 +114,7 @@ impl<T: Clone> SequenceBuffer<T> {
         self.sequence
     }
 
-    pub fn ack_bits(&self) -> (u16, u32) {
+    pub fn ack_data(&self) -> AckData {
         let ack = self.sequence().wrapping_sub(1);
         let mut ack_bits = 0;
         let mut mask = 1;
@@ -125,7 +127,7 @@ impl<T: Clone> SequenceBuffer<T> {
             mask <<= 1;
         }
 
-        (ack, ack_bits)
+        AckData { ack, ack_bits }
     }
 }
 
@@ -212,10 +214,10 @@ mod tests {
         buffer.insert(7, DataStub).unwrap();
         buffer.insert(30, DataStub).unwrap();
         buffer.insert(31, DataStub).unwrap();
-        let (last_ack, ack_bits) = buffer.ack_bits();
+        let ack_data = buffer.ack_data();
 
-        assert_eq!(last_ack, 31);
-        assert_eq!(ack_bits, 0b11011101000000000000000000000011u32);
+        assert_eq!(ack_data.ack, 31);
+        assert_eq!(ack_data.ack_bits, 0b11011101000000000000000000000011u32);
     }
 
     #[test]

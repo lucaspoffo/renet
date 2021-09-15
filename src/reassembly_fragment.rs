@@ -1,7 +1,8 @@
 use crate::error::RenetError;
-use crate::packet::{AckData, ChannelPacketData, Fragment, Message};
+use crate::packet::{AckData, ChannelMessages, Fragment, Message, Payload};
 use crate::sequence_buffer::SequenceBuffer;
 
+use bincode::Options;
 use log::{error, trace};
 use std::io;
 use std::io::{Cursor, Write};
@@ -89,7 +90,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         &mut self,
         fragment: Fragment,
         config: &FragmentConfig,
-    ) -> Result<Option<Vec<ChannelPacketData>>, FragmentError> {
+    ) -> Result<Option<ChannelMessages>, FragmentError> {
         let Fragment {
             sequence,
             num_fragments,
@@ -155,14 +156,14 @@ impl SequenceBuffer<ReassemblyFragment> {
                 .remove(sequence)
                 .expect("ReassemblyFragment always exists here");
 
-            let channels_packet_data: Vec<ChannelPacketData> =
-                bincode::deserialize(&reassembly_fragment.buffer)?;
+            let messages: ChannelMessages =
+                bincode::options().deserialize(&reassembly_fragment.buffer)?;
 
             trace!(
                 "Completed the reassembly of packet {}.",
                 reassembly_fragment.sequence
             );
-            return Ok(Some(channels_packet_data));
+            return Ok(Some(messages));
         }
 
         Ok(None)
@@ -170,12 +171,12 @@ impl SequenceBuffer<ReassemblyFragment> {
 }
 
 pub(crate) fn build_fragments(
-    channels_packet_data: Vec<ChannelPacketData>,
+    messages: ChannelMessages,
     sequence: u16,
     ack_data: AckData,
     config: &FragmentConfig,
-) -> Result<Vec<Vec<u8>>, RenetError> {
-    let payload = bincode::serialize(&channels_packet_data)?;
+) -> Result<Vec<Payload>, RenetError> {
+    let payload = bincode::options().serialize(&messages)?;
     let packet_bytes = payload.len();
     let exact_division = ((packet_bytes % config.fragment_size) != 0) as usize;
     let num_fragments = packet_bytes / config.fragment_size + exact_division;
@@ -204,7 +205,7 @@ pub(crate) fn build_fragments(
             payload: chunk.into(),
         }
         .into();
-        let fragment = bincode::serialize(&fragment)?;
+        let fragment = bincode::options().serialize(&fragment)?;
         fragments.push(fragment);
     }
 
@@ -222,14 +223,14 @@ mod tests {
             ack: 0,
             ack_bits: 0,
         };
-        let channels_packet_data = vec![
-            ChannelPacketData::new(vec![vec![1u8; 1000]], 0),
-            ChannelPacketData::new(vec![vec![2u8; 1000]], 0),
-            ChannelPacketData::new(vec![vec![3u8; 1000]], 0),
-        ];
 
-        let fragments =
-            build_fragments(channels_packet_data.clone(), 0, ack_data, &config).unwrap();
+        let messages = ChannelMessages {
+            slice_messages: vec![],
+            unreliable_messages: vec![vec![7u8; 1000], vec![255u8; 1000], vec![33u8; 1000]],
+            reliable_channels_data: vec![],
+        };
+
+        let fragments = build_fragments(messages.clone(), 0, ack_data, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
             SequenceBuffer::with_capacity(256);
         assert_eq!(3, fragments.len());
@@ -237,7 +238,7 @@ mod tests {
         let fragments: Vec<Fragment> = fragments
             .iter()
             .map(|payload| {
-                let fragment: Message = bincode::deserialize(payload).unwrap();
+                let fragment: Message = bincode::options().deserialize(payload).unwrap();
                 match fragment {
                     Message::Fragment(f) => f,
                     _ => panic!(),
@@ -254,6 +255,21 @@ mod tests {
         let result = fragments_reassembly.handle_fragment(fragments[2].clone(), &config);
         let result = result.unwrap().unwrap();
 
-        assert_eq!(channels_packet_data, result);
+        assert_eq!(
+            messages.unreliable_messages.len(),
+            result.unreliable_messages.len()
+        );
+        assert_eq!(
+            messages.unreliable_messages[0],
+            result.unreliable_messages[0]
+        );
+        assert_eq!(
+            messages.unreliable_messages[1],
+            result.unreliable_messages[1]
+        );
+        assert_eq!(
+            messages.unreliable_messages[2],
+            result.unreliable_messages[2]
+        );
     }
 }

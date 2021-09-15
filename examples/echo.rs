@@ -1,11 +1,10 @@
 use renet::{
-    channel::{ChannelConfig, ReliableOrderedChannelConfig},
+    channel::reliable::ReliableChannelConfig,
     client::{Client, RemoteClient},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
 };
-use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
@@ -32,12 +31,9 @@ fn main() {
     }
 }
 
-fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
-    let mut channels_config: HashMap<u8, Box<dyn ChannelConfig>> = HashMap::new();
-
-    let reliable_config = ReliableOrderedChannelConfig::default();
-    channels_config.insert(0, Box::new(reliable_config));
-    channels_config
+fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
+    let reliable_config = ReliableChannelConfig::default();
+    vec![reliable_config]
 }
 
 fn server(addr: SocketAddr) {
@@ -49,7 +45,7 @@ fn server(addr: SocketAddr) {
         server_config,
         connection_config,
         ConnectionPermission::All,
-        channels_config(),
+        reliable_channels_config(),
     )
     .unwrap();
     let mut received_messages = vec![];
@@ -65,7 +61,7 @@ fn server(addr: SocketAddr) {
         }
 
         for client_id in server.get_clients_id().into_iter() {
-            while let Ok(Some(message)) = server.receive_message(client_id, 0) {
+            while let Ok(Some(message)) = server.receive_message(client_id) {
                 let text = String::from_utf8(message).unwrap();
                 println!("Client {} sent text: {}", client_id, text);
                 received_messages.push(text);
@@ -73,7 +69,7 @@ fn server(addr: SocketAddr) {
         }
 
         for text in received_messages.iter() {
-            server.broadcast_message(0, text.as_bytes().to_vec());
+            server.send_reliable_message(SendTarget::All, 0, text.as_bytes().to_vec());
         }
 
         server.send_packets();
@@ -88,9 +84,9 @@ fn client(id: u64, server_addr: SocketAddr) {
         id,
         socket,
         server_addr,
-        channels_config(),
         UnsecureClientProtocol::new(id),
         connection_config,
+        reliable_channels_config(),
     )
     .unwrap();
     let stdin_channel = spawn_stdin_channel();
@@ -98,12 +94,12 @@ fn client(id: u64, server_addr: SocketAddr) {
     loop {
         client.update().unwrap();
         match stdin_channel.try_recv() {
-            Ok(text) => client.send_message(0, text.as_bytes().to_vec()).unwrap(),
+            Ok(text) => client.send_reliable_message(0, text.as_bytes().to_vec()),
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }
 
-        while let Some(text) = client.receive_message(0).unwrap() {
+        while let Some(text) = client.receive_message() {
             let text = String::from_utf8(text).unwrap();
             println!("Message from server: {}", text);
         }

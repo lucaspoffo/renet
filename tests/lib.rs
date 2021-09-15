@@ -1,22 +1,18 @@
 use std::{
-    collections::HashMap,
     net::{SocketAddr, UdpSocket},
     time::Duration,
 };
 
 use renet::{
-    channel::{
-        BlockChannelConfig, ChannelConfig, ReliableOrderedChannelConfig,
-        UnreliableUnorderedChannelConfig,
-    },
+    channel::reliable::ReliableChannelConfig,
     client::{Client, RemoteClient},
     error::{DisconnectionReason, RenetError},
     protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
 };
 
-use bincode;
+use bincode::{self, Options};
 use env_logger;
 use serde::{Deserialize, Serialize};
 
@@ -24,37 +20,14 @@ pub fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
-enum Channels {
-    Reliable,
-    Unreliable,
-    Block,
-}
-
-impl Into<u8> for Channels {
-    fn into(self) -> u8 {
-        match self {
-            Channels::Reliable => 0,
-            Channels::Unreliable => 1,
-            Channels::Block => 2,
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct TestMessage {
     value: u64,
 }
 
-fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
-    let reliable_config = ReliableOrderedChannelConfig::default();
-    let unreliable_config = UnreliableUnorderedChannelConfig::default();
-    let block_config = BlockChannelConfig::default();
-
-    let mut channels_config: HashMap<u8, Box<dyn ChannelConfig>> = HashMap::new();
-    channels_config.insert(Channels::Reliable.into(), Box::new(reliable_config));
-    channels_config.insert(Channels::Unreliable.into(), Box::new(unreliable_config));
-    channels_config.insert(Channels::Block.into(), Box::new(block_config));
-    channels_config
+fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
+    let reliable_config = ReliableChannelConfig::default();
+    vec![reliable_config]
 }
 
 fn setup_server() -> Server<UnsecureServerProtocol<u64>> {
@@ -76,7 +49,7 @@ fn setup_server_with_config(
         server_config,
         connection_config,
         connection_permission,
-        channels_config(),
+        reliable_channels_config(),
     )
     .unwrap();
 
@@ -97,9 +70,9 @@ fn request_remote_connection(
         id,
         socket,
         server_addr,
-        channels_config(),
         UnsecureClientProtocol::new(id),
         connection_config,
+        reliable_channels_config(),
     )
     .unwrap();
 
@@ -133,8 +106,8 @@ fn test_remote_connection_reliable_channel() {
 
     for i in 0..number_messages {
         let message = TestMessage { value: i };
-        let message = bincode::serialize(&message).unwrap();
-        server.broadcast_message(Channels::Reliable, message);
+        let message = bincode::options().serialize(&message).unwrap();
+        server.send_reliable_message(SendTarget::All, 0, message);
     }
 
     server.update().unwrap();
@@ -142,8 +115,8 @@ fn test_remote_connection_reliable_channel() {
 
     loop {
         remote_connection.update().unwrap();
-        while let Ok(Some(message)) = remote_connection.receive_message(Channels::Reliable.into()) {
-            let message: TestMessage = bincode::deserialize(&message).unwrap();
+        while let Some(message) = remote_connection.receive_message() {
+            let message: TestMessage = bincode::options().deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;
         }
@@ -163,25 +136,23 @@ fn test_remote_connection_reliable_channel_would_drop_message() {
     let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
-    let number_messages = ReliableOrderedChannelConfig::default().message_send_queue_size;
+    let number_messages = ReliableChannelConfig::default().message_queue_size;
     for _ in 0..number_messages {
-        remote_connection
-            .send_message(Channels::Reliable.into(), vec![0])
-            .unwrap();
+        remote_connection.send_reliable_message(0, vec![0]);
     }
 
     // No more messages can be sent or it will drop an unacked one.
     remote_connection.update().unwrap();
 
     // Send one more message than the channel can store, so it'll error when updated.
-    remote_connection
-        .send_message(Channels::Reliable.into(), vec![0])
-        .unwrap();
+    remote_connection.send_reliable_message(0, vec![0]);
 
     let error = remote_connection.update().unwrap_err();
     assert!(matches!(
         error,
-        RenetError::ConnectionError(DisconnectionReason::ChannelError { channel_id: 0 })
+        RenetError::ConnectionError(DisconnectionReason::ReliableChannelOutOfSync {
+            channel_id: 0
+        })
     ));
 }
 
@@ -197,8 +168,8 @@ fn test_remote_connection_unreliable_channel() {
 
     for i in 0..number_messages {
         let message = TestMessage { value: i };
-        let message = bincode::serialize(&message).unwrap();
-        server.broadcast_message(Channels::Unreliable, message);
+        let message = bincode::options().serialize(&message).unwrap();
+        server.send_unreliable_message(SendTarget::All, message);
     }
 
     server.update().unwrap();
@@ -206,9 +177,8 @@ fn test_remote_connection_unreliable_channel() {
 
     loop {
         remote_connection.update().unwrap();
-        while let Ok(Some(message)) = remote_connection.receive_message(Channels::Unreliable.into())
-        {
-            let message: TestMessage = bincode::deserialize(&message).unwrap();
+        while let Some(message) = remote_connection.receive_message() {
+            let message: TestMessage = bincode::options().deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;
         }
@@ -229,13 +199,11 @@ fn test_remote_connection_block_channel() {
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let payload = vec![7u8; 20480];
-    server
-        .send_message(0, Channels::Block, payload.clone())
-        .unwrap();
+    server.send_block_message(SendTarget::All, payload.clone());
 
     let received_payload = loop {
         remote_connection.update().unwrap();
-        if let Ok(Some(message)) = remote_connection.receive_message(Channels::Block.into()) {
+        if let Some(message) = remote_connection.receive_message() {
             break message;
         }
 

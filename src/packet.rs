@@ -1,20 +1,22 @@
+use crate::channel::block::SliceMessage;
+use crate::channel::reliable::ReliableMessage;
 use crate::error::DisconnectionReason;
 
 use serde::{Deserialize, Serialize};
 
 pub type Payload = Vec<u8>;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ChannelPacketData {
-    pub(crate) messages: Vec<Payload>,
-    pub(crate) channel_id: u8,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReliableChannelData {
+    pub channel_id: u8,
+    pub messages: Vec<ReliableMessage>,
 }
 
-impl ChannelPacketData {
-    pub fn new(messages: Vec<Payload>, channel_id: u8) -> Self {
+impl ReliableChannelData {
+    pub fn new(channel_id: u8, messages: Vec<ReliableMessage>) -> Self {
         Self {
-            messages,
             channel_id,
+            messages,
         }
     }
 }
@@ -26,35 +28,6 @@ pub struct AckData {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Packet {
-    Unauthenticaded(Unauthenticaded),
-    Authenticated(Authenticated),
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Unauthenticaded {
-    ConnectionError(DisconnectionReason),
-    Protocol { payload: Payload },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Authenticated {
-    pub payload: Payload,
-}
-
-impl From<Authenticated> for Packet {
-    fn from(value: Authenticated) -> Self {
-        Self::Authenticated(value)
-    }
-}
-
-impl From<Unauthenticaded> for Packet {
-    fn from(value: Unauthenticaded) -> Self {
-        Self::Unauthenticaded(value)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Message {
     Normal(Normal),
     Fragment(Fragment),
@@ -63,10 +36,25 @@ pub enum Message {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChannelMessages {
+    pub slice_messages: Vec<SliceMessage>,
+    pub unreliable_messages: Vec<Payload>,
+    pub reliable_channels_data: Vec<ReliableChannelData>,
+}
+
+impl ChannelMessages {
+    pub fn is_empty(&self) -> bool {
+        self.slice_messages.is_empty()
+            && self.unreliable_messages.is_empty()
+            && self.reliable_channels_data.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Normal {
     pub sequence: u16,
     pub ack_data: AckData,
-    pub payload: Vec<ChannelPacketData>,
+    pub channel_messages: ChannelMessages,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

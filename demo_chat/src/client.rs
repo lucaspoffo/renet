@@ -1,8 +1,8 @@
+use bincode::Options;
 use eframe::{
     egui::{self, lerp, Color32, Pos2, Shape, Ui, Vec2},
     epi,
 };
-
 use log::error;
 use renet::{
     client::{Client, RemoteClient},
@@ -17,7 +17,7 @@ use std::{
 };
 
 use crate::server::ChatServer;
-use crate::{channels_config, ClientMessages, ServerMessages};
+use crate::{reliable_channels_config, ClientMessages, ServerMessages};
 
 #[derive(Debug)]
 enum AppState {
@@ -94,10 +94,11 @@ impl ChatApp {
             });
 
             if send_message.inner {
-                let message =
-                    bincode::serialize(&ClientMessages::Text(text_input.clone())).unwrap();
+                let message = bincode::options()
+                    .serialize(&ClientMessages::Text(text_input.clone()))
+                    .unwrap();
                 text_input.clear();
-                client.send_message(0, message).unwrap();
+                client.send_reliable_message(0, message);
             }
         });
 
@@ -158,15 +159,15 @@ impl ChatApp {
                                 *client_id,
                                 socket,
                                 addr,
-                                channels_config(),
                                 UnsecureClientProtocol::new(*client_id),
                                 connection_config,
+                                reliable_channels_config(),
                             )
                             .unwrap();
 
                             let init_message = ClientMessages::Init { nick: nick.clone() };
-                            let init_message = bincode::serialize(&init_message).unwrap();
-                            remote_client.send_message(0, init_message).unwrap();
+                            let init_message = bincode::options().serialize(&init_message).unwrap();
+                            remote_client.send_reliable_message(0, init_message);
 
                             *client = Some(Box::new(remote_client));
                         }
@@ -183,8 +184,8 @@ impl ChatApp {
                     let mut local_client = chat_server.server.create_local_client(*client_id);
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
-                    let init_message = bincode::serialize(&init_message).unwrap();
-                    local_client.send_message(0, init_message).unwrap();
+                    let init_message = bincode::options().serialize(&init_message).unwrap();
+                    local_client.send_reliable_message(0, init_message);
 
                     *client = Some(Box::new(local_client));
                     *server = Some(chat_server);
@@ -258,8 +259,8 @@ impl ChatApp {
                 self.chat_server = None;
                 self.client = None;
             } else {
-                if let Ok(Some(message)) = chat_client.receive_message(0) {
-                    let message: ServerMessages = bincode::deserialize(&message).unwrap();
+                if let Some(message) = chat_client.receive_message() {
+                    let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                     match message {
                         ServerMessages::ClientConnected(id, nick) => {
                             self.clients.insert(id, nick);

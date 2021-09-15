@@ -1,7 +1,7 @@
 use client::ChatApp;
 use eframe::{egui, epi};
 use log::Level;
-use renet::channel::{ChannelConfig, ReliableOrderedChannelConfig};
+use renet::channel::reliable::ReliableChannelConfig;
 use serde::{Deserialize, Serialize};
 
 use history_logger::{HistoryLogger, LoggerApp};
@@ -12,12 +12,9 @@ mod client;
 mod history_logger;
 mod server;
 
-fn channels_config() -> HashMap<u8, Box<dyn ChannelConfig>> {
-    let mut channels_config: HashMap<u8, Box<dyn ChannelConfig>> = HashMap::new();
-
-    let reliable_config = ReliableOrderedChannelConfig::default();
-    channels_config.insert(0, Box::new(reliable_config));
-    channels_config
+fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
+    let reliable_config = ReliableChannelConfig::default();
+    vec![reliable_config]
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -18,9 +18,12 @@ pub enum DisconnectionReason {
     DisconnectedByClient,
     #[error("client with same id already connected")]
     ClientIdAlreadyConnected,
-    // TODO: Should the actual error be in this struct?
-    #[error("error in channel {channel_id}")]
-    ChannelError { channel_id: u8 },
+    #[error("protocol error")]
+    ProtocolError,
+    #[error("crossbeam channel error while sending or receiving a message locally")]
+    CrossbeamChannelError,
+    #[error("reliable channel {channel_id} is out of sync, a message was dropped")]
+    ReliableChannelOutOfSync { channel_id: u8 },
 }
 
 // TODO: Can this be separated into Server/Client Error or Server/Connection Error
@@ -37,13 +40,9 @@ pub enum RenetError {
     #[error("connection error: {0}")]
     ConnectionError(#[from] DisconnectionReason),
     #[error("client is disconnected")]
-    ClientDisconnected,
+    ConnectionDisconnected,
 }
 
 #[derive(Debug, Error)]
-pub enum MessageError {
-    #[error("invalid channel {channel_id}")]
-    InvalidChannel { channel_id: u8 },
-    #[error("client not found")]
-    ClientNotFound,
-}
+#[error("client not found")]
+pub struct ClientNotFound;

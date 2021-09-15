@@ -1,13 +1,12 @@
-use crate::channel::ChannelConfig;
+use crate::channel::reliable::ReliableChannelConfig;
 use crate::client::Client;
-use crate::error::{DisconnectionReason, MessageError, RenetError};
+use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::Payload;
 use crate::protocol::AuthenticationProtocol;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::debug;
 
-use std::collections::HashMap;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 
@@ -15,7 +14,6 @@ pub struct RemoteClient<A: AuthenticationProtocol> {
     socket: UdpSocket,
     id: A::ClientId,
     connection: RemoteConnection<A>,
-    buffer: Box<[u8]>,
 }
 
 impl<A: AuthenticationProtocol> RemoteClient<A> {
@@ -23,24 +21,23 @@ impl<A: AuthenticationProtocol> RemoteClient<A> {
         id: A::ClientId,
         socket: UdpSocket,
         server_addr: SocketAddr,
-        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
         protocol: A,
         connection_config: ConnectionConfig,
+        realiable_channels_config: Vec<ReliableChannelConfig>,
     ) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
-        let buffer = vec![0; connection_config.max_packet_size].into_boxed_slice();
-        let mut connection = RemoteConnection::new(id, server_addr, connection_config, protocol);
-
-        for (channel_id, channel_config) in channels_config.iter() {
-            let channel = channel_config.new_channel();
-            connection.add_channel(*channel_id, channel);
-        }
+        let connection = RemoteConnection::new(
+            id,
+            server_addr,
+            connection_config,
+            protocol,
+            realiable_channels_config,
+        );
 
         Ok(Self {
             socket,
             id,
             connection,
-            buffer,
         })
     }
 }
@@ -55,19 +52,27 @@ impl<A: AuthenticationProtocol> Client<A::ClientId> for RemoteClient<A> {
     }
 
     fn connection_error(&self) -> Option<DisconnectionReason> {
-        self.connection.connection_error()
+        self.connection.disconnected()
     }
 
     fn disconnect(&mut self) {
         self.connection.disconnect(&self.socket);
     }
 
-    fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), MessageError> {
-        self.connection.send_message(channel_id, message)
+    fn send_reliable_message(&mut self, channel_id: u8, message: Payload) {
+        self.connection.send_reliable_message(channel_id, message);
     }
 
-    fn receive_message(&mut self, channel_id: u8) -> Result<Option<Payload>, MessageError> {
-        self.connection.receive_message(channel_id)
+    fn send_unreliable_message(&mut self, message: Payload) {
+        self.connection.send_unreliable_message(message);
+    }
+
+    fn send_block_message(&mut self, message: Payload) {
+        self.connection.send_block_message(message);
+    }
+
+    fn receive_message(&mut self) -> Option<Payload> {
+        self.connection.receive_message()
     }
 
     fn network_info(&self) -> &NetworkInfo {
@@ -84,11 +89,12 @@ impl<A: AuthenticationProtocol> Client<A::ClientId> for RemoteClient<A> {
             return Err(RenetError::ConnectionError(connection_error));
         }
 
+        let mut buffer = vec![0; self.connection.config.max_packet_size as usize];
         loop {
-            let payload = match self.socket.recv_from(&mut self.buffer) {
+            let payload = match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
                     if addr == *self.connection.addr() {
-                        &self.buffer[..len]
+                        &buffer[..len]
                     } else {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;

@@ -7,10 +7,11 @@ use renet::{
     error::RenetError,
     protocol::unsecure::UnsecureServerProtocol,
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
 };
 
-use crate::{channels_config, ClientMessages, ServerMessages};
+use crate::{reliable_channels_config, ClientMessages, ServerMessages};
+use bincode::Options;
 use log::info;
 
 pub struct ChatServer {
@@ -29,7 +30,7 @@ impl ChatServer {
             server_config,
             connection_config,
             ConnectionPermission::All,
-            channels_config(),
+            reliable_channels_config(),
         )
         .unwrap();
 
@@ -51,43 +52,48 @@ impl ChatServer {
                 ServerEvent::ClientDisconnected(id) => {
                     self.clients_initializing.remove(&id);
                     self.clients.remove(&id);
-                    let message =
-                        bincode::serialize(&ServerMessages::ClientDisconnected(id)).unwrap();
-                    self.server.broadcast_message(0, message);
+                    let message = bincode::options()
+                        .serialize(&ServerMessages::ClientDisconnected(id))
+                        .unwrap();
+                    self.server
+                        .send_reliable_message(SendTarget::All, 0, message);
                 }
             }
         }
 
         for client_id in self.server.get_clients_id().into_iter() {
-            while let Ok(Some(message)) = self.server.receive_message(client_id, 0) {
-                if let Ok(message) = bincode::deserialize::<ClientMessages>(&message) {
+            while let Ok(Some(message)) = self.server.receive_message(client_id) {
+                if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
                         ClientMessages::Init { nick } => {
                             if self.clients_initializing.remove(&client_id) {
                                 self.clients.insert(client_id, nick.clone());
-                                let message = bincode::serialize(&ServerMessages::ClientConnected(
-                                    client_id, nick,
-                                ))
-                                .unwrap();
-                                self.server.broadcast_message(0, message);
+                                let message = bincode::options()
+                                    .serialize(&ServerMessages::ClientConnected(client_id, nick))
+                                    .unwrap();
+                                self.server
+                                    .send_reliable_message(SendTarget::All, 0, message);
 
                                 let init_message = ServerMessages::InitClient {
                                     clients: self.clients.clone(),
                                 };
-                                let init_message = bincode::serialize(&init_message).unwrap();
-                                self.server
-                                    .send_message(client_id, 0, init_message)
-                                    .unwrap();
+                                let init_message =
+                                    bincode::options().serialize(&init_message).unwrap();
+                                self.server.send_reliable_message(
+                                    SendTarget::Client(client_id),
+                                    0,
+                                    init_message,
+                                )
                             }
                         }
                         ClientMessages::Text(text) => {
                             if self.clients.contains_key(&client_id) {
-                                let message = bincode::serialize(&ServerMessages::ClientMessage(
-                                    client_id, text,
-                                ))
-                                .unwrap();
-                                self.server.broadcast_message(0, message);
+                                let message = bincode::options()
+                                    .serialize(&ServerMessages::ClientMessage(client_id, text))
+                                    .unwrap();
+                                self.server
+                                    .send_reliable_message(SendTarget::All, 0, message);
                             }
                         }
                     }

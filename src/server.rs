@@ -1,7 +1,7 @@
-use crate::channel::ChannelConfig;
+use crate::channel::reliable::ReliableChannelConfig;
 use crate::client::{LocalClient, LocalClientConnected};
-use crate::error::{DisconnectionReason, MessageError, RenetError};
-use crate::packet::{Packet, Payload, Unauthenticaded};
+use crate::error::{ClientNotFound, DisconnectionReason, RenetError};
+use crate::packet::Payload;
 use crate::protocol::ServerAuthenticationProtocol;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 use crate::ClientId;
@@ -21,6 +21,15 @@ pub enum ConnectionPermission {
     OnlyAllowed,
     /// No connection can be stablished.
     None,
+}
+
+/// Determines which clients should receive the message
+pub enum SendTarget<C> {
+    All,
+    OnlyRemote,
+    Client(C),
+    // TODO:
+    // AllExcept(C),
 }
 
 impl Default for ConnectionPermission {
@@ -58,31 +67,31 @@ pub enum ServerEvent<C> {
     ClientDisconnected(C),
 }
 
-pub struct Server<P: ServerAuthenticationProtocol> {
+pub struct Server<Protocol: ServerAuthenticationProtocol> {
     config: ServerConfig,
     socket: UdpSocket,
-    remote_clients: HashMap<P::ClientId, RemoteConnection<P>>,
-    local_clients: HashMap<P::ClientId, LocalClient<P::ClientId>>,
-    connecting: HashMap<P::ClientId, RemoteConnection<P>>,
-    channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
-    events: VecDeque<ServerEvent<P::ClientId>>,
+    remote_clients: HashMap<Protocol::ClientId, RemoteConnection<Protocol>>,
+    local_clients: HashMap<Protocol::ClientId, LocalClient<Protocol::ClientId>>,
+    connecting: HashMap<Protocol::ClientId, RemoteConnection<Protocol>>,
+    reliable_channels_config: Vec<ReliableChannelConfig>,
+    events: VecDeque<ServerEvent<Protocol::ClientId>>,
     connection_config: ConnectionConfig,
-    allow_clients: HashSet<P::ClientId>,
-    deny_clients: HashSet<P::ClientId>,
+    allow_clients: HashSet<Protocol::ClientId>,
+    deny_clients: HashSet<Protocol::ClientId>,
     connection_permission: ConnectionPermission,
 }
 
-impl<P> Server<P>
+impl<Protocol> Server<Protocol>
 where
-    P: ServerAuthenticationProtocol,
-    P::ClientId: ClientId,
+    Protocol: ServerAuthenticationProtocol,
+    Protocol::ClientId: ClientId,
 {
     pub fn new(
         socket: UdpSocket,
         config: ServerConfig,
         connection_config: ConnectionConfig,
         connection_permission: ConnectionPermission,
-        channels_config: HashMap<u8, Box<dyn ChannelConfig>>,
+        reliable_channels_config: Vec<ReliableChannelConfig>,
     ) -> Result<Self, io::Error> {
         socket.set_nonblocking(true)?;
 
@@ -92,7 +101,7 @@ where
             local_clients: HashMap::new(),
             connecting: HashMap::new(),
             config,
-            channels_config,
+            reliable_channels_config,
             connection_config,
             connection_permission,
             allow_clients: HashSet::new(),
@@ -109,21 +118,27 @@ where
         !self.remote_clients.is_empty() || !self.local_clients.is_empty()
     }
 
-    pub fn get_event(&mut self) -> Option<ServerEvent<P::ClientId>> {
+    pub fn get_event(&mut self) -> Option<ServerEvent<Protocol::ClientId>> {
         self.events.pop_front()
     }
 
-    fn find_client_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P>> {
+    fn find_client_by_addr(
+        &mut self,
+        addr: &SocketAddr,
+    ) -> Option<&mut RemoteConnection<Protocol>> {
         self.remote_clients
             .values_mut()
             .find(|c| *c.addr() == *addr)
     }
 
-    fn find_connecting_by_addr(&mut self, addr: &SocketAddr) -> Option<&mut RemoteConnection<P>> {
+    fn find_connecting_by_addr(
+        &mut self,
+        addr: &SocketAddr,
+    ) -> Option<&mut RemoteConnection<Protocol>> {
         self.connecting.values_mut().find(|c| c.addr() == addr)
     }
 
-    pub fn allow_client(&mut self, client_id: &P::ClientId) {
+    pub fn allow_client(&mut self, client_id: &Protocol::ClientId) {
         self.allow_clients.insert(*client_id);
         self.deny_clients.remove(client_id);
     }
@@ -134,7 +149,7 @@ where
         }
     }
 
-    pub fn deny_client(&mut self, client_id: &P::ClientId) {
+    pub fn deny_client(&mut self, client_id: &Protocol::ClientId) {
         self.deny_clients.insert(*client_id);
         self.allow_clients.remove(client_id);
     }
@@ -147,7 +162,7 @@ where
         &self.connection_permission
     }
 
-    pub fn can_client_connect(&self, client_id: P::ClientId) -> bool {
+    pub fn can_client_connect(&self, client_id: Protocol::ClientId) -> bool {
         if self.deny_clients.contains(&client_id) {
             return false;
         }
@@ -159,15 +174,15 @@ where
         }
     }
 
-    pub fn allowed_clients(&self) -> Vec<P::ClientId> {
+    pub fn allowed_clients(&self) -> Vec<Protocol::ClientId> {
         self.allow_clients.iter().copied().collect()
     }
 
-    pub fn denied_clients(&self) -> Vec<P::ClientId> {
+    pub fn denied_clients(&self) -> Vec<Protocol::ClientId> {
         self.deny_clients.iter().copied().collect()
     }
 
-    pub fn network_info(&self, client_id: P::ClientId) -> Option<&NetworkInfo> {
+    pub fn network_info(&self, client_id: Protocol::ClientId) -> Option<&NetworkInfo> {
         if let Some(connection) = self.remote_clients.get(&client_id) {
             return Some(connection.network_info());
         }
@@ -176,17 +191,16 @@ where
 
     pub fn create_local_client(
         &mut self,
-        client_id: P::ClientId,
-    ) -> LocalClientConnected<P::ClientId> {
-        let channels = self.channels_config.keys().copied().collect();
+        client_id: Protocol::ClientId,
+    ) -> LocalClientConnected<Protocol::ClientId> {
         self.events
             .push_back(ServerEvent::ClientConnected(client_id));
-        let (local_client_connected, local_client) = LocalClientConnected::new(client_id, channels);
+        let (local_client_connected, local_client) = LocalClientConnected::new(client_id);
         self.local_clients.insert(client_id, local_client);
         local_client_connected
     }
 
-    pub fn disconnect(&mut self, client_id: &P::ClientId) {
+    pub fn disconnect(&mut self, client_id: &Protocol::ClientId) {
         if let Some(mut remote_client) = self.remote_clients.remove(&client_id) {
             self.events
                 .push_back(ServerEvent::ClientDisconnected(*client_id));
@@ -211,71 +225,127 @@ where
         }
     }
 
-    pub fn send_message<C: Into<u8>>(
+    pub fn send_reliable_message<C: Into<u8>>(
         &mut self,
-        client_id: P::ClientId,
+        send_target: SendTarget<Protocol::ClientId>,
         channel_id: C,
         message: Vec<u8>,
-    ) -> Result<(), MessageError> {
+    ) {
         let channel_id = channel_id.into();
-        if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
-            remote_connection.send_message(channel_id, message)
-        } else if let Some(local_connection) = self.local_clients.get_mut(&client_id) {
-            local_connection.send_message(channel_id, message)
-        } else {
-            Err(MessageError::ClientNotFound)
-        }
-    }
+        match send_target {
+            SendTarget::All => {
+                for remote_client in self.remote_clients.values_mut() {
+                    remote_client.send_reliable_message(channel_id, message.clone());
+                }
 
-    pub fn broadcast_message<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
-        let channel_id = channel_id.into();
-        for remote_client in self.remote_clients.values_mut() {
-            if let Err(e) = remote_client.send_message(channel_id, message.clone()) {
-                error!("{}", e);
+                for local_client in self.local_clients.values_mut() {
+                    local_client.send_message(message.clone());
+                }
             }
-        }
-
-        for local_client in self.local_clients.values_mut() {
-            if let Err(e) = local_client.send_message(channel_id, message.clone()) {
-                error!("{}", e);
+            SendTarget::OnlyRemote => {
+                for remote_client in self.remote_clients.values_mut() {
+                    remote_client.send_reliable_message(channel_id, message.clone());
+                }
             }
-        }
-    }
-
-    pub fn broadcast_message_remote<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
-        let channel_id = channel_id.into();
-        for remote_client in self.remote_clients.values_mut() {
-            if let Err(e) = remote_client.send_message(channel_id, message.clone()) {
-                error!("{}", e);
+            SendTarget::Client(client_id) => {
+                if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
+                    remote_connection.send_reliable_message(channel_id, message);
+                } else if let Some(local_connection) = self.local_clients.get_mut(&client_id) {
+                    local_connection.send_message(message);
+                } else {
+                    error!(
+                        "Tried to send reliable message to client non-existing client {:?}.",
+                        client_id
+                    );
+                }
             }
         }
     }
 
-    pub fn broadcast_message_local<C: Into<u8>>(&mut self, channel_id: C, message: Payload) {
-        let channel_id = channel_id.into();
-        for local_client in self.local_clients.values_mut() {
-            if let Err(e) = local_client.send_message(channel_id, message.clone()) {
-                error!("{}", e);
-            }
-        }
-    }
-
-    pub fn receive_message<C: Into<u8>>(
+    pub fn send_unreliable_message(
         &mut self,
-        client_id: P::ClientId,
-        channel_id: C,
-    ) -> Result<Option<Payload>, MessageError> {
-        let channel_id = channel_id.into();
-        if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
-            remote_client.receive_message(channel_id)
-        } else if let Some(local_client) = self.local_clients.get_mut(&client_id) {
-            local_client.receive_message(channel_id)
-        } else {
-            Err(MessageError::ClientNotFound)
+        send_target: SendTarget<Protocol::ClientId>,
+        message: Vec<u8>,
+    ) {
+        match send_target {
+            SendTarget::All => {
+                for remote_client in self.remote_clients.values_mut() {
+                    remote_client.send_unreliable_message(message.clone());
+                }
+
+                for local_client in self.local_clients.values_mut() {
+                    local_client.send_message(message.clone());
+                }
+            }
+            SendTarget::OnlyRemote => {
+                for remote_client in self.remote_clients.values_mut() {
+                    remote_client.send_unreliable_message(message.clone());
+                }
+            }
+            SendTarget::Client(client_id) => {
+                if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
+                    remote_connection.send_unreliable_message(message);
+                } else if let Some(local_connection) = self.local_clients.get_mut(&client_id) {
+                    local_connection.send_message(message);
+                } else {
+                    error!(
+                        "Tried to send unreliable message to client non-existing client {:?}.",
+                        client_id
+                    );
+                }
+            }
         }
     }
 
-    pub fn get_clients_id(&self) -> Vec<P::ClientId> {
+    pub fn send_block_message(
+        &mut self,
+        send_target: SendTarget<Protocol::ClientId>,
+        message: Vec<u8>,
+    ) {
+        match send_target {
+            SendTarget::All => {
+                for remote_client in self.remote_clients.values_mut() {
+                    remote_client.send_block_message(message.clone());
+                }
+
+                for local_client in self.local_clients.values_mut() {
+                    local_client.send_message(message.clone());
+                }
+            }
+            SendTarget::OnlyRemote => {
+                for remote_client in self.remote_clients.values_mut() {
+                    remote_client.send_block_message(message.clone());
+                }
+            }
+            SendTarget::Client(client_id) => {
+                if let Some(remote_connection) = self.remote_clients.get_mut(&client_id) {
+                    remote_connection.send_block_message(message);
+                } else if let Some(local_connection) = self.local_clients.get_mut(&client_id) {
+                    local_connection.send_message(message);
+                } else {
+                    error!(
+                        "Tried to send block message to client non-existing client {:?}.",
+                        client_id
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn receive_message(
+        &mut self,
+        client_id: Protocol::ClientId,
+    ) -> Result<Option<Payload>, ClientNotFound> {
+        if let Some(remote_client) = self.remote_clients.get_mut(&client_id) {
+            Ok(remote_client.receive_message())
+        } else if let Some(local_client) = self.local_clients.get_mut(&client_id) {
+            Ok(local_client.receive_message())
+        } else {
+            Err(ClientNotFound)
+        }
+    }
+
+    pub fn get_clients_id(&self) -> Vec<Protocol::ClientId> {
         self.remote_clients
             .keys()
             .copied()
@@ -283,12 +353,12 @@ where
             .collect()
     }
 
-    pub fn is_client_connected(&self, client_id: &P::ClientId) -> bool {
+    pub fn is_client_connected(&self, client_id: &Protocol::ClientId) -> bool {
         self.remote_clients.contains_key(client_id) || self.local_clients.contains_key(client_id)
     }
 
     pub fn update(&mut self) -> Result<(), io::Error> {
-        let mut buffer = vec![0u8; self.connection_config.max_packet_size];
+        let mut buffer = vec![0u8; self.connection_config.max_packet_size as usize];
         loop {
             match self.socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => match self.process_payload_from(&buffer[..len], &addr) {
@@ -301,7 +371,7 @@ where
             };
         }
 
-        let mut disconnected_remote_clients: Vec<P::ClientId> = vec![];
+        let mut disconnected_remote_clients: Vec<Protocol::ClientId> = vec![];
         for (&client_id, connection) in self.remote_clients.iter_mut() {
             if connection.update().is_err() {
                 disconnected_remote_clients.push(client_id);
@@ -315,7 +385,7 @@ where
             info!("Remote Client {:?} disconnected.", client_id);
         }
 
-        let mut disconnected_local_clients: Vec<P::ClientId> = vec![];
+        let mut disconnected_local_clients: Vec<Protocol::ClientId> = vec![];
         for (&client_id, connection) in self.local_clients.iter() {
             if !connection.is_connected() {
                 disconnected_local_clients.push(client_id);
@@ -351,8 +421,7 @@ where
             if connection.is_connected() {
                 connected_clients.push(connection.client_id());
             } else if let Ok(Some(payload)) = connection.create_protocol_payload() {
-                let packet = Packet::Unauthenticaded(Unauthenticaded::Protocol { payload });
-                try_send_packet(&self.socket, packet, connection.addr())?;
+                try_send_packet(&self.socket, payload, connection.addr())?;
             }
         }
 
@@ -373,8 +442,7 @@ where
                     "Connection from {} successfuly stablished but server was full.",
                     connection.addr()
                 );
-                let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
-                try_send_packet(&self.socket, packet, connection.addr())?;
+                connection.try_send_disconnect_packet(&self.socket, DisconnectionReason::MaxPlayer);
 
                 continue;
             }
@@ -384,11 +452,6 @@ where
                 connection.client_id(),
                 connection.addr(),
             );
-
-            for (channel_id, channel_config) in self.channels_config.iter() {
-                let channel = channel_config.new_channel();
-                connection.add_channel(*channel_id, channel);
-            }
 
             self.events
                 .push_back(ServerEvent::ClientConnected(connection.client_id()));
@@ -417,7 +480,7 @@ where
         }
 
         if self.remote_clients.len() >= self.config.max_clients {
-            let packet = Unauthenticaded::ConnectionError(DisconnectionReason::MaxPlayer);
+            let packet = Protocol::get_disconnect_packet(DisconnectionReason::MaxPlayer);
             try_send_packet(&self.socket, packet, addr)?;
             debug!("Connection Denied to addr {}, server is full.", addr);
             return Ok(());
@@ -428,40 +491,41 @@ where
                 return connection.process_payload(payload);
             }
             None => {
-                let packet = bincode::deserialize::<Packet>(payload)?;
-                if let Packet::Unauthenticaded(Unauthenticaded::Protocol { payload }) = packet {
-                    let protocol =
-                        P::from_payload(&payload).map_err(RenetError::AuthenticationError)?;
-                    let id = protocol.id();
-                    if !self.can_client_connect(id) {
-                        info!(
-                            "Client with id {:?} is not allowed to connect the server.",
-                            id
-                        );
+                let protocol =
+                    Protocol::from_payload(&payload).map_err(RenetError::AuthenticationError)?;
+                let id = protocol.id();
+                if !self.can_client_connect(id) {
+                    info!(
+                        "Client with id {:?} is not allowed to connect the server.",
+                        id
+                    );
 
-                        let packet = Unauthenticaded::ConnectionError(DisconnectionReason::Denied);
-                        try_send_packet(&self.socket, packet, addr)?;
-                    }
+                    let packet = Protocol::get_disconnect_packet(DisconnectionReason::Denied);
+                    try_send_packet(&self.socket, packet, addr)?;
 
-                    if self.is_client_connected(&id) {
-                        info!(
-                            "Client with id {:?} already connected, discarded connection attempt.",
-                            id
-                        );
-                        let packet = Unauthenticaded::ConnectionError(
-                            DisconnectionReason::ClientIdAlreadyConnected,
-                        );
-                        try_send_packet(&self.socket, packet, addr)?;
-                    } else {
-                        info!("Created new protocol from payload with client id {:?}", id);
-                        let new_connection = RemoteConnection::new(
-                            protocol.id(),
-                            *addr,
-                            self.connection_config.clone(),
-                            protocol,
-                        );
-                        self.connecting.insert(id, new_connection);
-                    }
+                    return Ok(());
+                }
+
+                if self.is_client_connected(&id) {
+                    info!(
+                        "Client with id {:?} already connected, discarded connection attempt.",
+                        id
+                    );
+
+                    let packet = Protocol::get_disconnect_packet(
+                        DisconnectionReason::ClientIdAlreadyConnected,
+                    );
+                    try_send_packet(&self.socket, packet, addr)?;
+                } else {
+                    info!("Created new protocol from payload with client id {:?}", id);
+                    let new_connection = RemoteConnection::new(
+                        protocol.id(),
+                        *addr,
+                        self.connection_config.clone(),
+                        protocol,
+                        self.reliable_channels_config.clone(),
+                    );
+                    self.connecting.insert(id, new_connection);
                 }
             }
         };
@@ -472,18 +536,9 @@ where
 
 fn try_send_packet(
     socket: &UdpSocket,
-    packet: impl Into<Packet>,
+    packet: Payload,
     addr: &SocketAddr,
 ) -> Result<(), io::Error> {
-    let packet: Packet = packet.into();
-    match bincode::serialize(&packet) {
-        Ok(packet) => {
-            socket.send_to(&packet, addr)?;
-        }
-        Err(e) => {
-            // TODO: should we error the server when this occurs?
-            error!("Failed to serialize packet: {}", e);
-        }
-    }
+    socket.send_to(&packet, addr)?;
     Ok(())
 }
