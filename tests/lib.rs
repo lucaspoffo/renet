@@ -20,7 +20,7 @@ pub fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct TestMessage {
     value: u64,
 }
@@ -347,4 +347,110 @@ fn test_connection_permission_denied() {
         error,
         Err(RenetError::ConnectionError(DisconnectionReason::Denied))
     ));
+}
+
+fn create_remote_connection(
+    id: u64,
+    server_addr: SocketAddr,
+) -> RemoteClient<UnsecureClientProtocol<u64>> {
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let connection_config: ConnectionConfig = ConnectionConfig {
+        timeout_duration: Duration::from_millis(100),
+        heartbeat_time: Duration::from_millis(10),
+        ..Default::default()
+    };
+    let request_connection = RemoteClient::new(
+        id,
+        socket,
+        server_addr,
+        UnsecureClientProtocol::new(id),
+        connection_config,
+        reliable_channels_config(),
+    )
+    .unwrap();
+
+    request_connection
+}
+
+struct ClientStatus {
+    connection: RemoteClient<UnsecureClientProtocol<u64>>,
+    received_messages: u64,
+}
+
+impl ClientStatus {
+    pub fn new(connection: RemoteClient<UnsecureClientProtocol<u64>>) -> Self {
+        Self {
+            connection,
+            received_messages: 0,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TestUsage {
+    value: Vec<u8>
+}
+
+impl Default for TestUsage {
+    fn default() -> Self {
+        Self {
+            value: vec![255; 1150]
+        }
+    }
+}
+
+use std::collections::HashMap;
+
+#[test]
+fn test_usage() {
+    // TODO: we can't distinguish the log between the clients
+    init_log();
+    let mut server = setup_server();
+
+    let mut clients_status: HashMap<u64, ClientStatus> = HashMap::new();
+    let mut connected_clients = 0;
+    let mut sent_messages = 0;
+
+    for i in 0..8 {
+        let remote_connection = create_remote_connection(i, server.addr().unwrap());
+        let status = ClientStatus::new(remote_connection);
+        clients_status.insert(i, status);
+    }
+
+    loop {
+        for status in clients_status.values_mut() {
+            status.connection.update().unwrap();
+            if status.connection.connection_error().is_some() {
+                panic!("Error in client connection");
+            }
+            if status.connection.is_connected() {
+                if status.connection.receive_message().is_some() {
+                    status.received_messages += 1;
+                    if status.received_messages > 64 {
+                        panic!("Received more than 64 messages!");
+                    }
+                }
+            }
+            status.connection.send_packets().unwrap()
+        }
+
+        if connected_clients == 8 && sent_messages < 64 {
+            let message = bincode::options().serialize(&TestUsage::default()).unwrap();
+            server.send_reliable_message(SendTarget::All, 0, message);
+            sent_messages += 1
+        }
+
+        server.update().unwrap();
+        while let Some(event) = server.get_event() {
+            if let ServerEvent::ClientConnected(_) = event {
+                connected_clients += 1;
+            }
+        }
+        server.send_packets();
+
+        clients_status.retain(|_, v| v.received_messages != 64);
+        if clients_status.is_empty() {
+            return;
+        }
+    }
 }
