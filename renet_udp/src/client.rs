@@ -1,5 +1,5 @@
 use renet::channel::reliable::ReliableChannelConfig;
-use renet::error::{DisconnectionReason, RenetError};
+use renet::error::{RenetError, DisconnectionReason};
 use renet::packet::Payload;
 use renet::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
@@ -7,6 +7,8 @@ use log::debug;
 
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
+
+use crate::RenetUdpError;
 
 pub struct UdpClient {
     id: SocketAddr,
@@ -85,7 +87,7 @@ impl UdpClient {
         self.connection.network_info()
     }
 
-    pub fn send_packets(&mut self) -> Result<(), RenetError> {
+    pub fn send_packets(&mut self) -> Result<(), RenetUdpError> {
         let packets = self.connection.get_packets_to_send()?;
         for packet in packets.into_iter() {
             self.socket.send_to(&packet, self.server_addr)?;
@@ -93,9 +95,9 @@ impl UdpClient {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result<(), RenetError> {
+    pub fn update(&mut self) -> Result<(), RenetUdpError> {
         if let Some(connection_error) = self.connection_error() {
-            return Err(RenetError::ConnectionError(connection_error));
+            return Err(RenetError::ConnectionError(connection_error).into());
         }
 
         let mut buffer = vec![0; self.connection.config.max_packet_size as usize];
@@ -110,12 +112,13 @@ impl UdpClient {
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetError::IOError(e)),
+                Err(e) => return Err(RenetUdpError::IOError(e)),
             };
 
             self.connection.process_packet(&packet)?;
         }
 
-        self.connection.update()
+        self.connection.update()?;
+        Ok(())
     }
 }

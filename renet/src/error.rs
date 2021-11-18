@@ -5,9 +5,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use bincode::Options;
 
-use std::{error::Error, io};
-
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
 pub enum DisconnectionReason {
     #[error("connection denied")]
@@ -22,8 +19,6 @@ pub enum DisconnectionReason {
     DisconnectedByClient,
     #[error("client with same id already connected")]
     ClientAlreadyConnected,
-    #[error("crossbeam channel error while sending or receiving a message locally")]
-    CrossbeamChannelError,
     #[error("reliable channel {channel_id} is out of sync, a message was dropped")]
     ReliableChannelOutOfSync { channel_id: u8 },
 }
@@ -36,11 +31,8 @@ impl DisconnectionReason {
     }
 }
 
-// TODO: Can this be separated into Server/Client Error or Server/Connection Error
 #[derive(Debug, Error)]
 pub enum RenetError {
-    #[error("socket disconnected: {0}")]
-    IOError(#[from] io::Error),
     #[error("bincode failed to (de)serialize: {0}")]
     BincodeError(#[from] bincode::Error),
     #[error("packet fragmentation error: {0}")]

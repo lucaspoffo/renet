@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 renet = { path = "../renet" }
 log = "0.4.11"
+thiserror = "1.0"

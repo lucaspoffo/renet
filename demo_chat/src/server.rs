@@ -105,7 +105,7 @@ impl ChatServer {
             }
         }
 
-        self.server.send_packets();
+        self.server.send_packets().unwrap();
         Ok(())
     }
 }

@@ -105,7 +105,10 @@ impl<C: ClientId> Server<C> {
     // TODO: verify if connection is possible
     // TODO: return disconnect packet if cannot connect
     //       or push to self.disconnect_packets
-    pub fn add_connection(&mut self, client_id: &C) {
+    pub fn add_connection(&mut self, client_id: &C) -> Result<(), DisconnectionReason> {
+        if let CanConnect::No { reason } = self.can_client_connect(client_id) {
+            return Err(reason);
+        }
         self.events
             .push_back(ServerEvent::ClientConnected(*client_id));
         let connection = RemoteConnection::new(
@@ -113,6 +116,7 @@ impl<C: ClientId> Server<C> {
             self.reliable_channels_config.clone(),
         );
         self.clients.insert(*client_id, connection);
+        Ok(())
     }
 
     pub fn has_clients(&self) -> bool {
