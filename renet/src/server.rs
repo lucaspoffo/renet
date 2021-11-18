@@ -201,28 +201,25 @@ impl<C: ClientId> Server<C> {
         None
     }
 
-    pub fn disconnect(&mut self, client_id: &C) -> Result<Option<Payload>, RenetError> {
-        if let Some(_remote_client) = self.clients.remove(&client_id) {
-            self.events.push_back(ServerEvent::ClientDisconnected(
-                *client_id,
-                DisconnectionReason::DisconnectedByServer,
-            ));
-            let disconnect_packet = Packet::Disconnect(DisconnectionReason::DisconnectedByServer);
-            let disconnect_packet = bincode::options().serialize(&disconnect_packet)?;
-            return Ok(Some(disconnect_packet));
+    pub fn disconnect(&mut self, client_id: &C) -> Result<(), ClientNotFound> {
+        match self.clients.remove(&client_id) {
+            Some(_) => {
+                self.events.push_back(ServerEvent::ClientDisconnected(
+                    *client_id,
+                    DisconnectionReason::DisconnectedByServer,
+                ));
+                Ok(())
+            }
+            None => Err(ClientNotFound),
         }
-
-        Ok(None)
     }
 
-    pub fn disconnect_clients(&mut self) -> Vec<(C, Payload)> {
-        let mut disconnect_packets = Vec::new();
-        for client_id in self.get_clients_id().iter() {
-            if let Ok(Some(packet)) = self.disconnect(client_id) {
-                disconnect_packets.push((*client_id, packet));
-            }
+    pub fn disconnect_clients(&mut self) -> Vec<C> {
+        let client_ids = self.get_clients_id();
+        for client_id in client_ids.iter() {
+            self.disconnect(client_id).expect("client always exist");
         }
-        disconnect_packets
+        client_ids
     }
 
     pub fn send_reliable_message<ChannelId: Into<u8>>(
@@ -338,25 +335,22 @@ impl<C: ClientId> Server<C> {
     }
 
     // TODO: should we return disconnect packets here instead of pushing to a vec?
-    pub fn verify_disconnections(&mut self) {
-        let mut disconnected_clients: Vec<C> = vec![];
+    pub fn update_connections(&mut self) -> Vec<(C, DisconnectionReason)> {
+        let mut disconnected_clients: Vec<(C, DisconnectionReason)> = vec![];
         for (&client_id, connection) in self.clients.iter_mut() {
             if connection.update().is_err() {
-                disconnected_clients.push(client_id);
+                let reason = connection.disconnected().unwrap();
+                disconnected_clients.push((client_id, reason));
             }
         }
 
-        for &client_id in disconnected_clients.iter() {
-            let client = self.clients.remove(&client_id).unwrap();
-            let reason = client.disconnected().unwrap();
-            let disconnect_packet = Packet::Disconnect(reason);
-            if let Ok(packet) = bincode::options().serialize(&disconnect_packet) {
-                self.disconnect_packets.push((client_id, packet));
-            }
+        for &(client_id, reason) in disconnected_clients.iter() {
+            self.clients.remove(&client_id);
             self.events
                 .push_back(ServerEvent::ClientDisconnected(client_id, reason));
-            info!("Remote Client {:?} disconnected.", client_id);
+            info!("Client {:?} disconnected.", client_id);
         }
+        disconnected_clients
     }
 
     pub fn get_packets_to_send(&mut self) -> Result<Vec<(C, Payload)>, RenetError> {

@@ -1,5 +1,5 @@
 use renet::channel::reliable::ReliableChannelConfig;
-use renet::error::{RenetError, DisconnectionReason};
+use renet::error::{DisconnectionReason, RenetError};
 use renet::packet::Payload;
 use renet::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
@@ -60,7 +60,8 @@ impl UdpClient {
         channel_id: ChannelId,
         message: Payload,
     ) {
-        self.connection.send_reliable_message(channel_id.into(), message);
+        self.connection
+            .send_reliable_message(channel_id.into(), message);
     }
 
     pub fn send_unreliable_message(&mut self, message: Payload) {

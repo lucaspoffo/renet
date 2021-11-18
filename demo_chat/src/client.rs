@@ -187,18 +187,14 @@ impl ChatApp {
                     let socket = UdpSocket::bind(client_addr).unwrap();
                     let connection_config = ConnectionConfig::default();
 
-                    let mut remote_client = UdpClient::new(
-                        socket,
-                        addr,
-                        connection_config,
-                        reliable_channels_config(),
-                    )
-                    .unwrap();
+                    let mut remote_client =
+                        UdpClient::new(socket, addr, connection_config, reliable_channels_config())
+                            .unwrap();
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
                     remote_client.send_reliable_message(0, init_message);
-    
+
                     *server = Some(chat_server);
                     *client = Some(remote_client);
                     *connected_server_addr = Some(addr);

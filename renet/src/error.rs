@@ -1,9 +1,9 @@
 use crate::packet::{Packet, Payload};
 use crate::reassembly_fragment::FragmentError;
 
+use bincode::Options;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use bincode::Options;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
 pub enum DisconnectionReason {

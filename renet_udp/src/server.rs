@@ -1,14 +1,14 @@
 use renet::{
     channel::reliable::ReliableChannelConfig,
-    error::ClientNotFound,
+    error::{ClientNotFound, DisconnectionReason},
     packet::Payload,
     remote_connection::ConnectionConfig,
     server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
 };
 
-use std::net::{SocketAddr, UdpSocket};
-use log::error;
 use crate::RenetUdpError;
+use log::error;
+use std::net::{SocketAddr, UdpSocket};
 
 // TODO: use macro delegate!
 pub struct UdpServer {
@@ -49,12 +49,18 @@ impl UdpServer {
         self.server.get_event()
     }
 
-    pub fn disconnect(&mut self, client_id: &SocketAddr) {
-        if let Ok(Some(packet)) = self.server.disconnect(client_id) {
-            if let Err(e) = self.socket.send_to(&packet, client_id) {
-                error!("failed to send disconnect packet to {}: {}", client_id, e);
-            }
+    pub fn disconnect(&mut self, client_id: &SocketAddr) -> Result<(), ClientNotFound> {
+        self.server.disconnect(client_id)?;
+        self.send_disconnect_packet(client_id, DisconnectionReason::DisconnectedByServer);
+        Ok(())
+    }
+
+    pub fn disconnect_clients(&mut self) -> Vec<SocketAddr> {
+        let disconnect_clients = self.server.disconnect_clients();
+        for client_id in disconnect_clients.iter() {
+            self.send_disconnect_packet(client_id, DisconnectionReason::DisconnectedByServer);
         }
+        disconnect_clients
     }
 
     pub fn set_connection_permission(&mut self, connection_permission: ConnectionPermission) {
@@ -100,7 +106,25 @@ impl UdpServer {
             };
         }
 
-        self.server.verify_disconnections();
+        for (client_id, reason) in self.server.update_connections().into_iter() {
+            self.send_disconnect_packet(&client_id, reason);
+        }
+    }
+
+    fn send_disconnect_packet(&self, addr: &SocketAddr, reason: DisconnectionReason) {
+        match reason.as_packet() {
+            Ok(packet) => {
+                const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
+                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
+                    if let Err(e) = self.socket.send_to(&packet, addr) {
+                        error!("failed to send disconnect packet to {}: {}", addr, e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("failed to serialize disconnect packet: {}", e);
+            }
+        }
     }
 
     pub fn receive_reliable_message(
