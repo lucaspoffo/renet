@@ -1,5 +1,5 @@
 use crate::error::RenetError;
-use crate::packet::{AckData, ChannelMessages, Fragment, Message, Payload};
+use crate::packet::{AckData, ChannelMessages, Fragment, Packet, Payload};
 use crate::sequence_buffer::SequenceBuffer;
 
 use bincode::Options;
@@ -197,14 +197,13 @@ pub(crate) fn build_fragments(
 
     let mut fragments = Vec::with_capacity(num_fragments);
     for (id, chunk) in payload.chunks(config.fragment_size).enumerate() {
-        let fragment: Message = Fragment {
+        let fragment = Packet::Fragment(Fragment {
             fragment_id: id as u8,
             sequence,
             num_fragments: num_fragments as u8,
             ack_data,
             payload: chunk.into(),
-        }
-        .into();
+        });
         let fragment = bincode::options().serialize(&fragment)?;
         fragments.push(fragment);
     }
@@ -238,9 +237,9 @@ mod tests {
         let fragments: Vec<Fragment> = fragments
             .iter()
             .map(|payload| {
-                let fragment: Message = bincode::options().deserialize(payload).unwrap();
+                let fragment: Packet = bincode::options().deserialize(payload).unwrap();
                 match fragment {
-                    Message::Fragment(f) => f,
+                    Packet::Fragment(f) => f,
                     _ => panic!(),
                 }
             })

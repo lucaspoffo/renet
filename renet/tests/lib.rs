@@ -5,11 +5,11 @@ use std::{
 
 use renet::{
     channel::reliable::ReliableChannelConfig,
-    client::{Client, RemoteClient},
+    client::{Client, UdpClient},
     error::{DisconnectionReason, RenetError},
-    protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
+    server::{ConnectionPermission, SendTarget, ServerConfig, ServerEvent},
+    udp_server::UdpServer,
 };
 
 use bincode::{self, Options};
@@ -30,67 +30,59 @@ fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
     vec![reliable_config]
 }
 
-fn setup_server() -> Server<UnsecureServerProtocol<u64>> {
+fn setup_server() -> UdpServer {
     setup_server_with_config(Default::default(), ConnectionPermission::All)
 }
 
 fn setup_server_with_config(
     server_config: ServerConfig,
     connection_permission: ConnectionPermission,
-) -> Server<UnsecureServerProtocol<u64>> {
+) -> UdpServer {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
         heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
-    let server: Server<UnsecureServerProtocol<u64>> = Server::new(
-        socket,
+    let server = UdpServer::new(
         server_config,
         connection_config,
         connection_permission,
         reliable_channels_config(),
+        socket,
     )
     .unwrap();
 
     server
 }
 
-fn request_remote_connection(
-    id: u64,
-    server_addr: SocketAddr,
-) -> RemoteClient<UnsecureClientProtocol<u64>> {
+fn request_remote_connection(server_addr: SocketAddr) -> UdpClient {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
         heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
-    let request_connection = RemoteClient::new(
-        id,
+    let client = UdpClient::new(
         socket,
         server_addr,
-        UnsecureClientProtocol::new(id),
         connection_config,
         reliable_channels_config(),
     )
     .unwrap();
 
-    request_connection
+    client
 }
 
-fn connect_to_server(
-    server: &mut Server<UnsecureServerProtocol<u64>>,
-    request: &mut RemoteClient<UnsecureClientProtocol<u64>>,
-) -> Result<(), RenetError> {
+fn connect_to_server(server: &mut UdpServer, request: &mut UdpClient) -> Result<(), RenetError> {
     loop {
         request.update()?;
+        request.send_packets().unwrap();
+        server.update();
+        server.send_packets();
         if request.is_connected() {
             return Ok(());
         }
-        request.send_packets().unwrap();
-        server.update().unwrap();
-        server.send_packets();
     }
 }
 
@@ -98,7 +90,7 @@ fn connect_to_server(
 fn test_remote_connection_reliable_channel() {
     init_log();
     let mut server = setup_server();
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let number_messages = 64;
@@ -110,12 +102,12 @@ fn test_remote_connection_reliable_channel() {
         server.send_reliable_message(SendTarget::All, 0, message);
     }
 
-    server.update().unwrap();
+    server.update();
     server.send_packets();
 
     loop {
         remote_connection.update().unwrap();
-        while let Some(message) = remote_connection.receive_message() {
+        while let Some(message) = remote_connection.receive_reliable_message(0) {
             let message: TestMessage = bincode::options().deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;
@@ -133,7 +125,7 @@ fn test_remote_connection_reliable_channel() {
 fn test_remote_connection_reliable_channel_would_drop_message() {
     init_log();
     let mut server = setup_server();
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let number_messages = ReliableChannelConfig::default().message_queue_size;
@@ -160,7 +152,7 @@ fn test_remote_connection_reliable_channel_would_drop_message() {
 fn test_remote_connection_unreliable_channel() {
     init_log();
     let mut server = setup_server();
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let number_messages = 64;
@@ -172,12 +164,12 @@ fn test_remote_connection_unreliable_channel() {
         server.send_unreliable_message(SendTarget::All, message);
     }
 
-    server.update().unwrap();
+    server.update();
     server.send_packets();
 
     loop {
         remote_connection.update().unwrap();
-        while let Some(message) = remote_connection.receive_message() {
+        while let Some(message) = remote_connection.receive_reliable_message(0) {
             let message: TestMessage = bincode::options().deserialize(&message).unwrap();
             assert_eq!(current_message_number, message.value);
             current_message_number += 1;
@@ -195,7 +187,7 @@ fn test_remote_connection_unreliable_channel() {
 fn test_remote_connection_block_channel() {
     init_log();
     let mut server = setup_server();
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let payload = vec![7u8; 20480];
@@ -203,13 +195,13 @@ fn test_remote_connection_block_channel() {
 
     let received_payload = loop {
         remote_connection.update().unwrap();
-        if let Some(message) = remote_connection.receive_message() {
+        if let Some(message) = remote_connection.receive_block_message() {
             break message;
         }
 
         remote_connection.send_packets().unwrap();
-        server.update().unwrap();
-        server.send_packets();
+        server.update();
+        server.send_packets().unwrap();
     };
 
     assert!(
@@ -226,7 +218,7 @@ fn test_max_players_connected() {
         ..Default::default()
     };
     let mut server = setup_server_with_config(server_config, ConnectionPermission::All);
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection).unwrap_err();
     assert!(matches!(
         error,
@@ -238,12 +230,16 @@ fn test_max_players_connected() {
 fn test_server_disconnect_client() {
     init_log();
     let mut server = setup_server();
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
-    server.disconnect(&0);
+    server.disconnect(&remote_connection.id());
     let connect_event = server.get_event().unwrap();
-    assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
+    if let ServerEvent::ClientConnected(id) = connect_event {
+        assert_eq!(id, remote_connection.id());
+    } else {
+        unreachable!()
+    }
     let error = remote_connection.update();
     assert!(matches!(
         error,
@@ -252,61 +248,72 @@ fn test_server_disconnect_client() {
         ))
     ));
     let disconnect_event = server.get_event().unwrap();
-    assert!(matches!(
-        disconnect_event,
-        ServerEvent::ClientDisconnected(0)
-    ));
+    if let ServerEvent::ClientDisconnected(id) = disconnect_event {
+        assert_eq!(id, remote_connection.id());
+    } else {
+        unreachable!()
+    }
 }
 
 #[test]
 fn test_remote_client_disconnect() {
     init_log();
     let mut server = setup_server();
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 
     let connect_event = server.get_event().unwrap();
-    assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
+    if let ServerEvent::ClientConnected(id) = connect_event {
+        assert_eq!(id, remote_connection.id());
+    } else {
+        unreachable!()
+    }
 
     remote_connection.disconnect();
     assert!(!remote_connection.is_connected());
 
-    server.update().unwrap();
+    server.update();
 
     let disconnect_event = server.get_event().unwrap();
-    assert!(matches!(
-        disconnect_event,
-        ServerEvent::ClientDisconnected(0)
-    ));
+    if let ServerEvent::ClientDisconnected(id) = disconnect_event {
+        assert_eq!(id, remote_connection.id());
+    } else {
+        unreachable!()
+    }
 }
 
 #[test]
 fn test_local_client_disconnect() {
     init_log();
     let mut server = setup_server();
-    let mut local_client = server.create_local_client(0);
+    let client_id: SocketAddr = "127.0.0.0:0".parse().unwrap();
+    let mut local_client = server.create_local_client(client_id);
 
     let connect_event = server.get_event().unwrap();
-    assert!(matches!(connect_event, ServerEvent::ClientConnected(0)));
-
+    if let ServerEvent::ClientConnected(id) = connect_event {
+        assert_eq!(id, local_client.id());
+    } else {
+        unreachable!()
+    }
     assert!(local_client.is_connected());
     local_client.disconnect();
     assert!(!local_client.is_connected());
 
-    server.update().unwrap();
+    server.update();
 
     let disconnect_event = server.get_event().unwrap();
-    assert!(matches!(
-        disconnect_event,
-        ServerEvent::ClientDisconnected(0)
-    ));
+    if let ServerEvent::ClientDisconnected(id) = disconnect_event {
+        assert_eq!(id, local_client.id());
+    } else {
+        unreachable!()
+    }
 }
 
 #[test]
 fn test_connection_permission_none() {
     init_log();
     let mut server = setup_server_with_config(Default::default(), ConnectionPermission::None);
-    let mut remote_connection = request_remote_connection(0, server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
@@ -319,18 +326,15 @@ fn test_connection_permission_only_allowed() {
     init_log();
     let mut server =
         setup_server_with_config(Default::default(), ConnectionPermission::OnlyAllowed);
-    let client_id = 0;
-    let mut remote_connection =
-        request_remote_connection(client_id.clone(), server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
         Err(RenetError::ConnectionError(DisconnectionReason::Denied))
     ));
 
-    let mut remote_connection =
-        request_remote_connection(client_id.clone(), server.addr().unwrap());
-    server.allow_client(&client_id);
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
+    server.allow_client(&remote_connection.id());
     connect_to_server(&mut server, &mut remote_connection).unwrap();
 }
 
@@ -338,10 +342,8 @@ fn test_connection_permission_only_allowed() {
 fn test_connection_permission_denied() {
     init_log();
     let mut server = setup_server_with_config(Default::default(), ConnectionPermission::All);
-    let client_id = 0;
-    server.deny_client(&client_id);
-    let mut remote_connection =
-        request_remote_connection(client_id.clone(), server.addr().unwrap());
+    let mut remote_connection = request_remote_connection(server.addr().unwrap());
+    server.deny_client(&remote_connection.id());
     let error = connect_to_server(&mut server, &mut remote_connection);
     assert!(matches!(
         error,
@@ -349,21 +351,16 @@ fn test_connection_permission_denied() {
     ));
 }
 
-fn create_remote_connection(
-    id: u64,
-    server_addr: SocketAddr,
-) -> RemoteClient<UnsecureClientProtocol<u64>> {
+fn create_remote_connection(server_addr: SocketAddr) -> UdpClient {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config: ConnectionConfig = ConnectionConfig {
         timeout_duration: Duration::from_millis(100),
         heartbeat_time: Duration::from_millis(10),
         ..Default::default()
     };
-    let request_connection = RemoteClient::new(
-        id,
+    let request_connection = UdpClient::new(
         socket,
         server_addr,
-        UnsecureClientProtocol::new(id),
         connection_config,
         reliable_channels_config(),
     )
@@ -373,12 +370,12 @@ fn create_remote_connection(
 }
 
 struct ClientStatus {
-    connection: RemoteClient<UnsecureClientProtocol<u64>>,
+    connection: UdpClient,
     received_messages: u64,
 }
 
 impl ClientStatus {
-    pub fn new(connection: RemoteClient<UnsecureClientProtocol<u64>>) -> Self {
+    pub fn new(connection: UdpClient) -> Self {
         Self {
             connection,
             received_messages: 0,
@@ -388,13 +385,13 @@ impl ClientStatus {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TestUsage {
-    value: Vec<u8>
+    value: Vec<u8>,
 }
 
 impl Default for TestUsage {
     fn default() -> Self {
         Self {
-            value: vec![255; 1150]
+            value: vec![255; 1150],
         }
     }
 }
@@ -412,7 +409,7 @@ fn test_usage() {
     let mut sent_messages = 0;
 
     for i in 0..8 {
-        let remote_connection = create_remote_connection(i, server.addr().unwrap());
+        let remote_connection = create_remote_connection(server.addr().unwrap());
         let status = ClientStatus::new(remote_connection);
         clients_status.insert(i, status);
     }
@@ -424,7 +421,7 @@ fn test_usage() {
                 panic!("Error in client connection");
             }
             if status.connection.is_connected() {
-                if status.connection.receive_message().is_some() {
+                if status.connection.receive_reliable_message(0).is_some() {
                     status.received_messages += 1;
                     if status.received_messages > 64 {
                         panic!("Received more than 64 messages!");
@@ -440,13 +437,13 @@ fn test_usage() {
             sent_messages += 1
         }
 
-        server.update().unwrap();
+        server.update();
         while let Some(event) = server.get_event() {
             if let ServerEvent::ClientConnected(_) = event {
                 connected_clients += 1;
             }
         }
-        server.send_packets();
+        server.send_packets().unwrap();
 
         clients_status.retain(|_, v| v.received_messages != 64);
         if clients_status.is_empty() {

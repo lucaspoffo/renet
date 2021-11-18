@@ -4,13 +4,8 @@ use crate::{error::RenetError, packet::Payload};
 
 use bincode::Options;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use std::time::{Duration, Instant};
-
-#[derive(Debug, Error)]
-#[error("Reliable Channel is out of sync, a message was dropped")]
-pub struct OutOfSync;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReliableMessage {
@@ -97,7 +92,7 @@ pub struct ReliableChannel {
     num_messages_sent: u64,
     num_messages_received: u64,
     oldest_unacked_message_id: u16,
-    error: Option<OutOfSync>,
+    out_of_sync: bool,
 }
 
 impl ReliableChannel {
@@ -112,7 +107,7 @@ impl ReliableChannel {
             num_messages_sent: 0,
             oldest_unacked_message_id: 0,
             config,
-            error: None,
+            out_of_sync: false,
         }
     }
 
@@ -209,7 +204,7 @@ impl ReliableChannel {
     pub fn send_message(&mut self, message_payload: Payload) {
         let message_id = self.send_message_id;
         if !self.messages_send.available(message_id) {
-            self.error = Some(OutOfSync);
+            self.out_of_sync = true;
             return;
         }
         self.send_message_id = self.send_message_id.wrapping_add(1);
@@ -235,8 +230,8 @@ impl ReliableChannel {
             .map(|m| m.payload)
     }
 
-    pub fn error(&self) -> Option<&OutOfSync> {
-        self.error.as_ref()
+    pub fn out_of_sync(&self) -> bool {
+        self.out_of_sync
     }
 }
 
@@ -368,6 +363,6 @@ mod tests {
         channel.send_message(TestMessages::Second(0).serialize());
 
         channel.send_message(TestMessages::Second(0).serialize());
-        assert!(matches!(channel.error(), Some(&OutOfSync)));
+        assert!(matches!(channel.out_of_sync(), true));
     }
 }

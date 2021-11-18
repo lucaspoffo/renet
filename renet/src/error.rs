@@ -1,12 +1,16 @@
+use crate::packet::{Packet, Payload};
 use crate::reassembly_fragment::FragmentError;
 
 use serde::{Deserialize, Serialize};
-use std::{error::Error, io};
 use thiserror::Error;
+use bincode::Options;
+
+use std::{error::Error, io};
+
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
 pub enum DisconnectionReason {
-    #[error("connection denied.")]
+    #[error("connection denied")]
     Denied,
     #[error("server has exceeded maximum players capacity")]
     MaxPlayer,
@@ -17,13 +21,19 @@ pub enum DisconnectionReason {
     #[error("disconnected by client")]
     DisconnectedByClient,
     #[error("client with same id already connected")]
-    ClientIdAlreadyConnected,
-    #[error("protocol error")]
-    ProtocolError,
+    ClientAlreadyConnected,
     #[error("crossbeam channel error while sending or receiving a message locally")]
     CrossbeamChannelError,
     #[error("reliable channel {channel_id} is out of sync, a message was dropped")]
     ReliableChannelOutOfSync { channel_id: u8 },
+}
+
+impl DisconnectionReason {
+    pub fn as_packet(&self) -> Result<Payload, RenetError> {
+        let packet = Packet::Disconnect(*self);
+        let packet = bincode::options().serialize(&packet)?;
+        Ok(packet)
+    }
 }
 
 // TODO: Can this be separated into Server/Client Error or Server/Connection Error
@@ -33,14 +43,10 @@ pub enum RenetError {
     IOError(#[from] io::Error),
     #[error("bincode failed to (de)serialize: {0}")]
     BincodeError(#[from] bincode::Error),
-    #[error("error during protocol exchange: {0}")]
-    AuthenticationError(Box<dyn Error + Send + Sync + 'static>),
     #[error("packet fragmentation error: {0}")]
     FragmentError(#[from] FragmentError),
     #[error("connection error: {0}")]
     ConnectionError(#[from] DisconnectionReason),
-    #[error("client is disconnected")]
-    ConnectionDisconnected,
 }
 
 #[derive(Debug, Error)]

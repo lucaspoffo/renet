@@ -4,11 +4,9 @@ use eframe::{
     epi,
 };
 use log::error;
-use renet::{
-    client::{Client, RemoteClient},
-    protocol::unsecure::UnsecureClientProtocol,
-    remote_connection::ConnectionConfig,
-    server::ConnectionPermission,
+use renet_udp::{
+    client::UdpClient,
+    renet::{remote_connection::ConnectionConfig, server::ConnectionPermission},
 };
 
 use std::{
@@ -37,11 +35,12 @@ pub struct ChatApp {
     state: AppState,
     nick: String,
     server_addr: String,
-    client_id: u64,
-    clients: HashMap<u64, String>,
-    messages: Vec<(u64, String)>,
+    connected_server_addr: Option<SocketAddr>,
+    client_port: u16,
+    clients: HashMap<SocketAddr, String>,
+    messages: Vec<(SocketAddr, String)>,
     chat_server: Option<ChatServer>,
-    client: Option<Box<dyn Client<u64>>>,
+    client: Option<UdpClient>,
     connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     connection_permission: ConnectionPermission,
     text_input: String,
@@ -123,9 +122,10 @@ impl ChatApp {
             nick,
             server_addr,
             state,
-            client_id,
             client,
             connection_error,
+            client_port,
+            connected_server_addr,
             ..
         } = self;
 
@@ -138,8 +138,8 @@ impl ChatApp {
                 });
 
                 ui.horizontal(|ui| {
-                    ui.label("ID:");
-                    ui.add(egui::DragValue::new(client_id));
+                    ui.label("Port:");
+                    ui.add(egui::DragValue::new(client_port));
                 });
 
                 ui.separator();
@@ -151,15 +151,15 @@ impl ChatApp {
 
                 if ui.button("Connect").clicked() {
                     match server_addr.parse::<SocketAddr>() {
-                        Ok(addr) => {
+                        Ok(server_addr) => {
                             *state = AppState::Connecting;
-                            let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+                            let client_addr = SocketAddr::from(([127, 0, 0, 1], *client_port));
+                            let socket = UdpSocket::bind(client_addr).unwrap();
                             let connection_config = ConnectionConfig::default();
-                            let mut remote_client = RemoteClient::new(
-                                *client_id,
+
+                            let mut remote_client = UdpClient::new(
                                 socket,
-                                addr,
-                                UnsecureClientProtocol::new(*client_id),
+                                server_addr,
                                 connection_config,
                                 reliable_channels_config(),
                             )
@@ -169,7 +169,8 @@ impl ChatApp {
                             let init_message = bincode::options().serialize(&init_message).unwrap();
                             remote_client.send_reliable_message(0, init_message);
 
-                            *client = Some(Box::new(remote_client));
+                            *client = Some(remote_client);
+                            *connected_server_addr = Some(server_addr);
                         }
                         Err(e) => error!("{}", e),
                     }
@@ -179,16 +180,28 @@ impl ChatApp {
 
                 if ui.button("Host").clicked() {
                     *state = AppState::Chat;
-                    let addr = "127.0.0.1:0".parse().unwrap();
-                    let mut chat_server = ChatServer::new(addr);
-                    let mut local_client = chat_server.server.create_local_client(*client_id);
+                    let addr = "127.0.0.1:5000".parse().unwrap();
+                    let chat_server = ChatServer::new(addr);
+
+                    let client_addr = SocketAddr::from(([127, 0, 0, 1], *client_port));
+                    let socket = UdpSocket::bind(client_addr).unwrap();
+                    let connection_config = ConnectionConfig::default();
+
+                    let mut remote_client = UdpClient::new(
+                        socket,
+                        addr,
+                        connection_config,
+                        reliable_channels_config(),
+                    )
+                    .unwrap();
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
-                    local_client.send_reliable_message(0, init_message);
-
-                    *client = Some(Box::new(local_client));
+                    remote_client.send_reliable_message(0, init_message);
+    
                     *server = Some(chat_server);
+                    *client = Some(remote_client);
+                    *connected_server_addr = Some(addr);
                 }
 
                 ui.separator();
@@ -240,6 +253,7 @@ impl ChatApp {
                 error!("Failed updating server: {}", e);
                 self.state = AppState::Start;
                 self.connection_error = Some(Box::new(e));
+                self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
             } else {
@@ -256,17 +270,21 @@ impl ChatApp {
             if let Some(e) = chat_client.connection_error() {
                 self.state = AppState::Start;
                 self.connection_error = Some(Box::new(e));
+                self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
             } else {
-                if let Some(message) = chat_client.receive_message() {
+                if let Some(message) = chat_client.receive_reliable_message(0) {
                     let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                     match message {
                         ServerMessages::ClientConnected(id, nick) => {
                             self.clients.insert(id, nick);
                         }
-                        ServerMessages::ClientDisconnected(id) => {
+                        ServerMessages::ClientDisconnected(id, reason) => {
                             self.clients.remove(&id);
+                            let message = format!("client {} disconnect: {}", id, reason);
+                            self.messages
+                                .push((self.connected_server_addr.unwrap(), message));
                         }
                         ServerMessages::ClientMessage(nick, text) => {
                             self.messages.push((nick, text));
@@ -280,7 +298,9 @@ impl ChatApp {
                         }
                     }
                 }
-                chat_client.send_packets().unwrap();
+                if let Err(e) = chat_client.send_packets() {
+                    error!("Error sending packets: {}", e);
+                }
             }
         }
     }
@@ -296,7 +316,7 @@ fn draw_host_commands(
     });
 
     ui.separator();
-    if let Some(addr) = chat_server.server.addr() {
+    if let Ok(addr) = chat_server.server.addr() {
         ui.horizontal(|ui| {
             ui.label(format!("Address: {}", addr));
             let tooltip = "Click to copy the server address";

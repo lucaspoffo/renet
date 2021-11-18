@@ -1,22 +1,2 @@
-[package]
-name = "renet"
-version = "0.1.0"
-authors = ["Lucas Poffo <ltkpoffo@gmail.com>"]
-license = "MIT OR Apache-2.0"
-edition = "2018"
-
 [workspace]
-members = ["demo_chat"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dependencies]
-# crc = "1.8.1"
-thiserror = "1.0"
-log = "0.4.11"
-byteorder = "1.3.4"
-serde = { version = "1.0.117", features = [ "derive" ] } 
-bincode = "1.3.1"
-crossbeam-channel = "0.5"
-
-[dev-dependencies]
-env_logger = "0.8.4"
+members = ["renet", "renet_udp", "demo_chat"]

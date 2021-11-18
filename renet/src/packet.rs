@@ -28,7 +28,7 @@ pub struct AckData {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Message {
+pub enum Packet {
     Normal(Normal),
     Fragment(Fragment),
     Heartbeat(HeartBeat),
@@ -71,25 +71,25 @@ pub struct HeartBeat {
     pub ack_data: AckData,
 }
 
-impl From<Normal> for Message {
+impl From<Normal> for Packet {
     fn from(value: Normal) -> Self {
         Self::Normal(value)
     }
 }
 
-impl From<Fragment> for Message {
+impl From<Fragment> for Packet {
     fn from(value: Fragment) -> Self {
         Self::Fragment(value)
     }
 }
 
-impl From<HeartBeat> for Message {
+impl From<HeartBeat> for Packet {
     fn from(value: HeartBeat) -> Self {
         Self::Heartbeat(value)
     }
 }
 
-impl From<DisconnectionReason> for Message {
+impl From<DisconnectionReason> for Packet {
     fn from(value: DisconnectionReason) -> Self {
         Self::Disconnect(value)
     }

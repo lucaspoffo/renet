@@ -1,9 +1,11 @@
-use renet::{
-    channel::reliable::ReliableChannelConfig,
-    client::{Client, RemoteClient},
-    protocol::unsecure::{UnsecureClientProtocol, UnsecureServerProtocol},
-    remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
+use renet_udp::{
+    client::UdpClient,
+    renet::{
+        channel::reliable::ReliableChannelConfig,
+        remote_connection::ConnectionConfig,
+        server::{ConnectionPermission, SendTarget, ServerConfig, ServerEvent},
+    },
+    server::UdpServer,
 };
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -11,15 +13,14 @@ use std::thread;
 use std::time::Duration;
 
 fn main() {
-    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [CLIENT_ID]");
+    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT]");
     let args: Vec<String> = std::env::args().collect();
 
     let exec_type = &args[1];
     match exec_type.as_str() {
         "client" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
-            let client_id: u64 = args[3].parse().unwrap();
-            client(client_id, server_addr);
+            client(server_addr);
         }
         "server" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
@@ -40,28 +41,30 @@ fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
-    let mut server: Server<UnsecureServerProtocol<u64>> = Server::new(
-        socket,
+    let mut server: UdpServer = UdpServer::new(
         server_config,
         connection_config,
         ConnectionPermission::All,
         reliable_channels_config(),
+        socket,
     )
     .unwrap();
     let mut received_messages = vec![];
     loop {
-        server.update().unwrap();
+        server.update();
         received_messages.clear();
 
         while let Some(event) = server.get_event() {
             match event {
                 ServerEvent::ClientConnected(id) => println!("Client {} connected.", id),
-                ServerEvent::ClientDisconnected(id) => println!("Client {} disconnected.", id),
+                ServerEvent::ClientDisconnected(id, reason) => {
+                    println!("Client {} disconnected: {}.", id, reason)
+                }
             }
         }
 
-        for client_id in server.get_clients_id().into_iter() {
-            while let Ok(Some(message)) = server.receive_message(client_id) {
+        for client_id in server.get_clients_id().iter() {
+            while let Ok(Some(message)) = server.receive_reliable_message(client_id, 0) {
                 let text = String::from_utf8(message).unwrap();
                 println!("Client {} sent text: {}", client_id, text);
                 received_messages.push(text);
@@ -72,19 +75,17 @@ fn server(addr: SocketAddr) {
             server.send_reliable_message(SendTarget::All, 0, text.as_bytes().to_vec());
         }
 
-        server.send_packets();
+        server.send_packets().unwrap();
         thread::sleep(Duration::from_millis(100));
     }
 }
 
-fn client(id: u64, server_addr: SocketAddr) {
+fn client(server_addr: SocketAddr) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config = ConnectionConfig::default();
-    let mut client = RemoteClient::new(
-        id,
+    let mut client = UdpClient::new(
         socket,
         server_addr,
-        UnsecureClientProtocol::new(id),
         connection_config,
         reliable_channels_config(),
     )
@@ -99,7 +100,7 @@ fn client(id: u64, server_addr: SocketAddr) {
             Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }
 
-        while let Some(text) = client.receive_message() {
+        while let Some(text) = client.receive_reliable_message(0) {
             let text = String::from_utf8(text).unwrap();
             println!("Message from server: {}", text);
         }

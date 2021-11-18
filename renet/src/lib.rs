@@ -1,8 +1,7 @@
 pub mod channel;
-pub mod client;
 pub mod error;
-mod packet;
-pub mod protocol;
+// TODO: Make private again after refactor
+pub mod packet;
 mod reassembly_fragment;
 pub mod remote_connection;
 mod sequence_buffer;

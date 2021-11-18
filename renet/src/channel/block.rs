@@ -62,7 +62,7 @@ struct ChunkSender {
     acked: Vec<bool>,
     // TODO: using tokio Bytes would make sense here (or similar)
     // since we make a copy of the message for each client.
-    // This could use alot of memory.
+    // We could save some memory here.
     chunk_data: Payload,
     last_time_sent: Vec<Option<Instant>>,
     packets_sent: SequenceBuffer<PacketSent>,
