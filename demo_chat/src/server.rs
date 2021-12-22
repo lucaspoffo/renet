@@ -7,7 +7,7 @@ use renet_udp::{
     renet::{
         error::RenetError,
         remote_connection::ConnectionConfig,
-        server::{ConnectionPermission, SendTarget, ServerConfig, ServerEvent},
+        server::{SendTarget, ServerConfig, ServerEvent},
     },
     server::UdpServer,
 };
@@ -30,7 +30,6 @@ impl ChatServer {
         let server = UdpServer::new(
             server_config,
             connection_config,
-            ConnectionPermission::All,
             reliable_channels_config(),
             socket,
         )

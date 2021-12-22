@@ -1,24 +1,13 @@
 use crate::channel::reliable::ReliableChannelConfig;
 use crate::error::{ClientNotFound, DisconnectionReason, RenetError};
-use crate::packet::{Packet, Payload};
+use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 use crate::ClientId;
 
-use bincode::Options;
 use log::{error, info};
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConnectionPermission {
-    /// All connections are allowed, except clients that are denied.
-    All,
-    /// Only clients in the allow list can connect.
-    OnlyAllowed,
-    /// Connections can't be stablished.
-    None,
-}
 
 /// Determines which clients should receive the message
 pub enum SendTarget<C> {
@@ -26,12 +15,6 @@ pub enum SendTarget<C> {
     Client(C),
     // TODO:
     // AllExcept(C),
-}
-
-impl Default for ConnectionPermission {
-    fn default() -> Self {
-        ConnectionPermission::All
-    }
 }
 
 pub struct ServerConfig {
@@ -76,9 +59,6 @@ pub struct Server<C: ClientId> {
     reliable_channels_config: Vec<ReliableChannelConfig>,
     events: VecDeque<ServerEvent<C>>,
     connection_config: ConnectionConfig,
-    allow_clients: HashSet<C>, // TODO: move again allow/deny logic to another struct
-    deny_clients: HashSet<C>,
-    connection_permission: ConnectionPermission,
     disconnect_packets: Vec<(C, Payload)>,
 }
 
@@ -86,7 +66,6 @@ impl<C: ClientId> Server<C> {
     pub fn new(
         config: ServerConfig,
         connection_config: ConnectionConfig,
-        connection_permission: ConnectionPermission,
         reliable_channels_config: Vec<ReliableChannelConfig>,
     ) -> Self {
         Self {
@@ -94,9 +73,6 @@ impl<C: ClientId> Server<C> {
             config,
             reliable_channels_config,
             connection_config,
-            connection_permission,
-            allow_clients: HashSet::new(),
-            deny_clients: HashSet::new(),
             events: VecDeque::new(),
             disconnect_packets: Vec::new(),
         }
@@ -128,37 +104,7 @@ impl<C: ClientId> Server<C> {
         self.events.pop_front()
     }
 
-    pub fn allow_client(&mut self, client_id: &C) {
-        self.allow_clients.insert(*client_id);
-        self.deny_clients.remove(client_id);
-    }
-
-    pub fn allow_connected_clients(&mut self) {
-        for client_id in self.get_clients_id().iter() {
-            self.allow_client(client_id);
-        }
-    }
-
-    pub fn deny_client(&mut self, client_id: &C) {
-        self.deny_clients.insert(*client_id);
-        self.allow_clients.remove(client_id);
-    }
-
-    pub fn set_connection_permission(&mut self, connection_permission: ConnectionPermission) {
-        self.connection_permission = connection_permission;
-    }
-
-    pub fn connection_permission(&self) -> &ConnectionPermission {
-        &self.connection_permission
-    }
-
     pub fn can_client_connect(&self, client_id: &C) -> CanConnect {
-        if self.deny_clients.contains(client_id) {
-            return CanConnect::No {
-                reason: DisconnectionReason::Denied,
-            };
-        }
-
         if self.clients.contains_key(client_id) {
             return CanConnect::No {
                 reason: DisconnectionReason::ClientAlreadyConnected,
@@ -171,27 +117,7 @@ impl<C: ClientId> Server<C> {
             };
         }
 
-        match self.connection_permission {
-            ConnectionPermission::All => CanConnect::Yes,
-            ConnectionPermission::OnlyAllowed => match self.allow_clients.contains(client_id) {
-                true => CanConnect::Yes,
-                false => CanConnect::No {
-                    reason: DisconnectionReason::Denied,
-                },
-            },
-
-            ConnectionPermission::None => CanConnect::No {
-                reason: DisconnectionReason::Denied,
-            },
-        }
-    }
-
-    pub fn allowed_clients(&self) -> Vec<C> {
-        self.allow_clients.iter().copied().collect()
-    }
-
-    pub fn denied_clients(&self) -> Vec<C> {
-        self.deny_clients.iter().copied().collect()
+        CanConnect::Yes
     }
 
     pub fn network_info(&self, client_id: C) -> Option<&NetworkInfo> {

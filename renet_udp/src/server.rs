@@ -3,7 +3,7 @@ use renet::{
     error::{ClientNotFound, DisconnectionReason},
     packet::Payload,
     remote_connection::ConnectionConfig,
-    server::{ConnectionPermission, SendTarget, Server, ServerConfig, ServerEvent},
+    server::{SendTarget, Server, ServerConfig, ServerEvent},
 };
 
 use crate::RenetUdpError;
@@ -21,7 +21,6 @@ impl UdpServer {
     pub fn new(
         config: ServerConfig,
         connection_config: ConnectionConfig,
-        connection_permission: ConnectionPermission,
         reliable_channels_config: Vec<ReliableChannelConfig>,
         socket: UdpSocket,
     ) -> Result<Self, std::io::Error> {
@@ -29,7 +28,6 @@ impl UdpServer {
         let server = Server::new(
             config,
             connection_config,
-            connection_permission,
             reliable_channels_config,
         );
         socket.set_nonblocking(true)?;
@@ -61,26 +59,6 @@ impl UdpServer {
             self.send_disconnect_packet(client_id, DisconnectionReason::DisconnectedByServer);
         }
         disconnect_clients
-    }
-
-    pub fn set_connection_permission(&mut self, connection_permission: ConnectionPermission) {
-        self.server.set_connection_permission(connection_permission);
-    }
-
-    pub fn deny_client(&mut self, client_id: &SocketAddr) {
-        self.server.deny_client(client_id);
-    }
-
-    pub fn allow_client(&mut self, client_id: &SocketAddr) {
-        self.server.allow_client(client_id);
-    }
-
-    pub fn allowed_clients(&self) -> Vec<SocketAddr> {
-        self.server.allowed_clients()
-    }
-
-    pub fn denied_clients(&self) -> Vec<SocketAddr> {
-        self.server.denied_clients()
     }
 
     pub fn update(&mut self) {

@@ -4,10 +4,7 @@ use eframe::{
     epi,
 };
 use log::error;
-use renet_udp::{
-    client::UdpClient,
-    renet::{remote_connection::ConnectionConfig, server::ConnectionPermission},
-};
+use renet_udp::{client::UdpClient, renet::remote_connection::ConnectionConfig};
 
 use std::{
     collections::HashMap,
@@ -42,7 +39,6 @@ pub struct ChatApp {
     chat_server: Option<ChatServer>,
     client: Option<UdpClient>,
     connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
-    connection_permission: ConnectionPermission,
     text_input: String,
 }
 
@@ -54,7 +50,6 @@ impl ChatApp {
             text_input,
             client,
             chat_server,
-            connection_permission,
             ..
         } = self;
 
@@ -67,7 +62,7 @@ impl ChatApp {
             .default_width(200.0)
             .show(ctx, |ui| {
                 if let Some(chat_server) = chat_server {
-                    draw_host_commands(chat_server, connection_permission, ui);
+                    draw_host_commands(chat_server, ui);
                 }
                 ui.vertical_centered(|ui| {
                     ui.heading("Clients");
@@ -252,10 +247,6 @@ impl ChatApp {
                 self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
-            } else {
-                chat_server
-                    .server
-                    .set_connection_permission(self.connection_permission.clone());
             }
         }
 
@@ -302,11 +293,7 @@ impl ChatApp {
     }
 }
 
-fn draw_host_commands(
-    chat_server: &mut ChatServer,
-    connection_permission: &mut ConnectionPermission,
-    ui: &mut Ui,
-) {
+fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
     ui.vertical_centered(|ui| {
         ui.heading("Server Commands");
     });
@@ -324,50 +311,16 @@ fn draw_host_commands(
         ui.separator();
     }
 
-    egui::ComboBox::from_label("Take your pick")
-        .selected_text(format!("{:?}", connection_permission))
-        .show_ui(ui, |ui| {
-            ui.selectable_value(connection_permission, ConnectionPermission::All, "All");
-            ui.selectable_value(
-                connection_permission,
-                ConnectionPermission::OnlyAllowed,
-                "Only allowed",
-            );
-            ui.selectable_value(connection_permission, ConnectionPermission::None, "None");
-        });
-
     egui::ScrollArea::auto_sized().show(ui, |ui| {
         for client_id in chat_server.server.get_clients_id().into_iter() {
             ui.label(format!("Client {}", client_id));
             ui.horizontal(|ui| {
                 if ui.button("disconnect").clicked() {
-                    chat_server.server.disconnect(&client_id);
-                }
-
-                if ui.button("allow").clicked() {
-                    chat_server.server.allow_client(&client_id);
-                }
-
-                if ui.button("deny").clicked() {
-                    chat_server.server.deny_client(&client_id);
+                    if let Err(e) = chat_server.server.disconnect(&client_id) {
+                        error!("{}", e);
+                    }
                 }
             });
-        }
-    });
-
-    ui.separator();
-    ui.label("Allowed Clients");
-    egui::ScrollArea::auto_sized().show(ui, |ui| {
-        for client_id in chat_server.server.allowed_clients().into_iter() {
-            ui.label(format!("Client id {}", client_id));
-        }
-    });
-
-    ui.separator();
-    ui.label("Denied Clients");
-    egui::ScrollArea::auto_sized().show(ui, |ui| {
-        for client_id in chat_server.server.denied_clients().into_iter() {
-            ui.label(format!("Client id {}", client_id));
         }
     });
 }
