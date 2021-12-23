@@ -8,7 +8,7 @@ use renet::{
 
 use crate::RenetUdpError;
 use log::error;
-use std::net::{SocketAddr, UdpSocket};
+use std::{net::{SocketAddr, UdpSocket}, time::Duration};
 
 // TODO: use macro delegate!
 pub struct UdpServer {
@@ -61,7 +61,7 @@ impl UdpServer {
         disconnect_clients
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, duration: Duration) {
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
@@ -84,7 +84,7 @@ impl UdpServer {
             };
         }
 
-        for (client_id, reason) in self.server.update_connections().into_iter() {
+        for (client_id, reason) in self.server.update_connections(duration).into_iter() {
             self.send_disconnect_packet(&client_id, reason);
         }
     }

@@ -9,6 +9,7 @@ use renet_udp::{client::UdpClient, renet::remote_connection::ConnectionConfig};
 use std::{
     collections::HashMap,
     net::{SocketAddr, UdpSocket},
+    time::Duration,
 };
 
 use crate::server::ChatServer;
@@ -238,9 +239,9 @@ impl ChatApp {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, duration: Duration) {
         if let Some(chat_server) = self.chat_server.as_mut() {
-            if let Err(e) = chat_server.update() {
+            if let Err(e) = chat_server.update(duration) {
                 error!("Failed updating server: {}", e);
                 self.state = AppState::Start;
                 self.connection_error = Some(Box::new(e));
@@ -251,7 +252,7 @@ impl ChatApp {
         }
 
         if let Some(chat_client) = self.client.as_mut() {
-            if let Err(e) = chat_client.update() {
+            if let Err(e) = chat_client.update(duration) {
                 error!("{}", e);
             }
             if let Some(e) = chat_client.connection_error() {

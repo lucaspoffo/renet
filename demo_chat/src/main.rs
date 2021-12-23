@@ -8,7 +8,7 @@ use history_logger::{HistoryLogger, LoggerApp};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod client;
 mod history_logger;
@@ -55,6 +55,7 @@ struct App {
     application: AppType,
     chat_app: ChatApp,
     logger_app: LoggerApp,
+    last_updated: Instant
 }
 
 impl App {
@@ -67,6 +68,7 @@ impl App {
         let chat_app = ChatApp::default();
 
         Self {
+            last_updated: Instant::now(),
             application: AppType::ChatApp,
             chat_app,
             logger_app,
@@ -102,8 +104,10 @@ impl epi::App for App {
             AppType::ChatApp => self.chat_app.draw(ctx, frame),
             AppType::LoggerApp => self.logger_app.draw(ctx, frame),
         }
-
-        self.chat_app.update();
+        
+        let now = Instant::now();
+        self.chat_app.update(now - self.last_updated);
+        self.last_updated = now;
         ctx.request_repaint();
     }
 }

@@ -1,24 +1,32 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Timer {
     duration: Duration,
-    start: Instant,
+    elapsed: Duration,
 }
 
 impl Timer {
     pub fn new(duration: Duration) -> Self {
         Timer {
-            start: Instant::now(),
+            elapsed: Duration::ZERO,
             duration,
         }
     }
 
     pub fn reset(&mut self) {
-        self.start = Instant::now();
+        self.elapsed = Duration::ZERO;
+    }
+
+    pub fn advance(&mut self, duration: Duration) {
+        self.elapsed += duration;
+    }
+
+    pub fn finish(&mut self) {
+        self.elapsed = self.duration;
     }
 
     pub fn is_finished(&self) -> bool {
-        Instant::now().saturating_duration_since(self.start) > self.duration
+        self.elapsed >= self.duration
     }
 }

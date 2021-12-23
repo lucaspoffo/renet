@@ -1,11 +1,12 @@
-use crate::packet::ReliableChannelData;
+use crate::error::RenetError;
+use crate::packet::{Payload, ReliableChannelData};
 use crate::sequence_buffer::SequenceBuffer;
-use crate::{error::RenetError, packet::Payload};
+use crate::timer::Timer;
 
 use bincode::Options;
 use serde::{Deserialize, Serialize};
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReliableMessage {
@@ -13,52 +14,16 @@ pub struct ReliableMessage {
     payload: Payload,
 }
 
-impl ReliableMessage {
-    pub fn new(id: u16, payload: Payload) -> Self {
-        Self { id, payload }
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ReliableMessageSent {
     reliable_message: ReliableMessage,
-    last_time_sent: Option<Instant>,
-}
-
-impl ReliableMessageSent {
-    pub fn new(reliable_message: ReliableMessage) -> Self {
-        Self {
-            reliable_message,
-            last_time_sent: None,
-        }
-    }
+    resend_timer: Timer,
 }
 
 #[derive(Debug, Clone)]
 struct PacketSent {
     acked: bool,
-    time_sent: Instant,
     messages_id: Vec<u16>,
-}
-
-impl PacketSent {
-    pub fn new(messages_id: Vec<u16>) -> Self {
-        Self {
-            acked: false,
-            time_sent: Instant::now(),
-            messages_id,
-        }
-    }
-}
-
-impl Default for PacketSent {
-    fn default() -> Self {
-        Self {
-            acked: false,
-            time_sent: Instant::now(),
-            messages_id: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -68,18 +33,6 @@ pub struct ReliableChannelConfig {
     pub message_queue_size: usize,
     pub packet_budget: u64,
     pub message_resend_time: Duration,
-}
-
-impl Default for ReliableChannelConfig {
-    fn default() -> Self {
-        Self {
-            channel_id: 0,
-            sent_packet_buffer_size: 1024,
-            message_queue_size: 1024,
-            packet_budget: 1200,
-            message_resend_time: Duration::from_millis(100),
-        }
-    }
 }
 
 pub struct ReliableChannel {
@@ -95,6 +48,44 @@ pub struct ReliableChannel {
     out_of_sync: bool,
 }
 
+impl ReliableMessage {
+    pub fn new(id: u16, payload: Payload) -> Self {
+        Self { id, payload }
+    }
+}
+
+impl ReliableMessageSent {
+    pub fn new(reliable_message: ReliableMessage, resend_time: Duration) -> Self {
+        let mut resend_timer = Timer::new(resend_time);
+        resend_timer.finish();
+        Self {
+            reliable_message,
+            resend_timer,
+        }
+    }
+}
+
+impl PacketSent {
+    pub fn new(messages_id: Vec<u16>) -> Self {
+        Self {
+            acked: false,
+            messages_id,
+        }
+    }
+}
+
+impl Default for ReliableChannelConfig {
+    fn default() -> Self {
+        Self {
+            channel_id: 0,
+            sent_packet_buffer_size: 1024,
+            message_queue_size: 1024,
+            packet_budget: 1200,
+            message_resend_time: Duration::from_millis(100),
+        }
+    }
+}
+
 impl ReliableChannel {
     pub fn new(config: ReliableChannelConfig) -> Self {
         Self {
@@ -108,6 +99,16 @@ impl ReliableChannel {
             oldest_unacked_message_id: 0,
             config,
             out_of_sync: false,
+        }
+    }
+
+    pub fn advance_time(&mut self, duration: Duration) {
+        let message_limit = self.config.message_queue_size;
+        for i in 0..message_limit {
+            let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
+            if let Some(message) = self.messages_send.get_mut(message_id) {
+                message.resend_timer.advance(duration);
+            }
         }
     }
 
@@ -139,25 +140,20 @@ impl ReliableChannel {
         let message_limit = self.config.message_queue_size;
 
         let mut messages = vec![];
-        let now = Instant::now();
         for i in 0..message_limit {
             let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
             let message_send = self.messages_send.get_mut(message_id);
             if let Some(message_send) = message_send {
-                let send = match message_send.last_time_sent {
-                    Some(last_time_sent) => {
-                        (last_time_sent + self.config.message_resend_time) <= now
-                    }
-                    None => true,
-                };
+                if !message_send.resend_timer.is_finished() {
+                    continue;
+                }
 
                 let serialized_size =
                     bincode::options().serialized_size(&message_send.reliable_message)? as u64;
 
-                if send && serialized_size <= available_bytes {
+                if serialized_size <= available_bytes {
                     available_bytes -= serialized_size;
-                    message_send.last_time_sent = Some(now);
-
+                    message_send.resend_timer.reset();
                     messages.push(message_send.reliable_message.clone());
                 }
             }
@@ -209,7 +205,10 @@ impl ReliableChannel {
         }
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
-        let entry = ReliableMessageSent::new(ReliableMessage::new(message_id, message_payload));
+        let entry = ReliableMessageSent::new(
+            ReliableMessage::new(message_id, message_payload),
+            self.config.message_resend_time,
+        );
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
@@ -340,7 +339,7 @@ mod tests {
     #[test]
     fn resend_message() {
         let mut config = ReliableChannelConfig::default();
-        config.message_resend_time = Duration::from_millis(0);
+        config.message_resend_time = Duration::from_millis(100);
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
         channel.send_message(TestMessages::First.serialize());
@@ -348,7 +347,10 @@ mod tests {
         let channel_data = channel.get_messages_to_send(u64::MAX, 0).unwrap().unwrap();
         assert_eq!(channel_data.messages.len(), 1);
 
-        let channel_data = channel.get_messages_to_send(u64::MAX, 1).unwrap().unwrap();
+        assert!(channel.get_messages_to_send(u64::MAX, 1).unwrap().is_none());
+        channel.advance_time(Duration::from_millis(100));
+
+        let channel_data = channel.get_messages_to_send(u64::MAX, 2).unwrap().unwrap();
         assert_eq!(channel_data.messages.len(), 1);
     }
 

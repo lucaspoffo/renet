@@ -3,11 +3,11 @@ use renet_udp::{
     renet::{
         channel::reliable::ReliableChannelConfig,
         remote_connection::ConnectionConfig,
-        server::{ConnectionPermission, SendTarget, ServerConfig, ServerEvent},
+        server::{SendTarget, ServerConfig, ServerEvent},
     },
     server::UdpServer,
 };
-use std::net::{SocketAddr, UdpSocket};
+use std::{net::{SocketAddr, UdpSocket}, time::Instant};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
@@ -44,14 +44,15 @@ fn server(addr: SocketAddr) {
     let mut server: UdpServer = UdpServer::new(
         server_config,
         connection_config,
-        ConnectionPermission::All,
         reliable_channels_config(),
         socket,
     )
     .unwrap();
     let mut received_messages = vec![];
+    let mut last_updated = Instant::now();
     loop {
-        server.update();
+        server.update(Instant::now() - last_updated);
+        last_updated = Instant::now();
         received_messages.clear();
 
         while let Some(event) = server.get_event() {
@@ -92,8 +93,10 @@ fn client(server_addr: SocketAddr) {
     .unwrap();
     let stdin_channel = spawn_stdin_channel();
 
+    let mut last_updated = Instant::now();
     loop {
-        client.update().unwrap();
+        client.update(Instant::now() - last_updated).unwrap();
+        last_updated = Instant::now();
         match stdin_channel.try_recv() {
             Ok(text) => client.send_reliable_message(0, text.as_bytes().to_vec()),
             Err(TryRecvError::Empty) => {}

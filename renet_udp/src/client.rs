@@ -7,6 +7,7 @@ use log::debug;
 
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
+use std::time::Duration;
 
 use crate::RenetUdpError;
 
@@ -96,10 +97,11 @@ impl UdpClient {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result<(), RenetUdpError> {
+    pub fn update(&mut self, duration: Duration) -> Result<(), RenetUdpError> {
         if let Some(connection_error) = self.connection_error() {
             return Err(RenetError::ConnectionError(connection_error).into());
         }
+        self.connection.advance_time(duration);
 
         let mut buffer = vec![0; self.connection.config.max_packet_size as usize];
         loop {
@@ -116,7 +118,7 @@ impl UdpClient {
                 Err(e) => return Err(RenetUdpError::IOError(e)),
             };
 
-            self.connection.process_packet(&packet)?;
+            self.connection.process_packet(packet)?;
         }
 
         self.connection.update()?;

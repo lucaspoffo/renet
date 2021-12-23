@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 struct SentPacket {
+    // TODO: replace with Duration
     time: Instant,
     ack: bool,
     size_bytes: usize,
@@ -156,12 +157,9 @@ impl RemoteConnection {
         }
     }
 
+    // TODO: remove
     pub fn network_info(&self) -> &NetworkInfo {
         &self.network_info
-    }
-
-    pub fn has_timed_out(&mut self) -> bool {
-        self.timeout_timer.is_finished()
     }
 
     pub fn is_connected(&self) -> bool {
@@ -219,12 +217,20 @@ impl RemoteConnection {
         self.block_channel.receive_message()
     }
 
+    pub fn advance_time(&mut self, duration: Duration) {
+        self.heartbeat_timer.advance(duration);
+        self.timeout_timer.advance(duration);
+        self.block_channel.advance_time(duration);
+        for reliable_channel in self.reliable_channels.values_mut() {
+            reliable_channel.advance_time(duration);
+        }
+    }
+
     pub fn update(&mut self) -> Result<(), RenetError> {
         if let Some(reason) = self.disconnected() {
             return Err(reason.into());
         }
-
-        if self.has_timed_out() {
+        if self.timeout_timer.is_finished() {
             let reason = DisconnectionReason::TimedOut;
             self.state = ConnectionState::Disconnected { reason };
             return Err(reason.into());
@@ -249,7 +255,8 @@ impl RemoteConnection {
                 channel.process_ack(ack);
             }
         }
-        self.update_network_info();
+        self.update_sent_bandwidth();
+        self.update_received_bandwidth();
 
         Ok(())
     }
@@ -261,7 +268,7 @@ impl RemoteConnection {
 
         self.timeout_timer.reset();
         let received_bytes = packet.len();
-        let packet: Packet = bincode::options().deserialize(&packet)?;
+        let packet: Packet = bincode::options().deserialize(packet)?;
 
         let channels_messages = match packet {
             Packet::Normal(Normal {
@@ -427,12 +434,6 @@ impl RemoteConnection {
         }
     }
 
-    // TODO: can we move this logic to NetworkInfo?
-    pub fn update_network_info(&mut self) {
-        self.update_sent_bandwidth();
-        self.update_received_bandwidth();
-    }
-
     fn update_sent_bandwidth(&mut self) {
         let sample_size = self.config.sent_packets_buffer_size / 4;
         let base_sequence = self.sent_buffer.sequence().wrapping_sub(sample_size as u16);
@@ -454,6 +455,7 @@ impl RemoteConnection {
                 if sent_packet.time > end_time {
                     end_time = sent_packet.time;
                 }
+                // FIXME: check against RTT to see if it has actually dropped
                 if !sent_packet.ack {
                     packets_dropped += 1;
                 }

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    net::{SocketAddr, UdpSocket},
+    net::{SocketAddr, UdpSocket}, time::Duration,
 };
 
 use renet_udp::{
@@ -42,8 +42,8 @@ impl ChatServer {
         }
     }
 
-    pub fn update(&mut self) -> Result<(), RenetError> {
-        self.server.update();
+    pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
+        self.server.update(duration);
 
         while let Some(event) = self.server.get_event() {
             match event {
@@ -68,7 +68,7 @@ impl ChatServer {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
                         ClientMessages::Init { nick } => {
-                            if self.clients_initializing.remove(&client_id) {
+                            if self.clients_initializing.remove(client_id) {
                                 self.clients.insert(*client_id, nick.clone());
                                 let message = bincode::options()
                                     .serialize(&ServerMessages::ClientConnected(*client_id, nick))

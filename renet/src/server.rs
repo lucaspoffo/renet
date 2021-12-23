@@ -8,6 +8,7 @@ use log::{error, info};
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::time::Duration;
 
 /// Determines which clients should receive the message
 pub enum SendTarget<C> {
@@ -51,6 +52,8 @@ pub enum CanConnect {
     No { reason: DisconnectionReason },
 }
 
+// TODO: create function to return reference for remote_connection of the given id
+// Instead of reemplementing all the functions in connection, we simply make them publicly
 pub struct Server<C: ClientId> {
     // TODO: what we do with this config
     // We will use only max_players
@@ -128,7 +131,7 @@ impl<C: ClientId> Server<C> {
     }
 
     pub fn disconnect(&mut self, client_id: &C) -> Result<(), ClientNotFound> {
-        match self.clients.remove(&client_id) {
+        match self.clients.remove(client_id) {
             Some(_) => {
                 self.events.push_back(ServerEvent::ClientDisconnected(
                     *client_id,
@@ -147,7 +150,7 @@ impl<C: ClientId> Server<C> {
         }
         client_ids
     }
-
+    
     pub fn send_reliable_message<ChannelId: Into<u8>>(
         &mut self,
         send_target: SendTarget<C>,
@@ -260,10 +263,10 @@ impl<C: ClientId> Server<C> {
         self.clients.contains_key(client_id)
     }
 
-    // TODO: should we return disconnect packets here instead of pushing to a vec?
-    pub fn update_connections(&mut self) -> Vec<(C, DisconnectionReason)> {
+    pub fn update_connections(&mut self, duration: Duration) -> Vec<(C, DisconnectionReason)> {
         let mut disconnected_clients: Vec<(C, DisconnectionReason)> = vec![];
         for (&client_id, connection) in self.clients.iter_mut() {
+            connection.advance_time(duration);
             if connection.update().is_err() {
                 let reason = connection.disconnected().unwrap();
                 disconnected_clients.push((client_id, reason));

@@ -1,33 +1,10 @@
-use std::{
-    collections::VecDeque,
-    mem,
-    time::{Duration, Instant},
-};
+use std::{collections::VecDeque, mem, time::Duration};
 
 use bincode::Options;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::RenetError, packet::Payload, sequence_buffer::SequenceBuffer};
+use crate::{error::RenetError, packet::Payload, sequence_buffer::SequenceBuffer, timer::Timer};
 use log::{error, info};
-
-#[derive(Debug, Clone)]
-pub struct BlockChannelConfig {
-    pub slice_size: usize,
-    pub resend_time: Duration,
-    pub sent_packet_buffer_size: usize,
-    pub packet_budget: u64,
-}
-
-impl Default for BlockChannelConfig {
-    fn default() -> Self {
-        Self {
-            slice_size: 400,
-            resend_time: Duration::from_millis(300),
-            sent_packet_buffer_size: 256,
-            packet_budget: 2000,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SliceMessage {
@@ -43,13 +20,12 @@ struct PacketSent {
     slice_ids: Vec<u32>,
 }
 
-impl PacketSent {
-    fn new(slice_ids: Vec<u32>) -> Self {
-        Self {
-            acked: false,
-            slice_ids,
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct BlockChannelConfig {
+    pub slice_size: usize,
+    pub resend_time: Duration,
+    pub sent_packet_buffer_size: usize,
+    pub packet_budget: u64,
 }
 
 struct ChunkSender {
@@ -60,15 +36,50 @@ struct ChunkSender {
     current_slice_id: usize,
     num_acked_slices: usize,
     acked: Vec<bool>,
-    // TODO: using tokio Bytes would make sense here (or similar)
-    // since we make a copy of the message for each client.
-    // We could save some memory here.
+    // TODO: Alocate the max size for the packet
     chunk_data: Payload,
-    last_time_sent: Vec<Option<Instant>>,
+    resend_timers: Vec<Timer>,
     packets_sent: SequenceBuffer<PacketSent>,
     resend_time: Duration,
     packet_budget: u64,
+    // TODO: remove this and when trying to send return error if already sending
     messages_to_send: VecDeque<Payload>,
+}
+
+struct ChunkReceiver {
+    receiving: bool,
+    chunk_id: u16,
+    slice_size: usize,
+    num_slices: usize,
+    num_received_slices: usize,
+    received: Vec<bool>,
+    chunk_data: Payload,
+}
+
+pub struct BlockChannel {
+    sender: ChunkSender,
+    receiver: ChunkReceiver,
+    received_messages: VecDeque<Payload>,
+}
+
+impl Default for BlockChannelConfig {
+    fn default() -> Self {
+        Self {
+            slice_size: 400,
+            resend_time: Duration::from_millis(300),
+            sent_packet_buffer_size: 256,
+            packet_budget: 2000,
+        }
+    }
+}
+
+impl PacketSent {
+    fn new(slice_ids: Vec<u32>) -> Self {
+        Self {
+            acked: false,
+            slice_ids,
+        }
+    }
 }
 
 impl ChunkSender {
@@ -87,7 +98,7 @@ impl ChunkSender {
             num_acked_slices: 0,
             acked: Vec::new(),
             chunk_data: Vec::new(),
-            last_time_sent: Vec::new(),
+            resend_timers: Vec::with_capacity(sent_packet_buffer_size),
             packets_sent: SequenceBuffer::with_capacity(sent_packet_buffer_size),
             resend_time,
             packet_budget,
@@ -109,7 +120,10 @@ impl ChunkSender {
         self.num_slices = (data.len() + self.slice_size - 1) / self.slice_size;
 
         self.acked = vec![false; self.num_slices];
-        self.last_time_sent = vec![None; self.num_slices];
+        let mut resend_timer = Timer::new(self.resend_time);
+        resend_timer.finish();
+        self.resend_timers.clear();
+        self.resend_timers.resize(self.num_slices, resend_timer);
         self.chunk_data = data;
     }
 
@@ -134,11 +148,9 @@ impl ChunkSender {
             if self.acked[slice_id] {
                 continue;
             }
-
-            if let Some(last_time_sent) = self.last_time_sent[slice_id] {
-                if last_time_sent + self.resend_time > Instant::now() {
-                    continue;
-                }
+            let resend_timer = &mut self.resend_timers[slice_id];
+            if !resend_timer.is_finished() {
+                continue;
             }
 
             let start = slice_id * self.slice_size;
@@ -165,6 +177,8 @@ impl ChunkSender {
             }
 
             available_bytes -= message_size;
+            resend_timer.reset();
+
             info!(
                 "Generated SliceMessage {} from chunk_id {}. ({}/{})",
                 message.slice_id, self.chunk_id, message.slice_id, self.num_slices
@@ -201,16 +215,6 @@ impl ChunkSender {
             }
         }
     }
-}
-
-struct ChunkReceiver {
-    receiving: bool,
-    chunk_id: u16,
-    slice_size: usize,
-    num_slices: usize,
-    num_received_slices: usize,
-    received: Vec<bool>,
-    chunk_data: Payload,
 }
 
 impl ChunkReceiver {
@@ -300,18 +304,12 @@ impl ChunkReceiver {
 
         if self.num_received_slices == self.num_slices {
             info!("Received all slices for chunk {}.", self.chunk_id);
-            let block = mem::replace(&mut self.chunk_data, vec![]);
+            let block = mem::take(&mut self.chunk_data);
             return Some(block);
         }
 
         None
     }
-}
-
-pub struct BlockChannel {
-    sender: ChunkSender,
-    receiver: ChunkReceiver,
-    received_messages: VecDeque<Payload>,
 }
 
 impl BlockChannel {
@@ -328,6 +326,12 @@ impl BlockChannel {
             sender,
             receiver,
             received_messages: VecDeque::new(),
+        }
+    }
+
+    pub fn advance_time(&mut self, duration: Duration) {
+        for timer in self.sender.resend_timers.iter_mut() {
+            timer.advance(duration);
         }
     }
 
@@ -352,7 +356,7 @@ impl BlockChannel {
 
     pub fn process_slice_messages(&mut self, messages: Vec<SliceMessage>) {
         for message in messages.iter() {
-            if let Some(block) = self.receiver.process_slice_message(&message) {
+            if let Some(block) = self.receiver.process_slice_message(message) {
                 self.received_messages.push_back(block);
             }
         }
