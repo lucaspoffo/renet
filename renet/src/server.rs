@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Determines which clients should receive the message
-pub enum SendTarget<C> {
+pub enum SendTo<C> {
     All,
     Client(C),
     // TODO:
@@ -153,18 +153,18 @@ impl<C: ClientId> Server<C> {
     
     pub fn send_reliable_message<ChannelId: Into<u8>>(
         &mut self,
-        send_target: SendTarget<C>,
+        send_target: SendTo<C>,
         channel_id: ChannelId,
         message: Vec<u8>,
     ) {
         let channel_id = channel_id.into();
         match send_target {
-            SendTarget::All => {
+            SendTo::All => {
                 for remote_client in self.clients.values_mut() {
                     remote_client.send_reliable_message(channel_id, message.clone());
                 }
             }
-            SendTarget::Client(client_id) => {
+            SendTo::Client(client_id) => {
                 if let Some(remote_connection) = self.clients.get_mut(&client_id) {
                     remote_connection.send_reliable_message(channel_id, message);
                 } else {
@@ -179,16 +179,16 @@ impl<C: ClientId> Server<C> {
 
     pub fn send_unreliable_message(
         &mut self,
-        send_target: SendTarget<C>,
+        send_target: SendTo<C>,
         message: Vec<u8>, // TODO: &[u8] or Bytes
     ) {
         match send_target {
-            SendTarget::All => {
+            SendTo::All => {
                 for remote_client in self.clients.values_mut() {
                     remote_client.send_unreliable_message(message.clone());
                 }
             }
-            SendTarget::Client(client_id) => {
+            SendTo::Client(client_id) => {
                 if let Some(remote_connection) = self.clients.get_mut(&client_id) {
                     remote_connection.send_unreliable_message(message);
                 } else {
@@ -201,14 +201,14 @@ impl<C: ClientId> Server<C> {
         }
     }
 
-    pub fn send_block_message(&mut self, send_target: SendTarget<C>, message: Vec<u8>) {
+    pub fn send_block_message(&mut self, send_target: SendTo<C>, message: Vec<u8>) {
         match send_target {
-            SendTarget::All => {
+            SendTo::All => {
                 for remote_client in self.clients.values_mut() {
                     remote_client.send_block_message(message.clone());
                 }
             }
-            SendTarget::Client(client_id) => {
+            SendTo::Client(client_id) => {
                 if let Some(remote_connection) = self.clients.get_mut(&client_id) {
                     remote_connection.send_block_message(message);
                 } else {

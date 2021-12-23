@@ -3,7 +3,7 @@ use renet_udp::{
     renet::{
         channel::reliable::ReliableChannelConfig,
         remote_connection::ConnectionConfig,
-        server::{SendTarget, ServerConfig, ServerEvent},
+        server::{SendTo, ServerConfig, ServerEvent},
     },
     server::UdpServer,
 };
@@ -73,7 +73,7 @@ fn server(addr: SocketAddr) {
         }
 
         for text in received_messages.iter() {
-            server.send_reliable_message(SendTarget::All, 0, text.as_bytes().to_vec());
+            server.send_reliable_message(SendTo::All, 0, text.as_bytes().to_vec());
         }
 
         server.send_packets().unwrap();

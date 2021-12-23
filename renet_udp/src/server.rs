@@ -3,7 +3,7 @@ use renet::{
     error::{ClientNotFound, DisconnectionReason},
     packet::Payload,
     remote_connection::ConnectionConfig,
-    server::{SendTarget, Server, ServerConfig, ServerEvent},
+    server::{SendTo, Server, ServerConfig, ServerEvent},
 };
 
 use crate::RenetUdpError;
@@ -129,7 +129,7 @@ impl UdpServer {
 
     pub fn send_reliable_message<ChannelId: Into<u8>>(
         &mut self,
-        send_target: SendTarget<SocketAddr>,
+        send_target: SendTo<SocketAddr>,
         channel_id: ChannelId,
         message: Vec<u8>,
     ) {
@@ -139,13 +139,13 @@ impl UdpServer {
 
     pub fn send_unreliable_message(
         &mut self,
-        send_target: SendTarget<SocketAddr>,
+        send_target: SendTo<SocketAddr>,
         message: Vec<u8>,
     ) {
         self.server.send_unreliable_message(send_target, message)
     }
 
-    pub fn send_block_message(&mut self, send_target: SendTarget<SocketAddr>, message: Vec<u8>) {
+    pub fn send_block_message(&mut self, send_target: SendTo<SocketAddr>, message: Vec<u8>) {
         self.server.send_block_message(send_target, message)
     }
 

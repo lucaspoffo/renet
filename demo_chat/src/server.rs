@@ -7,7 +7,7 @@ use renet_udp::{
     renet::{
         error::RenetError,
         remote_connection::ConnectionConfig,
-        server::{SendTarget, ServerConfig, ServerEvent},
+        server::{SendTo, ServerConfig, ServerEvent},
     },
     server::UdpServer,
 };
@@ -57,7 +57,7 @@ impl ChatServer {
                         .serialize(&ServerMessages::ClientDisconnected(id, reason))
                         .unwrap();
                     self.server
-                        .send_reliable_message(SendTarget::All, 0, message);
+                        .send_reliable_message(SendTo::All, 0, message);
                 }
             }
         }
@@ -74,7 +74,7 @@ impl ChatServer {
                                     .serialize(&ServerMessages::ClientConnected(*client_id, nick))
                                     .unwrap();
                                 self.server
-                                    .send_reliable_message(SendTarget::All, 0, message);
+                                    .send_reliable_message(SendTo::All, 0, message);
 
                                 let init_message = ServerMessages::InitClient {
                                     clients: self.clients.clone(),
@@ -82,7 +82,7 @@ impl ChatServer {
                                 let init_message =
                                     bincode::options().serialize(&init_message).unwrap();
                                 self.server.send_reliable_message(
-                                    SendTarget::Client(*client_id),
+                                    SendTo::Client(*client_id),
                                     0,
                                     init_message,
                                 )
@@ -96,7 +96,7 @@ impl ChatServer {
                                     .serialize(&ServerMessages::ClientMessage(*client_id, text))
                                     .unwrap();
                                 self.server
-                                    .send_reliable_message(SendTarget::All, 0, message);
+                                    .send_reliable_message(SendTo::All, 0, message);
                             }
                         }
                     }
