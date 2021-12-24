@@ -492,8 +492,7 @@ impl RemoteConnection {
         let base_sequence = self
             .received_buffer
             .sequence()
-            .wrapping_sub(sample_size as u16)
-            .wrapping_add(1);
+            .wrapping_sub(sample_size as u16 - 1);
 
         let mut bytes_received = 0;
         let mut start_time = Instant::now();

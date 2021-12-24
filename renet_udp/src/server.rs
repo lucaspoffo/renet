@@ -8,7 +8,10 @@ use renet::{
 
 use crate::RenetUdpError;
 use log::error;
-use std::{net::{SocketAddr, UdpSocket}, time::Duration};
+use std::{
+    net::{SocketAddr, UdpSocket},
+    time::Duration,
+};
 
 // TODO: use macro delegate!
 pub struct UdpServer {
@@ -25,11 +28,7 @@ impl UdpServer {
         socket: UdpSocket,
     ) -> Result<Self, std::io::Error> {
         let buffer = vec![0u8; connection_config.max_packet_size as usize];
-        let server = Server::new(
-            config,
-            connection_config,
-            reliable_channels_config,
-        );
+        let server = Server::new(config, connection_config, reliable_channels_config);
         socket.set_nonblocking(true)?;
 
         Ok(Self {
@@ -137,11 +136,7 @@ impl UdpServer {
             .send_reliable_message(send_target, channel_id, message)
     }
 
-    pub fn send_unreliable_message(
-        &mut self,
-        send_target: SendTo<SocketAddr>,
-        message: Vec<u8>,
-    ) {
+    pub fn send_unreliable_message(&mut self, send_target: SendTo<SocketAddr>, message: Vec<u8>) {
         self.server.send_unreliable_message(send_target, message)
     }
 

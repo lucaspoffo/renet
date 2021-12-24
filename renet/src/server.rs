@@ -14,8 +14,7 @@ use std::time::Duration;
 pub enum SendTo<C> {
     All,
     Client(C),
-    // TODO:
-    // AllExcept(C),
+    AllExcept(C),
 }
 
 pub struct ServerConfig {
@@ -150,7 +149,7 @@ impl<C: ClientId> Server<C> {
         }
         client_ids
     }
-    
+
     pub fn send_reliable_message<ChannelId: Into<u8>>(
         &mut self,
         send_target: SendTo<C>,
@@ -161,6 +160,15 @@ impl<C: ClientId> Server<C> {
         match send_target {
             SendTo::All => {
                 for remote_client in self.clients.values_mut() {
+                    remote_client.send_reliable_message(channel_id, message.clone());
+                }
+            }
+            SendTo::AllExcept(except_id) => {
+                for (&client_id, remote_client) in self.clients.iter_mut() {
+                    if except_id == client_id {
+                        continue;
+                    }
+
                     remote_client.send_reliable_message(channel_id, message.clone());
                 }
             }
@@ -188,6 +196,15 @@ impl<C: ClientId> Server<C> {
                     remote_client.send_unreliable_message(message.clone());
                 }
             }
+            SendTo::AllExcept(except_id) => {
+                for (&client_id, remote_client) in self.clients.iter_mut() {
+                    if except_id == client_id {
+                        continue;
+                    }
+
+                    remote_client.send_unreliable_message(message.clone());
+                }
+            }
             SendTo::Client(client_id) => {
                 if let Some(remote_connection) = self.clients.get_mut(&client_id) {
                     remote_connection.send_unreliable_message(message);
@@ -205,6 +222,15 @@ impl<C: ClientId> Server<C> {
         match send_target {
             SendTo::All => {
                 for remote_client in self.clients.values_mut() {
+                    remote_client.send_block_message(message.clone());
+                }
+            }
+            SendTo::AllExcept(except_id) => {
+                for (&client_id, remote_client) in self.clients.iter_mut() {
+                    if except_id == client_id {
+                        continue;
+                    }
+
                     remote_client.send_block_message(message.clone());
                 }
             }
