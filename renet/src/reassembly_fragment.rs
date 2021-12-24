@@ -4,8 +4,6 @@ use crate::sequence_buffer::SequenceBuffer;
 
 use bincode::Options;
 use log::{error, trace};
-use std::io;
-use std::io::{Cursor, Write};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -13,7 +11,6 @@ pub struct FragmentConfig {
     pub max_fragments: usize,
     pub fragment_above: usize,
     pub fragment_size: usize,
-    pub max_count: usize,
     pub reassembly_buffer_size: usize,
 }
 
@@ -32,7 +29,6 @@ impl Default for FragmentConfig {
             max_fragments: 32,
             fragment_above: 1024,
             fragment_size: 1024,
-            max_count: 256,
             reassembly_buffer_size: 256,
         }
     }
@@ -65,8 +61,6 @@ pub enum FragmentError {
     InvalidFragmentId { sequence: u16, id: u8, total: u32 },
     #[error("fragment with sequence {sequence} and id {id} fragment already processed.")]
     AlreadyProcessed { sequence: u16, id: u8 },
-    #[error("writing fragment failed: {0}")]
-    IOError(io::Error),
     #[error("fragmentation with sequence {sequence} exceeded maximum count, got {got}, expected < {expected}")]
     ExceededMaxFragmentCount {
         sequence: u16,
@@ -77,12 +71,6 @@ pub enum FragmentError {
     OldSequence { sequence: u16 },
     #[error("bincode failed to (de)serialize: {0}")]
     BincodeError(#[from] bincode::Error),
-}
-
-impl From<io::Error> for FragmentError {
-    fn from(inner: io::Error) -> FragmentError {
-        FragmentError::IOError(inner)
-    }
 }
 
 impl SequenceBuffer<ReassemblyFragment> {
@@ -146,11 +134,8 @@ impl SequenceBuffer<ReassemblyFragment> {
             reassembly_fragment.buffer.resize(len, 0);
         }
 
-        // TODO: remove Cursor and use [start..end].copy_from_slice.
-        let mut cursor = Cursor::new(reassembly_fragment.buffer.as_mut_slice());
-        cursor.set_position(fragment_id as u64 * config.fragment_size as u64);
-        cursor.write_all(&payload)?;
-
+        let start = fragment_id as usize * config.fragment_size as usize;
+        reassembly_fragment.buffer[start..start + payload.len()].copy_from_slice(&payload);
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
             let reassembly_fragment = self
                 .remove(sequence)
