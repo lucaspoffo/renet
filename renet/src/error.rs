@@ -7,8 +7,6 @@ use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
 pub enum DisconnectionReason {
-    #[error("connection denied")]
-    Denied,
     #[error("server has exceeded maximum players capacity")]
     MaxPlayer,
     #[error("connection has timedout")]

@@ -1,4 +1,3 @@
-use crate::error::RenetError;
 use crate::packet::{Payload, ReliableChannelData};
 use crate::sequence_buffer::SequenceBuffer;
 use crate::timer::Timer;
@@ -130,7 +129,7 @@ impl ReliableChannel {
         &mut self,
         mut available_bytes: u64,
         sequence: u16,
-    ) -> Result<Option<ReliableChannelData>, RenetError> {
+    ) -> Result<Option<ReliableChannelData>, bincode::Error> {
         if !self.has_messages_to_send() {
             return Ok(None);
         }
