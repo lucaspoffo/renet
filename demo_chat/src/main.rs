@@ -24,7 +24,7 @@ fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum ClientMessages {
-    Text(String),
+    Text(u64, String),
     Init { nick: String },
 }
 
@@ -33,6 +33,7 @@ enum ServerMessages {
     ClientConnected(SocketAddr, String),
     ClientDisconnected(SocketAddr, DisconnectionReason),
     ClientMessage(SocketAddr, String),
+    MessageReceived(u64),
     InitClient {
         clients: HashMap<SocketAddr, String>,
     },

@@ -36,11 +36,13 @@ pub struct ChatApp {
     connected_server_addr: Option<SocketAddr>,
     client_port: u16,
     clients: HashMap<SocketAddr, String>,
-    messages: Vec<(SocketAddr, String)>,
+    messages: Vec<(SocketAddr, String, bool)>,
     chat_server: Option<ChatServer>,
     client: Option<UdpClient>,
     connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     text_input: String,
+    message_id: u64,
+    pending_messages: HashMap<u64, usize>
 }
 
 impl ChatApp {
@@ -51,6 +53,8 @@ impl ChatApp {
             text_input,
             client,
             chat_server,
+            pending_messages,
+            message_id,
             ..
         } = self;
 
@@ -89,9 +93,14 @@ impl ChatApp {
             });
 
             if send_message.inner {
+
                 let message = bincode::options()
-                    .serialize(&ClientMessages::Text(text_input.clone()))
+                    .serialize(&ClientMessages::Text(*message_id, text_input.clone()))
                     .unwrap();
+                let index = messages.len();
+                messages.push((client.id(), text_input.clone(), false));
+                pending_messages.insert(*message_id, index);
+                *message_id += 1;
                 text_input.clear();
                 client.send_reliable_message(0, message);
             }
@@ -99,14 +108,15 @@ impl ChatApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::auto_sized().show(ui, |ui| {
-                for (client, message) in messages.iter() {
+                for (client, message, confirmed) in messages.iter() {
                     let label = if let Some(nick) = clients.get(client) {
                         format!("{}: {}", nick, message)
                     } else {
                         format!("unknown: {}", message)
                     };
 
-                    ui.label(label);
+                    let color = if *confirmed { Color32::WHITE } else { Color32::GRAY };
+                    ui.colored_label(color, label);
                 }
             });
         });
@@ -272,10 +282,17 @@ impl ChatApp {
                             self.clients.remove(&id);
                             let message = format!("client {} disconnect: {}", id, reason);
                             self.messages
-                                .push((self.connected_server_addr.unwrap(), message));
+                                .push((self.connected_server_addr.unwrap(), message, true));
                         }
                         ServerMessages::ClientMessage(nick, text) => {
-                            self.messages.push((nick, text));
+                            self.messages.push((nick, text, true));
+                        }
+                        ServerMessages::MessageReceived(id) => {
+                            if let Some(index) = self.pending_messages.remove(&id) {
+                                if let Some(pending_message) = self.messages.get_mut(index) {
+                                    pending_message.2 = true;
+                                }
+                            }
                         }
                         ServerMessages::InitClient { clients } => {
                             if matches!(self.state, AppState::Connecting) {

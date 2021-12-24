@@ -90,13 +90,12 @@ impl ChatServer {
                                 println!("Client not initializing");
                             }
                         }
-                        ClientMessages::Text(text) => {
+                        ClientMessages::Text(id, text) => {
                             if self.clients.contains_key(client_id) {
-                                let message = bincode::options()
-                                    .serialize(&ServerMessages::ClientMessage(*client_id, text))
-                                    .unwrap();
-                                self.server
-                                    .send_reliable_message(SendTo::All, 0, message);
+                                let client_message = bincode::options().serialize(&ServerMessages::ClientMessage(*client_id, text)).unwrap();
+                                self.server.send_reliable_message(SendTo::AllExcept(*client_id), 0, client_message);
+                                let received_message = bincode::options().serialize(&ServerMessages::MessageReceived(id)).unwrap();
+                                self.server.send_reliable_message(SendTo::Client(*client_id), 0, received_message);
                             }
                         }
                     }
