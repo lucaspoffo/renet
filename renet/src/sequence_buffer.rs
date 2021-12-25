@@ -1,6 +1,7 @@
 use crate::packet::AckData;
 
-pub struct SequenceBuffer<T> {
+#[derive(Debug)]
+pub(crate) struct SequenceBuffer<T> {
     sequence: u16,
     entry_sequences: Box<[Option<u16>]>,
     entries: Box<[Option<T>]>,

@@ -2,12 +2,13 @@ use crate::channel::block::SliceMessage;
 use crate::channel::reliable::ReliableMessage;
 use crate::error::DisconnectionReason;
 
+use bincode::Options;
 use serde::{Deserialize, Serialize};
 
 pub type Payload = Vec<u8>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ReliableChannelData {
+pub(crate) struct ReliableChannelData {
     pub channel_id: u8,
     pub messages: Vec<ReliableMessage>,
 }
@@ -22,13 +23,13 @@ impl ReliableChannelData {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct AckData {
+pub(crate) struct AckData {
     pub ack: u16,
     pub ack_bits: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Packet {
+pub(crate) enum Packet {
     Normal(Normal),
     Fragment(Fragment),
     Heartbeat(HeartBeat),
@@ -36,7 +37,7 @@ pub enum Packet {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ChannelMessages {
+pub(crate) struct ChannelMessages {
     pub slice_messages: Vec<SliceMessage>,
     pub unreliable_messages: Vec<Payload>,
     pub reliable_channels_data: Vec<ReliableChannelData>,
@@ -51,23 +52,23 @@ impl ChannelMessages {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Normal {
+pub(crate) struct Normal {
     pub sequence: u16,
     pub ack_data: AckData,
     pub channel_messages: ChannelMessages,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Fragment {
-    pub sequence: u16,
+pub(crate) struct Fragment {
     pub ack_data: AckData,
+    pub sequence: u16,
     pub fragment_id: u8,
     pub num_fragments: u8,
     pub payload: Payload,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct HeartBeat {
+pub(crate) struct HeartBeat {
     pub ack_data: AckData,
 }
 
@@ -93,4 +94,10 @@ impl From<DisconnectionReason> for Packet {
     fn from(value: DisconnectionReason) -> Self {
         Self::Disconnect(value)
     }
+}
+
+pub fn disconnect_packet(reason: DisconnectionReason) -> Result<Payload, bincode::Error> {
+    let packet = Packet::Disconnect(reason);
+    let packet = bincode::options().serialize(&packet)?;
+    Ok(packet)
 }

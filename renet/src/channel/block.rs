@@ -7,7 +7,7 @@ use crate::{error::RenetError, packet::Payload, sequence_buffer::SequenceBuffer,
 use log::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SliceMessage {
+pub(crate) struct SliceMessage {
     chunk_id: u16,
     slice_id: u32,
     num_slices: u32,
@@ -28,6 +28,7 @@ pub struct BlockChannelConfig {
     pub packet_budget: u64,
 }
 
+#[derive(Debug)]
 struct ChunkSender {
     sending: bool,
     chunk_id: u16,
@@ -36,16 +37,14 @@ struct ChunkSender {
     current_slice_id: usize,
     num_acked_slices: usize,
     acked: Vec<bool>,
-    // TODO: Alocate the max size for the packet
     chunk_data: Payload,
     resend_timers: Vec<Timer>,
     packets_sent: SequenceBuffer<PacketSent>,
     resend_time: Duration,
     packet_budget: u64,
-    // TODO: remove this and when trying to send return error if already sending
-    messages_to_send: VecDeque<Payload>,
 }
 
+#[derive(Debug)]
 struct ChunkReceiver {
     receiving: bool,
     chunk_id: u16,
@@ -56,7 +55,8 @@ struct ChunkReceiver {
     chunk_data: Payload,
 }
 
-pub struct BlockChannel {
+#[derive(Debug)]
+pub(crate) struct BlockChannel {
     sender: ChunkSender,
     receiver: ChunkReceiver,
     received_messages: VecDeque<Payload>,
@@ -102,20 +102,14 @@ impl ChunkSender {
             packets_sent: SequenceBuffer::with_capacity(sent_packet_buffer_size),
             resend_time,
             packet_budget,
-            messages_to_send: VecDeque::new(),
         }
     }
 
-    fn send_message(&mut self, data: Payload) {
+    fn send_message(&mut self, data: Payload) -> Result<(), RenetError> {
         if self.sending {
-            self.messages_to_send.push_back(data);
-            return;
+            return Err(RenetError::AlreadySendingBlockMessage);
         }
 
-        self.start_sending_message(data);
-    }
-
-    fn start_sending_message(&mut self, data: Payload) {
         self.sending = true;
         self.num_slices = (data.len() + self.slice_size - 1) / self.slice_size;
 
@@ -125,6 +119,7 @@ impl ChunkSender {
         self.resend_timers.clear();
         self.resend_timers.resize(self.num_slices, resend_timer);
         self.chunk_data = data;
+        Ok(())
     }
 
     fn generate_slice_packets(
@@ -133,11 +128,7 @@ impl ChunkSender {
     ) -> Result<Vec<SliceMessage>, RenetError> {
         let mut slice_messages: Vec<SliceMessage> = vec![];
         if !self.sending {
-            if let Some(message) = self.messages_to_send.pop_front() {
-                self.start_sending_message(message);
-            } else {
-                return Ok(slice_messages);
-            }
+            return Ok(slice_messages);
         }
 
         available_bytes = available_bytes.min(self.packet_budget);
@@ -366,8 +357,8 @@ impl BlockChannel {
         self.sender.process_ack(ack);
     }
 
-    pub fn send_message(&mut self, message_payload: Payload) {
-        self.sender.send_message(message_payload);
+    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
+        self.sender.send_message(message_payload)
     }
 
     pub fn receive_message(&mut self) -> Option<Payload> {
@@ -384,7 +375,7 @@ mod tests {
         const SLICE_SIZE: usize = 10;
         let mut sender = ChunkSender::new(SLICE_SIZE, 100, Duration::from_millis(100), 30);
         let message = vec![255u8; 30];
-        sender.send_message(message.clone());
+        sender.send_message(message.clone()).unwrap();
 
         let mut receiver = ChunkReceiver::new(SLICE_SIZE);
 
@@ -410,7 +401,7 @@ mod tests {
 
         let payload = vec![7u8; 102400];
 
-        sender_channel.send_message(payload.clone());
+        sender_channel.send_message(payload.clone()).unwrap();
         let mut sequence = 0;
 
         loop {

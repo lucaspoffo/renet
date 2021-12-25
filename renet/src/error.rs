@@ -1,44 +1,77 @@
-use crate::packet::{Packet, Payload};
 use crate::reassembly_fragment::FragmentError;
 
-use bincode::Options;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Error)]
+use std::fmt;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum DisconnectionReason {
-    #[error("server has exceeded maximum players capacity")]
-    MaxPlayer,
-    #[error("connection has timedout")]
+    /// Server has exceeded maximum players capacity
+    MaxConnections,
     TimedOut,
-    #[error("disconnected by server")]
     DisconnectedByServer,
-    #[error("disconnected by client")]
     DisconnectedByClient,
-    #[error("client with same id already connected")]
     ClientAlreadyConnected,
-    #[error("reliable channel {channel_id} is out of sync, a message was dropped")]
-    ReliableChannelOutOfSync { channel_id: u8 },
+    InvalidChannelId(u8),
+    ReliableChannelOutOfSync(u8),
 }
 
-impl DisconnectionReason {
-    pub fn as_packet(&self) -> Result<Payload, RenetError> {
-        let packet = Packet::Disconnect(*self);
-        let packet = bincode::options().serialize(&packet)?;
-        Ok(packet)
+impl fmt::Display for DisconnectionReason {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use DisconnectionReason::*;
+
+        match *self {
+            MaxConnections => write!(fmt, "server has reached the limit of connections"),
+            TimedOut => write!(fmt, "connection has timed out"),
+            DisconnectedByServer => write!(fmt, "connection terminated by server"),
+            DisconnectedByClient => write!(fmt, "connection terminated by client"),
+            ClientAlreadyConnected => write!(fmt, "connection with same id alredy exists"),
+            InvalidChannelId(id) => write!(fmt, "received message with invalid channel id {}", id),
+            ReliableChannelOutOfSync(id) => write!(fmt, "reliable channel {} is out of sync", id),
+        }
     }
 }
 
-#[derive(Debug, Error)]
+// Error message not sent
+#[derive(Debug)]
 pub enum RenetError {
-    #[error("bincode failed to (de)serialize: {0}")]
-    BincodeError(#[from] bincode::Error),
-    #[error("packet fragmentation error: {0}")]
-    FragmentError(#[from] FragmentError),
-    #[error("connection error: {0}")]
-    ConnectionError(#[from] DisconnectionReason),
+    MessageSizeAboveLimit,
+    ChannelMaxMessagesLimit,
+    AlreadySendingBlockMessage,
+    ClientDisconnected(DisconnectionReason),
+    ClientNotFound,
+    FragmentError(FragmentError),
+    BincodeError(bincode::Error),
 }
 
-#[derive(Debug, Error)]
-#[error("client not found")]
-pub struct ClientNotFound;
+impl std::error::Error for RenetError {}
+
+impl fmt::Display for RenetError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use RenetError::*;
+
+        match *self {
+            MessageSizeAboveLimit => write!(fmt, "the message is above the limit size"),
+            ChannelMaxMessagesLimit => write!(fmt, "the channel has reached the maximum messages"),
+            AlreadySendingBlockMessage => {
+                write!(fmt, "the connection is already sending a block message")
+            }
+            ClientNotFound => write!(fmt, "client with given id was not found"),
+            ClientDisconnected(reason) => write!(fmt, "client is disconnected: {}", reason),
+            BincodeError(ref bincode_err) => write!(fmt, "{}", bincode_err),
+            FragmentError(ref fragment_error) => write!(fmt, "{}", fragment_error),
+        }
+    }
+}
+
+impl From<bincode::Error> for RenetError {
+    fn from(inner: bincode::Error) -> Self {
+        RenetError::BincodeError(inner)
+    }
+}
+
+impl From<FragmentError> for RenetError {
+    fn from(inner: FragmentError) -> Self {
+        RenetError::FragmentError(inner)
+    }
+}

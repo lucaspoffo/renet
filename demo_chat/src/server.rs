@@ -1,14 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
-    net::{SocketAddr, UdpSocket}, time::Duration,
+    net::{SocketAddr, UdpSocket},
+    time::Duration,
 };
 
 use renet_udp::{
-    renet::{
-        error::RenetError,
-        remote_connection::ConnectionConfig,
-        server::{SendTo, ServerConfig, ServerEvent},
-    },
+    renet::{error::RenetError, remote_connection::ConnectionConfig, server::ServerConfig},
+    server::ServerEvent,
     server::UdpServer,
 };
 
@@ -43,7 +41,7 @@ impl ChatServer {
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
-        self.server.update(duration);
+        self.server.update(duration).unwrap();
 
         while let Some(event) = self.server.get_event() {
             match event {
@@ -56,14 +54,13 @@ impl ChatServer {
                     let message = bincode::options()
                         .serialize(&ServerMessages::ClientDisconnected(id, reason))
                         .unwrap();
-                    self.server
-                        .send_reliable_message(SendTo::All, 0, message);
+                    self.server.broadcast_reliable_message(0, message);
                 }
             }
         }
 
-        for client_id in self.server.get_clients_id().iter() {
-            while let Ok(Some(message)) = self.server.receive_reliable_message(client_id, 0) {
+        for client_id in self.server.clients_id().iter() {
+            while let Some(message) = self.server.receive_reliable_message(client_id, 0) {
                 if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
@@ -73,29 +70,40 @@ impl ChatServer {
                                 let message = bincode::options()
                                     .serialize(&ServerMessages::ClientConnected(*client_id, nick))
                                     .unwrap();
-                                self.server
-                                    .send_reliable_message(SendTo::All, 0, message);
+                                self.server.broadcast_reliable_message(0, message);
 
                                 let init_message = ServerMessages::InitClient {
                                     clients: self.clients.clone(),
                                 };
                                 let init_message =
                                     bincode::options().serialize(&init_message).unwrap();
-                                self.server.send_reliable_message(
-                                    SendTo::Client(*client_id),
-                                    0,
-                                    init_message,
-                                )
+                                self.server
+                                    .send_reliable_message(client_id, 0, init_message)?;
                             } else {
                                 println!("Client not initializing");
                             }
                         }
                         ClientMessages::Text(id, text) => {
                             if self.clients.contains_key(client_id) {
-                                let client_message = bincode::options().serialize(&ServerMessages::ClientMessage(*client_id, text)).unwrap();
-                                self.server.send_reliable_message(SendTo::AllExcept(*client_id), 0, client_message);
-                                let received_message = bincode::options().serialize(&ServerMessages::MessageReceived(id)).unwrap();
-                                self.server.send_reliable_message(SendTo::Client(*client_id), 0, received_message);
+                                let client_message = bincode::options()
+                                    .serialize(&ServerMessages::ClientMessage(*client_id, text))
+                                    .unwrap();
+                                self.server.broadcast_reliable_message_except(
+                                    client_id,
+                                    0,
+                                    client_message,
+                                );
+                                let received_message = bincode::options()
+                                    .serialize(&ServerMessages::MessageReceived(id))
+                                    .unwrap();
+                                if let Err(e) = self.server.send_reliable_message(
+                                    client_id,
+                                    0,
+                                    received_message,
+                                ) {
+                                    log::error!("Error sending confirmation message: {}", e);
+                                    self.server.disconnect(client_id);
+                                }
                             }
                         }
                     }

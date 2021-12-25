@@ -1,6 +1,8 @@
+use crate::RenetUdpError;
+
 use renet::channel::reliable::ReliableChannelConfig;
+use renet::disconnect_packet;
 use renet::error::{DisconnectionReason, RenetError};
-use renet::packet::Payload;
 use renet::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
 
 use log::debug;
@@ -8,8 +10,6 @@ use log::debug;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
-
-use crate::RenetUdpError;
 
 pub struct UdpClient {
     id: SocketAddr,
@@ -45,43 +45,53 @@ impl UdpClient {
         self.connection.is_connected()
     }
 
-    pub fn connection_error(&self) -> Option<DisconnectionReason> {
+    pub fn disconnected(&self) -> Option<DisconnectionReason> {
         self.connection.disconnected()
     }
 
     pub fn disconnect(&mut self) {
-        // TODO: get packets disconnect packets to send
-        // Resend disconnect packets x times based on an constant (or config)
-        // yojimbo uses 10 disconnect packets.
         self.connection.disconnect();
+        match disconnect_packet(DisconnectionReason::DisconnectedByClient) {
+            Ok(packet) => {
+                const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
+                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
+                    if let Err(e) = self.socket.send_to(&packet, self.server_addr) {
+                        log::error!("failed to send disconnect packet to server: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("failed to serialize disconnect packet: {}", e);
+            }
+        }
     }
 
     pub fn send_reliable_message<ChannelId: Into<u8>>(
         &mut self,
         channel_id: ChannelId,
-        message: Payload,
-    ) {
+        message: Vec<u8>,
+    ) -> Result<(), RenetError> {
         self.connection
-            .send_reliable_message(channel_id.into(), message);
+            .send_reliable_message(channel_id.into(), message)
     }
 
-    pub fn send_unreliable_message(&mut self, message: Payload) {
-        self.connection.send_unreliable_message(message);
+    pub fn send_unreliable_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
+        self.connection.send_unreliable_message(message)
     }
 
-    pub fn send_block_message(&mut self, message: Payload) {
-        self.connection.send_block_message(message);
+    pub fn send_block_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
+        self.connection.send_block_message(message)
     }
 
-    pub fn receive_reliable_message(&mut self, channel_id: u8) -> Option<Payload> {
+    pub fn receive_reliable_message(&mut self, channel_id: u8) -> Option<Vec<u8>> {
         self.connection.receive_reliable_message(channel_id)
     }
 
-    pub fn receive_unreliable_message(&mut self) -> Option<Payload> {
+    pub fn receive_unreliable_message(&mut self) -> Option<Vec<u8>> {
         self.connection.receive_unreliable_message()
     }
 
-    pub fn receive_block_message(&mut self) -> Option<Payload> {
+    pub fn receive_block_message(&mut self) -> Option<Vec<u8>> {
         self.connection.receive_block_message()
     }
 
@@ -98,8 +108,10 @@ impl UdpClient {
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetUdpError> {
-        if let Some(connection_error) = self.connection_error() {
-            return Err(RenetError::ConnectionError(connection_error).into());
+        if let Some(reason) = self.connection.disconnected() {
+            return Err(RenetUdpError::RenetError(RenetError::ClientDisconnected(
+                reason,
+            )));
         }
         self.connection.advance_time(duration);
 

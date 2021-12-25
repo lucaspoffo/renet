@@ -1,3 +1,4 @@
+use crate::error::{DisconnectionReason, RenetError};
 use crate::packet::{Payload, ReliableChannelData};
 use crate::sequence_buffer::SequenceBuffer;
 use crate::timer::Timer;
@@ -8,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ReliableMessage {
+pub(crate) struct ReliableMessage {
     id: u16,
     payload: Payload,
 }
@@ -29,12 +30,15 @@ struct PacketSent {
 pub struct ReliableChannelConfig {
     pub channel_id: u8,
     pub sent_packet_buffer_size: usize,
-    pub message_queue_size: usize,
+    pub message_send_queue_size: usize,
+    pub message_receive_queue_size: usize,
+    pub max_message_size: u64,
     pub packet_budget: u64,
     pub message_resend_time: Duration,
 }
 
-pub struct ReliableChannel {
+#[derive(Debug)]
+pub(crate) struct ReliableChannel {
     config: ReliableChannelConfig,
     packets_sent: SequenceBuffer<PacketSent>,
     messages_send: SequenceBuffer<ReliableMessageSent>,
@@ -78,7 +82,9 @@ impl Default for ReliableChannelConfig {
         Self {
             channel_id: 0,
             sent_packet_buffer_size: 1024,
-            message_queue_size: 1024,
+            message_send_queue_size: 1024,
+            message_receive_queue_size: 1024,
+            max_message_size: 1200,
             packet_budget: 1200,
             message_resend_time: Duration::from_millis(100),
         }
@@ -89,8 +95,8 @@ impl ReliableChannel {
     pub fn new(config: ReliableChannelConfig) -> Self {
         Self {
             packets_sent: SequenceBuffer::with_capacity(config.sent_packet_buffer_size),
-            messages_send: SequenceBuffer::with_capacity(config.message_queue_size),
-            messages_received: SequenceBuffer::with_capacity(config.message_queue_size),
+            messages_send: SequenceBuffer::with_capacity(config.message_send_queue_size),
+            messages_received: SequenceBuffer::with_capacity(config.message_receive_queue_size),
             send_message_id: 0,
             received_message_id: 0,
             num_messages_received: 0,
@@ -102,7 +108,7 @@ impl ReliableChannel {
     }
 
     pub fn advance_time(&mut self, duration: Duration) {
-        let message_limit = self.config.message_queue_size;
+        let message_limit = self.config.message_send_queue_size;
         for i in 0..message_limit {
             let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
             if let Some(message) = self.messages_send.get_mut(message_id) {
@@ -136,7 +142,7 @@ impl ReliableChannel {
 
         available_bytes = available_bytes.min(self.config.packet_budget);
 
-        let message_limit = self.config.message_queue_size;
+        let message_limit = self.config.message_send_queue_size;
 
         let mut messages = vec![];
         for i in 0..message_limit {
@@ -196,11 +202,16 @@ impl ReliableChannel {
         }
     }
 
-    pub fn send_message(&mut self, message_payload: Payload) {
+    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
         let message_id = self.send_message_id;
         if !self.messages_send.available(message_id) {
             self.out_of_sync = true;
-            return;
+            let reason = DisconnectionReason::ReliableChannelOutOfSync(self.config.channel_id);
+            return Err(RenetError::ClientDisconnected(reason));
+        }
+
+        if message_payload.len() as u64 > self.config.max_message_size {
+            return Err(RenetError::MessageSizeAboveLimit);
         }
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
@@ -211,6 +222,7 @@ impl ReliableChannel {
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
+        Ok(())
     }
 
     pub fn receive_message(&mut self) -> Option<Payload> {
@@ -268,7 +280,9 @@ mod tests {
         assert!(!channel.has_messages_to_send());
         assert_eq!(channel.num_messages_sent, 0);
 
-        channel.send_message(TestMessages::Second(0).serialize());
+        channel
+            .send_message(TestMessages::Second(0).serialize())
+            .unwrap();
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
@@ -315,8 +329,8 @@ mod tests {
         let config = ReliableChannelConfig::default();
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
-        channel.send_message(first_message.serialize());
-        channel.send_message(second_message.serialize());
+        channel.send_message(first_message.serialize()).unwrap();
+        channel.send_message(second_message.serialize()).unwrap();
 
         let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
 
@@ -341,7 +355,9 @@ mod tests {
         config.message_resend_time = Duration::from_millis(100);
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
-        channel.send_message(TestMessages::First.serialize());
+        channel
+            .send_message(TestMessages::First.serialize())
+            .unwrap();
 
         let channel_data = channel.get_messages_to_send(u64::MAX, 0).unwrap().unwrap();
         assert_eq!(channel_data.messages.len(), 1);
@@ -356,14 +372,18 @@ mod tests {
     #[test]
     fn out_of_sync() {
         let config = ReliableChannelConfig {
-            message_queue_size: 1,
+            message_send_queue_size: 1,
             ..Default::default()
         };
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
-        channel.send_message(TestMessages::Second(0).serialize());
+        channel
+            .send_message(TestMessages::Second(0).serialize())
+            .unwrap();
 
-        channel.send_message(TestMessages::Second(0).serialize());
+        assert!(channel
+            .send_message(TestMessages::Second(0).serialize())
+            .is_err());
         assert!(matches!(channel.out_of_sync(), true));
     }
 }

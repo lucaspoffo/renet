@@ -4,7 +4,10 @@ use eframe::{
     epi,
 };
 use log::error;
-use renet_udp::{client::UdpClient, renet::remote_connection::ConnectionConfig};
+use renet_udp::{
+    client::UdpClient,
+    renet::{error::RenetError, remote_connection::ConnectionConfig},
+};
 
 use std::{
     collections::HashMap,
@@ -42,7 +45,7 @@ pub struct ChatApp {
     connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     text_input: String,
     message_id: u64,
-    pending_messages: HashMap<u64, usize>
+    pending_messages: HashMap<u64, usize>,
 }
 
 impl ChatApp {
@@ -93,7 +96,6 @@ impl ChatApp {
             });
 
             if send_message.inner {
-
                 let message = bincode::options()
                     .serialize(&ClientMessages::Text(*message_id, text_input.clone()))
                     .unwrap();
@@ -102,7 +104,9 @@ impl ChatApp {
                 pending_messages.insert(*message_id, index);
                 *message_id += 1;
                 text_input.clear();
-                client.send_reliable_message(0, message);
+                if let Err(e) = client.send_reliable_message(0, message) {
+                    log::error!("{}", e);
+                }
             }
         });
 
@@ -115,7 +119,11 @@ impl ChatApp {
                         format!("unknown: {}", message)
                     };
 
-                    let color = if *confirmed { Color32::WHITE } else { Color32::GRAY };
+                    let color = if *confirmed {
+                        Color32::WHITE
+                    } else {
+                        Color32::GRAY
+                    };
                     ui.colored_label(color, label);
                 }
             });
@@ -173,7 +181,9 @@ impl ChatApp {
 
                             let init_message = ClientMessages::Init { nick: nick.clone() };
                             let init_message = bincode::options().serialize(&init_message).unwrap();
-                            remote_client.send_reliable_message(0, init_message);
+                            if let Err(e) = remote_client.send_reliable_message(0, init_message) {
+                                log::error!("{}", e);
+                            }
 
                             *client = Some(remote_client);
                             *connected_server_addr = Some(server_addr);
@@ -199,7 +209,9 @@ impl ChatApp {
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
-                    remote_client.send_reliable_message(0, init_message);
+                    if let Err(e) = remote_client.send_reliable_message(0, init_message) {
+                        log::error!("{}", e);
+                    }
 
                     *server = Some(chat_server);
                     *client = Some(remote_client);
@@ -265,9 +277,9 @@ impl ChatApp {
             if let Err(e) = chat_client.update(duration) {
                 error!("{}", e);
             }
-            if let Some(e) = chat_client.connection_error() {
+            if let Some(e) = chat_client.disconnected() {
                 self.state = AppState::Start;
-                self.connection_error = Some(Box::new(e));
+                self.connection_error = Some(Box::new(RenetError::ClientDisconnected(e)));
                 self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
@@ -281,8 +293,11 @@ impl ChatApp {
                         ServerMessages::ClientDisconnected(id, reason) => {
                             self.clients.remove(&id);
                             let message = format!("client {} disconnect: {}", id, reason);
-                            self.messages
-                                .push((self.connected_server_addr.unwrap(), message, true));
+                            self.messages.push((
+                                self.connected_server_addr.unwrap(),
+                                message,
+                                true,
+                            ));
                         }
                         ServerMessages::ClientMessage(nick, text) => {
                             self.messages.push((nick, text, true));
@@ -330,13 +345,11 @@ fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
     }
 
     egui::ScrollArea::auto_sized().show(ui, |ui| {
-        for client_id in chat_server.server.get_clients_id().into_iter() {
+        for client_id in chat_server.server.clients_id().into_iter() {
             ui.label(format!("Client {}", client_id));
             ui.horizontal(|ui| {
                 if ui.button("disconnect").clicked() {
-                    if let Err(e) = chat_server.server.disconnect(&client_id) {
-                        error!("{}", e);
-                    }
+                    chat_server.server.disconnect(&client_id);
                 }
             });
         }

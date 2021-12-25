@@ -1,23 +1,31 @@
 use renet::{
     channel::reliable::ReliableChannelConfig,
-    error::{ClientNotFound, DisconnectionReason},
-    packet::Payload,
+    disconnect_packet,
+    error::{DisconnectionReason, RenetError},
     remote_connection::ConnectionConfig,
-    server::{SendTo, Server, ServerConfig, ServerEvent},
+    server::{Server, ServerConfig},
 };
 
-use crate::RenetUdpError;
 use log::error;
 use std::{
+    io,
     net::{SocketAddr, UdpSocket},
     time::Duration,
+    collections::VecDeque,
 };
 
-// TODO: use macro delegate!
+#[derive(Debug)]
 pub struct UdpServer {
     socket: UdpSocket,
     server: Server<SocketAddr>,
     buffer: Vec<u8>,
+    events: VecDeque<ServerEvent>,
+}
+
+#[derive(Debug)]
+pub enum ServerEvent {
+    ClientConnected(SocketAddr),
+    ClientDisconnected(SocketAddr, DisconnectionReason),
 }
 
 impl UdpServer {
@@ -35,61 +43,60 @@ impl UdpServer {
             socket,
             server,
             buffer,
+            events: VecDeque::new(),
         })
     }
 
-    pub fn addr(&self) -> Result<SocketAddr, std::io::Error> {
+    pub fn addr(&self) -> Result<SocketAddr, io::Error> {
         self.socket.local_addr()
     }
 
-    pub fn get_event(&mut self) -> Option<ServerEvent<SocketAddr>> {
-        self.server.get_event()
+    pub fn get_event(&mut self) -> Option<ServerEvent> {
+        self.events.pop_front()
     }
 
-    pub fn disconnect(&mut self, client_id: &SocketAddr) -> Result<(), ClientNotFound> {
-        self.server.disconnect(client_id)?;
-        self.send_disconnect_packet(client_id, DisconnectionReason::DisconnectedByServer);
-        Ok(())
+    pub fn disconnect(&mut self, client_id: &SocketAddr) {
+        self.server.disconnect(client_id);
     }
 
-    pub fn disconnect_clients(&mut self) -> Vec<SocketAddr> {
-        let disconnect_clients = self.server.disconnect_clients();
-        for client_id in disconnect_clients.iter() {
-            self.send_disconnect_packet(client_id, DisconnectionReason::DisconnectedByServer);
-        }
-        disconnect_clients
+    pub fn disconnect_clients(&mut self) {
+        self.server.disconnect_all();
     }
 
-    pub fn update(&mut self, duration: Duration) {
+    pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
                     if !self.server.is_client_connected(&addr) {
                         if let Err(reason) = self.server.add_connection(&addr) {
-                            if let Ok(packet) = reason.as_packet() {
-                                if let Err(e) = self.socket.send_to(&packet, addr) {
-                                    error!("failed to send disconnect packet to {}: {}", addr, e);
-                                }
-                            }
+                            self.send_disconnect_packet(&addr, reason);
+                        } else {
+                            self.events.push_back(ServerEvent::ClientConnected(addr));
                         }
                     }
-                    match self.server.process_payload_from(&self.buffer[..len], addr) {
-                        Err(_) => {}
-                        Ok(()) => {}
+                    if let Err(e) = self.server.process_payload_from(&self.buffer[..len], &addr) {
+                        error!("Error while processing payload for {}: {}", addr, e)
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(_) => return, //Err(e),
+                Err(e) => return Err(e),
             };
         }
 
-        for (client_id, reason) in self.server.update_connections(duration).into_iter() {
+        self.server.update_connections(duration);
+        while let Some((client_id, reason)) = self.server.disconnected_client() {
+            self.events
+                .push_back(ServerEvent::ClientDisconnected(client_id, reason));
             self.send_disconnect_packet(&client_id, reason);
         }
+        Ok(())
     }
 
     fn send_disconnect_packet(&self, addr: &SocketAddr, reason: DisconnectionReason) {
-        match reason.as_packet() {
+        if matches!(reason, DisconnectionReason::DisconnectedByClient) {
+            return;
+        }
+        match disconnect_packet(reason) {
             Ok(packet) => {
                 const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
@@ -108,52 +115,99 @@ impl UdpServer {
         &mut self,
         client: &SocketAddr,
         channel_id: u8,
-    ) -> Result<Option<Payload>, ClientNotFound> {
+    ) -> Option<Vec<u8>> {
         self.server.receive_reliable_message(client, channel_id)
     }
 
-    pub fn receive_unreliable_message(
-        &mut self,
-        client: &SocketAddr,
-    ) -> Result<Option<Payload>, ClientNotFound> {
+    pub fn receive_unreliable_message(&mut self, client: &SocketAddr) -> Option<Vec<u8>> {
         self.server.receive_unreliable_message(client)
     }
 
-    pub fn receive_block_message(
-        &mut self,
-        client: &SocketAddr,
-    ) -> Result<Option<Payload>, ClientNotFound> {
+    pub fn receive_block_message(&mut self, client: &SocketAddr) -> Option<Vec<u8>> {
         self.server.receive_unreliable_message(client)
     }
 
-    pub fn send_reliable_message<ChannelId: Into<u8>>(
+    pub fn send_reliable_message(
         &mut self,
-        send_target: SendTo<SocketAddr>,
-        channel_id: ChannelId,
+        client_id: &SocketAddr,
+        channel_id: u8,
+        message: Vec<u8>,
+    ) -> Result<(), RenetError> {
+        self.server
+            .send_reliable_message(client_id, channel_id, message)
+    }
+
+    pub fn send_unreliable_message(
+        &mut self,
+        client_id: &SocketAddr,
+        message: Vec<u8>,
+    ) -> Result<(), RenetError> {
+        self.server.send_unreliable_message(client_id, message)
+    }
+
+    pub fn send_block_message(
+        &mut self,
+        client_id: &SocketAddr,
+        message: Vec<u8>,
+    ) -> Result<(), RenetError> {
+        self.server.send_block_message(client_id, message)
+    }
+
+    pub fn broadcast_reliable_message_except(
+        &mut self,
+        client_id: &SocketAddr,
+        channel_id: u8,
         message: Vec<u8>,
     ) {
         self.server
-            .send_reliable_message(send_target, channel_id, message)
+            .broadcast_reliable_message_except(client_id, channel_id, message)
     }
 
-    pub fn send_unreliable_message(&mut self, send_target: SendTo<SocketAddr>, message: Vec<u8>) {
-        self.server.send_unreliable_message(send_target, message)
+    pub fn broadcast_unreliable_message_except(
+        &mut self,
+        client_id: &SocketAddr,
+        message: Vec<u8>,
+    ) {
+        self.server
+            .broadcast_unreliable_message_except(client_id, message);
     }
 
-    pub fn send_block_message(&mut self, send_target: SendTo<SocketAddr>, message: Vec<u8>) {
-        self.server.send_block_message(send_target, message)
+    pub fn broadcast_block_message_except(&mut self, client_id: &SocketAddr, message: Vec<u8>) {
+        self.server
+            .broadcast_block_message_except(client_id, message)
     }
 
-    pub fn send_packets(&mut self) -> Result<(), RenetUdpError> {
-        let packets = self.server.get_packets_to_send()?;
-        for (addr, packet) in packets.iter() {
-            self.socket.send_to(packet, addr)?;
+    pub fn broadcast_reliable_message(&mut self, channel_id: u8, message: Vec<u8>) {
+        self.server.broadcast_reliable_message(channel_id, message);
+    }
+
+    pub fn broadcast_unreliable_message(&mut self, message: Vec<u8>) {
+        self.server.broadcast_unreliable_message(message);
+    }
+
+    pub fn broadcast_block_message(&mut self, message: Vec<u8>) {
+        self.server.broadcast_block_message(message);
+    }
+
+    pub fn send_packets(&mut self) -> Result<(), io::Error> {
+        for client_id in self.server.connections_id().iter() {
+            let packets = match self.server.get_packets_to_send(client_id) {
+                Ok(p) => p,
+                Err(e) => {
+                    self.server.disconnect(client_id);
+                    error!("Failed to get packets from {}: {}", client_id, e);
+                    continue;
+                }
+            };
+
+            for packet in packets.iter() {
+                self.socket.send_to(packet, client_id)?;
+            }
         }
-
         Ok(())
     }
 
-    pub fn get_clients_id(&self) -> Vec<SocketAddr> {
-        self.server.get_clients_id()
+    pub fn clients_id(&self) -> Vec<SocketAddr> {
+        self.server.connections_id()
     }
 }

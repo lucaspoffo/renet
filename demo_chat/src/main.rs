@@ -56,7 +56,7 @@ struct App {
     application: AppType,
     chat_app: ChatApp,
     logger_app: LoggerApp,
-    last_updated: Instant
+    last_updated: Instant,
 }
 
 impl App {
@@ -105,7 +105,7 @@ impl epi::App for App {
             AppType::ChatApp => self.chat_app.draw(ctx, frame),
             AppType::LoggerApp => self.logger_app.draw(ctx, frame),
         }
-        
+
         let now = Instant::now();
         self.chat_app.update(now - self.last_updated);
         self.last_updated = now;

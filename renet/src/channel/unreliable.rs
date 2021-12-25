@@ -1,39 +1,69 @@
-use crate::packet::Payload;
+use crate::{error::RenetError, packet::Payload};
 use std::collections::VecDeque;
 
-pub struct UnreliableChannel {
-    packet_budget: u64,
-    messages_to_send: VecDeque<Payload>,
+#[derive(Debug, Clone)]
+pub struct UnreliableChannelConfig {
+    pub packet_budget: u64,
+    pub max_message_size: u64,
+    pub message_send_queue_size: usize,
+    pub message_receive_queue_size: usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct UnreliableChannel {
+    config: UnreliableChannelConfig,
+    messages_send: VecDeque<Payload>,
     messages_received: VecDeque<Payload>,
 }
 
-impl UnreliableChannel {
-    pub fn new(packet_budget: u64) -> Self {
+impl Default for UnreliableChannelConfig {
+    fn default() -> Self {
         Self {
-            packet_budget,
-            messages_to_send: VecDeque::new(),
-            messages_received: VecDeque::new(),
+            packet_budget: 2000,
+            max_message_size: 1200,
+            message_send_queue_size: 256,
+            message_receive_queue_size: 256,
+        }
+    }
+}
+
+impl UnreliableChannel {
+    pub fn new(config: UnreliableChannelConfig) -> Self {
+        Self {
+            messages_send: VecDeque::with_capacity(config.message_send_queue_size),
+            messages_received: VecDeque::with_capacity(config.message_receive_queue_size),
+            config,
         }
     }
 
-    pub fn process_messages(&mut self, messages: Vec<Payload>) {
-        self.messages_received.extend(messages.into_iter());
+    pub fn process_messages(&mut self, mut messages: Vec<Payload>) {
+        while let Some(message) = messages.pop() {
+            if self.messages_received.len() == self.config.message_receive_queue_size {
+                // TODO(warn) exceeded limit of unreliable messages
+                return;
+            }
+            self.messages_received.push_back(message);
+        }
     }
 
     pub fn receive_message(&mut self) -> Option<Payload> {
         self.messages_received.pop_front()
     }
 
-    pub fn send_message(&mut self, message_payload: Payload) {
-        self.messages_to_send.push_back(message_payload);
+    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
+        if self.messages_send.len() > self.config.message_send_queue_size {
+            return Err(RenetError::ChannelMaxMessagesLimit);
+        }
+        self.messages_send.push_back(message_payload);
+        Ok(())
     }
 
     pub fn get_messages_to_send(&mut self, mut available_bytes: u64) -> Vec<Payload> {
         let mut messages = vec![];
 
-        available_bytes = available_bytes.min(self.packet_budget);
+        available_bytes = available_bytes.min(self.config.packet_budget);
 
-        while let Some(message) = self.messages_to_send.pop_front() {
+        while let Some(message) = self.messages_send.pop_front() {
             let message_size = message.len() as u64;
             if message_size > available_bytes {
                 break;

@@ -1,16 +1,18 @@
 use renet_udp::{
     client::UdpClient,
     renet::{
-        channel::reliable::ReliableChannelConfig,
-        remote_connection::ConnectionConfig,
-        server::{SendTo, ServerConfig, ServerEvent},
+        channel::reliable::ReliableChannelConfig, remote_connection::ConnectionConfig,
+        server::ServerConfig,
     },
-    server::UdpServer,
+    server::{ServerEvent, UdpServer},
 };
-use std::{net::{SocketAddr, UdpSocket}, time::Instant};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
+use std::{
+    net::{SocketAddr, UdpSocket},
+    time::Instant,
+};
 
 fn main() {
     println!("Usage: server [SERVER_PORT] or client [SERVER_PORT]");
@@ -51,7 +53,7 @@ fn server(addr: SocketAddr) {
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
     loop {
-        server.update(Instant::now() - last_updated);
+        server.update(Instant::now() - last_updated).unwrap();
         last_updated = Instant::now();
         received_messages.clear();
 
@@ -64,8 +66,8 @@ fn server(addr: SocketAddr) {
             }
         }
 
-        for client_id in server.get_clients_id().iter() {
-            while let Ok(Some(message)) = server.receive_reliable_message(client_id, 0) {
+        for client_id in server.clients_id().iter() {
+            while let Some(message) = server.receive_reliable_message(client_id, 0) {
                 let text = String::from_utf8(message).unwrap();
                 println!("Client {} sent text: {}", client_id, text);
                 received_messages.push(text);
@@ -73,7 +75,7 @@ fn server(addr: SocketAddr) {
         }
 
         for text in received_messages.iter() {
-            server.send_reliable_message(SendTo::All, 0, text.as_bytes().to_vec());
+            server.broadcast_reliable_message(0, text.as_bytes().to_vec());
         }
 
         server.send_packets().unwrap();
@@ -98,7 +100,9 @@ fn client(server_addr: SocketAddr) {
         client.update(Instant::now() - last_updated).unwrap();
         last_updated = Instant::now();
         match stdin_channel.try_recv() {
-            Ok(text) => client.send_reliable_message(0, text.as_bytes().to_vec()),
+            Ok(text) => client
+                .send_reliable_message(0, text.as_bytes().to_vec())
+                .unwrap(),
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }
