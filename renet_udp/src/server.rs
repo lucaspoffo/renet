@@ -18,7 +18,7 @@ use std::{
 pub struct UdpServer {
     socket: UdpSocket,
     server: Server<SocketAddr>,
-    buffer: Vec<u8>,
+    buffer: Box<[u8]>,
     events: VecDeque<ServerEvent>,
 }
 
@@ -35,7 +35,7 @@ impl UdpServer {
         reliable_channels_config: Vec<ReliableChannelConfig>,
         socket: UdpSocket,
     ) -> Result<Self, std::io::Error> {
-        let buffer = vec![0u8; connection_config.max_packet_size as usize];
+        let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
         let server = Server::new(config, connection_config, reliable_channels_config);
         socket.set_nonblocking(true)?;
 
