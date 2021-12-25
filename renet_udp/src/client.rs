@@ -66,8 +66,8 @@ impl UdpClient {
         }
     }
 
-    pub fn send_reliable_message<ChannelId: Into<u8>>(&mut self, channel_id: ChannelId, message: Vec<u8>) -> Result<(), RenetError> {
-        self.connection.send_reliable_message(channel_id.into(), message)
+    pub fn send_reliable_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
+        self.connection.send_reliable_message(channel_id, message)
     }
 
     pub fn send_unreliable_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
