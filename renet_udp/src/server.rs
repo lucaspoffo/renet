@@ -3,7 +3,7 @@ use renet::{
     disconnect_packet,
     error::{DisconnectionReason, RenetError},
     remote_connection::ConnectionConfig,
-    server::{Server, ServerConfig},
+    server::Server,
 };
 
 use log::error;
@@ -22,7 +22,7 @@ pub struct UdpServer {
     events: VecDeque<ServerEvent>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ServerEvent {
     ClientConnected(SocketAddr),
     ClientDisconnected(SocketAddr, DisconnectionReason),
@@ -30,13 +30,13 @@ pub enum ServerEvent {
 
 impl UdpServer {
     pub fn new(
-        config: ServerConfig,
+        max_clients: usize,
         connection_config: ConnectionConfig,
         reliable_channels_config: Vec<ReliableChannelConfig>,
         socket: UdpSocket,
     ) -> Result<Self, std::io::Error> {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
-        let server = Server::new(config, connection_config, reliable_channels_config);
+        let server = Server::new(max_clients, connection_config, reliable_channels_config);
         socket.set_nonblocking(true)?;
 
         Ok(Self {

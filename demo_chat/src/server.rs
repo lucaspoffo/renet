@@ -5,7 +5,7 @@ use std::{
 };
 
 use renet_udp::{
-    renet::{error::RenetError, remote_connection::ConnectionConfig, server::ServerConfig},
+    renet::{error::RenetError, remote_connection::ConnectionConfig},
     server::ServerEvent,
     server::UdpServer,
 };
@@ -23,9 +23,8 @@ pub struct ChatServer {
 impl ChatServer {
     pub fn new(addr: SocketAddr) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
-        let server_config = ServerConfig::default();
         let connection_config = ConnectionConfig::default();
-        let server = UdpServer::new(server_config, connection_config, reliable_channels_config(), socket).unwrap();
+        let server = UdpServer::new(64, connection_config, reliable_channels_config(), socket).unwrap();
 
         Self {
             server,

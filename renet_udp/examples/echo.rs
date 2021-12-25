@@ -1,6 +1,6 @@
 use renet_udp::{
     client::UdpClient,
-    renet::{channel::reliable::ReliableChannelConfig, remote_connection::ConnectionConfig, server::ServerConfig},
+    renet::{channel::reliable::ReliableChannelConfig, remote_connection::ConnectionConfig},
     server::{ServerEvent, UdpServer},
 };
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -38,9 +38,8 @@ fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
 
 fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
-    let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
-    let mut server: UdpServer = UdpServer::new(server_config, connection_config, reliable_channels_config(), socket).unwrap();
+    let mut server: UdpServer = UdpServer::new(64, connection_config, reliable_channels_config(), socket).unwrap();
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
     loop {

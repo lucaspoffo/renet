@@ -7,42 +7,16 @@ use crate::ClientId;
 use std::collections::HashMap;
 use std::time::Duration;
 
-#[derive(Debug)]
-pub struct ServerConfig {
-    pub max_clients: usize,
-    pub max_payload_size: usize,
-}
-
-impl ServerConfig {
-    pub fn new(max_clients: usize, max_payload_size: usize) -> Self {
-        Self {
-            max_clients,
-            max_payload_size,
-        }
-    }
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            max_clients: 16,
-            max_payload_size: 8 * 1024,
-        }
-    }
-}
-
 pub enum CanConnect {
     Yes,
     No { reason: DisconnectionReason },
 }
 
-// TODO: create function to return reference for remote_connection of the given id
-// Instead of reemplementing all the functions in connection, we simply make them publicly
 #[derive(Debug)]
 pub struct Server<C: ClientId> {
     // TODO: what we do with this config
     // We will use only max_players
-    config: ServerConfig,
+    max_connections: usize,
     connections: HashMap<C, RemoteConnection>,
     reliable_channels_config: Vec<ReliableChannelConfig>,
     connection_config: ConnectionConfig,
@@ -50,10 +24,10 @@ pub struct Server<C: ClientId> {
 }
 
 impl<C: ClientId> Server<C> {
-    pub fn new(config: ServerConfig, connection_config: ConnectionConfig, reliable_channels_config: Vec<ReliableChannelConfig>) -> Self {
+    pub fn new(max_connections: usize, connection_config: ConnectionConfig, reliable_channels_config: Vec<ReliableChannelConfig>) -> Self {
         Self {
+            max_connections,
             connections: HashMap::new(),
-            config,
             reliable_channels_config,
             connection_config,
             disconnected_clients: Vec::new(),
@@ -84,7 +58,7 @@ impl<C: ClientId> Server<C> {
             };
         }
 
-        if self.connections.len() == self.config.max_clients {
+        if self.connections.len() == self.max_connections {
             return CanConnect::No {
                 reason: DisconnectionReason::MaxConnections,
             };
