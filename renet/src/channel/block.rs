@@ -75,20 +75,12 @@ impl Default for BlockChannelConfig {
 
 impl PacketSent {
     fn new(slice_ids: Vec<u32>) -> Self {
-        Self {
-            acked: false,
-            slice_ids,
-        }
+        Self { acked: false, slice_ids }
     }
 }
 
 impl ChunkSender {
-    fn new(
-        slice_size: usize,
-        sent_packet_buffer_size: usize,
-        resend_time: Duration,
-        packet_budget: u64,
-    ) -> Self {
+    fn new(slice_size: usize, sent_packet_buffer_size: usize, resend_time: Duration, packet_budget: u64) -> Self {
         Self {
             sending: false,
             chunk_id: 0,
@@ -122,10 +114,7 @@ impl ChunkSender {
         Ok(())
     }
 
-    fn generate_slice_packets(
-        &mut self,
-        mut available_bytes: u64,
-    ) -> Result<Vec<SliceMessage>, RenetError> {
+    fn generate_slice_packets(&mut self, mut available_bytes: u64) -> Result<Vec<SliceMessage>, RenetError> {
         let mut slice_messages: Vec<SliceMessage> = vec![];
         if !self.sending {
             return Ok(slice_messages);
@@ -145,11 +134,7 @@ impl ChunkSender {
             }
 
             let start = slice_id * self.slice_size;
-            let end = if slice_id == self.num_slices - 1 {
-                self.chunk_data.len()
-            } else {
-                (slice_id + 1) * self.slice_size
-            };
+            let end = if slice_id == self.num_slices - 1 { self.chunk_data.len() } else { (slice_id + 1) * self.slice_size };
 
             let data = self.chunk_data[start..end].to_vec();
 
@@ -326,11 +311,7 @@ impl BlockChannel {
         }
     }
 
-    pub fn get_messages_to_send(
-        &mut self,
-        available_bytes: u64,
-        sequence: u16,
-    ) -> Result<Vec<SliceMessage>, RenetError> {
+    pub fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Result<Vec<SliceMessage>, RenetError> {
         let messages: Vec<SliceMessage> = self.sender.generate_slice_packets(available_bytes)?;
 
         if messages.is_empty() {

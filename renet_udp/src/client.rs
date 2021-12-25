@@ -66,13 +66,8 @@ impl UdpClient {
         }
     }
 
-    pub fn send_reliable_message<ChannelId: Into<u8>>(
-        &mut self,
-        channel_id: ChannelId,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
-        self.connection
-            .send_reliable_message(channel_id.into(), message)
+    pub fn send_reliable_message<ChannelId: Into<u8>>(&mut self, channel_id: ChannelId, message: Vec<u8>) -> Result<(), RenetError> {
+        self.connection.send_reliable_message(channel_id.into(), message)
     }
 
     pub fn send_unreliable_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
@@ -109,9 +104,7 @@ impl UdpClient {
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetUdpError> {
         if let Some(reason) = self.connection.disconnected() {
-            return Err(RenetUdpError::RenetError(RenetError::ClientDisconnected(
-                reason,
-            )));
+            return Err(RenetUdpError::RenetError(RenetError::ClientDisconnected(reason)));
         }
         self.connection.advance_time(duration);
 

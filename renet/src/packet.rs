@@ -15,10 +15,7 @@ pub(crate) struct ReliableChannelData {
 
 impl ReliableChannelData {
     pub fn new(channel_id: u8, messages: Vec<ReliableMessage>) -> Self {
-        Self {
-            channel_id,
-            messages,
-        }
+        Self { channel_id, messages }
     }
 }
 
@@ -45,9 +42,7 @@ pub(crate) struct ChannelMessages {
 
 impl ChannelMessages {
     pub fn is_empty(&self) -> bool {
-        self.slice_messages.is_empty()
-            && self.unreliable_messages.is_empty()
-            && self.reliable_channels_data.is_empty()
+        self.slice_messages.is_empty() && self.unreliable_messages.is_empty() && self.reliable_channels_data.is_empty()
     }
 }
 

@@ -44,11 +44,7 @@ impl Log for HistoryLogger {
         if self.enabled(record.metadata()) {
             let mut records = self.records.lock().unwrap();
             let level = record.level().to_string();
-            let target = if !record.target().is_empty() {
-                record.target()
-            } else {
-                record.module_path().unwrap_or_default()
-            };
+            let target = if !record.target().is_empty() { record.target() } else { record.module_path().unwrap_or_default() };
             let message = format!("{:<5} [{}] {}", level, target, record.args());
             println!("{}", message);
             if records.len() >= self.capacity {

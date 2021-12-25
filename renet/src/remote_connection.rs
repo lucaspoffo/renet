@@ -117,14 +117,10 @@ pub struct RemoteConnection {
 }
 
 impl RemoteConnection {
-    pub fn new(
-        config: ConnectionConfig,
-        realiable_channels_config: Vec<ReliableChannelConfig>,
-    ) -> Self {
+    pub fn new(config: ConnectionConfig, realiable_channels_config: Vec<ReliableChannelConfig>) -> Self {
         let timeout_timer = Timer::new(config.timeout_duration);
         let heartbeat_timer = Timer::new(config.heartbeat_time);
-        let reassembly_buffer =
-            SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
+        let reassembly_buffer = SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
         let received_buffer = SequenceBuffer::with_capacity(config.received_packets_buffer_size);
 
@@ -136,10 +132,7 @@ impl RemoteConnection {
             let channel_id = channel_config.channel_id;
             let reliable_channel = ReliableChannel::new(channel_config);
             let old_channel = reliable_channels.insert(channel_id, reliable_channel);
-            assert!(
-                old_channel.is_none(),
-                "found ReliableChannelConfig with duplicate channel_id"
-            );
+            assert!(old_channel.is_none(), "found ReliableChannelConfig with duplicate channel_id");
         }
 
         Self {
@@ -185,11 +178,7 @@ impl RemoteConnection {
         };
     }
 
-    pub fn send_reliable_message(
-        &mut self,
-        channel_id: u8,
-        message: Payload,
-    ) -> Result<(), RenetError> {
+    pub fn send_reliable_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
         if let Some(reason) = self.disconnected() {
             return Err(RenetError::ClientDisconnected(reason));
         }
@@ -222,10 +211,7 @@ impl RemoteConnection {
     }
 
     pub fn receive_reliable_message(&mut self, channel_id: u8) -> Option<Payload> {
-        let channel = self
-            .reliable_channels
-            .get_mut(&channel_id)
-            .expect("channel id invalid");
+        let channel = self.reliable_channels.get_mut(&channel_id).expect("channel id invalid");
         channel.receive_message()
     }
 
@@ -259,10 +245,7 @@ impl RemoteConnection {
 
         for (channel_id, reliable_channel) in self.reliable_channels.iter() {
             if reliable_channel.out_of_sync() {
-                debug!(
-                    "Client disconnected because Reliable Channel {} was out of sync.",
-                    channel_id
-                );
+                debug!("Client disconnected because Reliable Channel {} was out of sync.", channel_id);
                 let reason = DisconnectionReason::ReliableChannelOutOfSync(*channel_id);
                 self.state = ConnectionState::Disconnected { reason };
                 return Err(RenetError::ClientDisconnected(reason));
@@ -306,17 +289,14 @@ impl RemoteConnection {
                     received_packet.size_bytes += received_bytes;
                 } else {
                     let received_packet = ReceivedPacket::new(Instant::now(), received_bytes);
-                    self.received_buffer
-                        .insert(fragment.sequence, received_packet);
+                    self.received_buffer.insert(fragment.sequence, received_packet);
                 }
 
                 self.update_acket_packets(fragment.ack_data.ack, fragment.ack_data.ack_bits);
 
-                let payload = self.reassembly_buffer.handle_fragment(
-                    fragment,
-                    self.config.max_packet_size,
-                    &self.config.fragment_config,
-                )?;
+                let payload =
+                    self.reassembly_buffer
+                        .handle_fragment(fragment, self.config.max_packet_size, &self.config.fragment_config)?;
                 match payload {
                     None => return Ok(()),
                     Some(p) => p,
@@ -332,11 +312,9 @@ impl RemoteConnection {
             }
         };
 
-        self.unreliable_channel
-            .process_messages(channels_messages.unreliable_messages);
+        self.unreliable_channel.process_messages(channels_messages.unreliable_messages);
 
-        self.block_channel
-            .process_slice_messages(channels_messages.slice_messages);
+        self.block_channel.process_slice_messages(channels_messages.slice_messages);
 
         for channel_data in channels_messages.reliable_channels_data.into_iter() {
             let channel = match self.reliable_channels.get_mut(&channel_data.channel_id) {
@@ -364,23 +342,17 @@ impl RemoteConnection {
         let mut available_bytes = self.config.max_packet_size - HEADER_SIZE;
         let mut reliable_channels_data = Vec::new();
         for reliable_channel in self.reliable_channels.values_mut() {
-            if let Some(channel_data) =
-                reliable_channel.get_messages_to_send(available_bytes, sequence)?
-            {
+            if let Some(channel_data) = reliable_channel.get_messages_to_send(available_bytes, sequence)? {
                 available_bytes -= bincode::options().serialized_size(&channel_data)?;
                 reliable_channels_data.push(channel_data);
             }
         }
 
-        let unreliable_messages = self
-            .unreliable_channel
-            .get_messages_to_send(available_bytes);
+        let unreliable_messages = self.unreliable_channel.get_messages_to_send(available_bytes);
 
         available_bytes -= bincode::options().serialized_size(&unreliable_messages)?;
 
-        let slice_messages = self
-            .block_channel
-            .get_messages_to_send(available_bytes, sequence)?;
+        let slice_messages = self.block_channel.get_messages_to_send(available_bytes, sequence)?;
 
         let channel_messages = ChannelMessages {
             slice_messages,
@@ -396,23 +368,17 @@ impl RemoteConnection {
             let sent_packet = SentPacket::new(Instant::now(), packet_size as usize);
             self.sent_buffer.insert(sequence, sent_packet);
 
-            let packets: Vec<Payload> =
-                if packet_size > self.config.fragment_config.fragment_above as u64 {
-                    build_fragments(
-                        channel_messages,
-                        sequence,
-                        ack_data,
-                        &self.config.fragment_config,
-                    )?
-                } else {
-                    let packet = Packet::Normal(Normal {
-                        sequence,
-                        ack_data,
-                        channel_messages,
-                    });
-                    let packet = bincode::options().serialize(&packet)?;
-                    vec![packet]
-                };
+            let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above as u64 {
+                build_fragments(channel_messages, sequence, ack_data, &self.config.fragment_config)?
+            } else {
+                let packet = Packet::Normal(Normal {
+                    sequence,
+                    ack_data,
+                    channel_messages,
+                });
+                let packet = bincode::options().serialize(&packet)?;
+                vec![packet]
+            };
 
             self.heartbeat_timer.reset();
             return Ok(packets);
@@ -441,13 +407,10 @@ impl RemoteConnection {
                         self.acks.push(ack_sequence);
                         sent_packet.ack = true;
                         let rtt = (now - sent_packet.time).as_secs_f64();
-                        if self.network_info.rtt == 0.0 && rtt > 0.0
-                            || f64::abs(self.network_info.rtt - rtt) < 0.00001
-                        {
+                        if self.network_info.rtt == 0.0 && rtt > 0.0 || f64::abs(self.network_info.rtt - rtt) < 0.00001 {
                             self.network_info.rtt = rtt;
                         } else {
-                            self.network_info.rtt += (rtt - self.network_info.rtt)
-                                * self.config.measure_smoothing_factor;
+                            self.network_info.rtt += (rtt - self.network_info.rtt) * self.config.measure_smoothing_factor;
                         }
                     }
                 }
@@ -487,8 +450,7 @@ impl RemoteConnection {
         // Calculate packet loss
         let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
         if f64::abs(self.network_info.packet_loss - packet_loss) > 0.0001 {
-            self.network_info.packet_loss += (packet_loss - self.network_info.packet_loss)
-                * self.config.measure_smoothing_factor;
+            self.network_info.packet_loss += (packet_loss - self.network_info.packet_loss) * self.config.measure_smoothing_factor;
         } else {
             self.network_info.packet_loss = packet_loss;
         }
@@ -498,12 +460,10 @@ impl RemoteConnection {
             return;
         }
 
-        let sent_bandwidth_kbps =
-            bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
+        let sent_bandwidth_kbps = bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
         if f64::abs(self.network_info.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
-            self.network_info.sent_bandwidth_kbps += (sent_bandwidth_kbps
-                - self.network_info.sent_bandwidth_kbps)
-                * self.config.measure_smoothing_factor;
+            self.network_info.sent_bandwidth_kbps +=
+                (sent_bandwidth_kbps - self.network_info.sent_bandwidth_kbps) * self.config.measure_smoothing_factor;
         } else {
             self.network_info.sent_bandwidth_kbps = sent_bandwidth_kbps;
         }
@@ -511,19 +471,13 @@ impl RemoteConnection {
 
     fn update_received_bandwidth(&mut self) {
         let sample_size = self.config.received_packets_buffer_size / 4;
-        let base_sequence = self
-            .received_buffer
-            .sequence()
-            .wrapping_sub(sample_size as u16 - 1);
+        let base_sequence = self.received_buffer.sequence().wrapping_sub(sample_size as u16 - 1);
 
         let mut bytes_received = 0;
         let mut start_time = Instant::now();
         let mut end_time = Instant::now() - Duration::from_secs(100);
         for i in 0..sample_size {
-            if let Some(received_packet) = self
-                .received_buffer
-                .get_mut(base_sequence.wrapping_add(i as u16))
-            {
+            if let Some(received_packet) = self.received_buffer.get_mut(base_sequence.wrapping_add(i as u16)) {
                 bytes_received += received_packet.size_bytes;
                 if received_packet.time < start_time {
                     start_time = received_packet.time;
@@ -538,12 +492,10 @@ impl RemoteConnection {
             return;
         }
 
-        let received_bandwidth_kbps =
-            bytes_received as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
+        let received_bandwidth_kbps = bytes_received as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
         if f64::abs(self.network_info.received_bandwidth_kbps - received_bandwidth_kbps) > 0.0001 {
-            self.network_info.received_bandwidth_kbps += (received_bandwidth_kbps
-                - self.network_info.received_bandwidth_kbps)
-                * self.config.measure_smoothing_factor;
+            self.network_info.received_bandwidth_kbps +=
+                (received_bandwidth_kbps - self.network_info.received_bandwidth_kbps) * self.config.measure_smoothing_factor;
         } else {
             self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
         }

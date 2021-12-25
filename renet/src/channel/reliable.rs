@@ -70,10 +70,7 @@ impl ReliableMessageSent {
 
 impl PacketSent {
     pub fn new(messages_id: Vec<u16>) -> Self {
-        Self {
-            acked: false,
-            messages_id,
-        }
+        Self { acked: false, messages_id }
     }
 }
 
@@ -124,18 +121,12 @@ impl ReliableChannel {
     fn update_oldest_message_ack(&mut self) {
         let stop_id = self.messages_send.sequence();
 
-        while self.oldest_unacked_message_id != stop_id
-            && !self.messages_send.exists(self.oldest_unacked_message_id)
-        {
+        while self.oldest_unacked_message_id != stop_id && !self.messages_send.exists(self.oldest_unacked_message_id) {
             self.oldest_unacked_message_id = self.oldest_unacked_message_id.wrapping_add(1);
         }
     }
 
-    pub fn get_messages_to_send(
-        &mut self,
-        mut available_bytes: u64,
-        sequence: u16,
-    ) -> Result<Option<ReliableChannelData>, bincode::Error> {
+    pub fn get_messages_to_send(&mut self, mut available_bytes: u64, sequence: u16) -> Result<Option<ReliableChannelData>, bincode::Error> {
         if !self.has_messages_to_send() {
             return Ok(None);
         }
@@ -153,8 +144,7 @@ impl ReliableChannel {
                     continue;
                 }
 
-                let serialized_size =
-                    bincode::options().serialized_size(&message_send.reliable_message)? as u64;
+                let serialized_size = bincode::options().serialized_size(&message_send.reliable_message)? as u64;
 
                 if serialized_size <= available_bytes {
                     available_bytes -= serialized_size;
@@ -172,10 +162,7 @@ impl ReliableChannel {
 
         let packet_sent = PacketSent::new(messages_id);
         self.packets_sent.insert(sequence, packet_sent);
-        Ok(Some(ReliableChannelData::new(
-            self.config.channel_id,
-            messages,
-        )))
+        Ok(Some(ReliableChannelData::new(self.config.channel_id, messages)))
     }
 
     pub fn process_messages(&mut self, messages: Vec<ReliableMessage>) {
@@ -215,10 +202,7 @@ impl ReliableChannel {
         }
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
-        let entry = ReliableMessageSent::new(
-            ReliableMessage::new(message_id, message_payload),
-            self.config.message_resend_time,
-        );
+        let entry = ReliableMessageSent::new(ReliableMessage::new(message_id, message_payload), self.config.message_resend_time);
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
@@ -235,9 +219,7 @@ impl ReliableChannel {
         self.received_message_id = self.received_message_id.wrapping_add(1);
         self.num_messages_received += 1;
 
-        self.messages_received
-            .remove(received_message_id)
-            .map(|m| m.payload)
+        self.messages_received.remove(received_message_id).map(|m| m.payload)
     }
 
     pub fn out_of_sync(&self) -> bool {
@@ -280,16 +262,11 @@ mod tests {
         assert!(!channel.has_messages_to_send());
         assert_eq!(channel.num_messages_sent, 0);
 
-        channel
-            .send_message(TestMessages::Second(0).serialize())
-            .unwrap();
+        channel.send_message(TestMessages::Second(0).serialize()).unwrap();
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
-        let channel_data = channel
-            .get_messages_to_send(u64::MAX, sequence)
-            .unwrap()
-            .unwrap();
+        let channel_data = channel.get_messages_to_send(u64::MAX, sequence).unwrap().unwrap();
 
         assert_eq!(channel_data.messages.len(), 1);
         assert!(channel.has_messages_to_send());
@@ -334,18 +311,12 @@ mod tests {
 
         let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
 
-        let channel_data = channel
-            .get_messages_to_send(message_size, 0)
-            .unwrap()
-            .unwrap();
+        let channel_data = channel.get_messages_to_send(message_size, 0).unwrap().unwrap();
         assert_eq!(channel_data.messages.len(), 1);
 
         channel.process_ack(0);
 
-        let channel_data = channel
-            .get_messages_to_send(message_size, 1)
-            .unwrap()
-            .unwrap();
+        let channel_data = channel.get_messages_to_send(message_size, 1).unwrap().unwrap();
         assert_eq!(channel_data.messages.len(), 1);
     }
 
@@ -355,9 +326,7 @@ mod tests {
         config.message_resend_time = Duration::from_millis(100);
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
-        channel
-            .send_message(TestMessages::First.serialize())
-            .unwrap();
+        channel.send_message(TestMessages::First.serialize()).unwrap();
 
         let channel_data = channel.get_messages_to_send(u64::MAX, 0).unwrap().unwrap();
         assert_eq!(channel_data.messages.len(), 1);
@@ -377,13 +346,9 @@ mod tests {
         };
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
-        channel
-            .send_message(TestMessages::Second(0).serialize())
-            .unwrap();
+        channel.send_message(TestMessages::Second(0).serialize()).unwrap();
 
-        assert!(channel
-            .send_message(TestMessages::Second(0).serialize())
-            .is_err());
+        assert!(channel.send_message(TestMessages::Second(0).serialize()).is_err());
         assert!(matches!(channel.out_of_sync(), true));
     }
 }

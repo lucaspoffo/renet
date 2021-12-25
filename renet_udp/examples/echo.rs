@@ -1,9 +1,6 @@
 use renet_udp::{
     client::UdpClient,
-    renet::{
-        channel::reliable::ReliableChannelConfig, remote_connection::ConnectionConfig,
-        server::ServerConfig,
-    },
+    renet::{channel::reliable::ReliableChannelConfig, remote_connection::ConnectionConfig, server::ServerConfig},
     server::{ServerEvent, UdpServer},
 };
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -43,13 +40,7 @@ fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::default();
     let connection_config = ConnectionConfig::default();
-    let mut server: UdpServer = UdpServer::new(
-        server_config,
-        connection_config,
-        reliable_channels_config(),
-        socket,
-    )
-    .unwrap();
+    let mut server: UdpServer = UdpServer::new(server_config, connection_config, reliable_channels_config(), socket).unwrap();
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
     loop {
@@ -86,13 +77,7 @@ fn server(addr: SocketAddr) {
 fn client(server_addr: SocketAddr) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config = ConnectionConfig::default();
-    let mut client = UdpClient::new(
-        socket,
-        server_addr,
-        connection_config,
-        reliable_channels_config(),
-    )
-    .unwrap();
+    let mut client = UdpClient::new(socket, server_addr, connection_config, reliable_channels_config()).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
@@ -100,9 +85,7 @@ fn client(server_addr: SocketAddr) {
         client.update(Instant::now() - last_updated).unwrap();
         last_updated = Instant::now();
         match stdin_channel.try_recv() {
-            Ok(text) => client
-                .send_reliable_message(0, text.as_bytes().to_vec())
-                .unwrap(),
+            Ok(text) => client.send_reliable_message(0, text.as_bytes().to_vec()).unwrap(),
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }

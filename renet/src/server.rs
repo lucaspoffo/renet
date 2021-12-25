@@ -50,11 +50,7 @@ pub struct Server<C: ClientId> {
 }
 
 impl<C: ClientId> Server<C> {
-    pub fn new(
-        config: ServerConfig,
-        connection_config: ConnectionConfig,
-        reliable_channels_config: Vec<ReliableChannelConfig>,
-    ) -> Self {
+    pub fn new(config: ServerConfig, connection_config: ConnectionConfig, reliable_channels_config: Vec<ReliableChannelConfig>) -> Self {
         Self {
             connections: HashMap::new(),
             config,
@@ -68,10 +64,7 @@ impl<C: ClientId> Server<C> {
         if let CanConnect::No { reason } = self.can_client_connect(connection_id) {
             return Err(reason);
         }
-        let connection = RemoteConnection::new(
-            self.connection_config.clone(),
-            self.reliable_channels_config.clone(),
-        );
+        let connection = RemoteConnection::new(self.connection_config.clone(), self.reliable_channels_config.clone());
         self.connections.insert(*connection_id, connection);
         Ok(())
     }
@@ -123,42 +116,24 @@ impl<C: ClientId> Server<C> {
     pub fn broadcast_reliable_message(&mut self, channel_id: u8, message: Vec<u8>) {
         for (connection_id, connection) in self.connections.iter_mut() {
             if let Err(e) = connection.send_reliable_message(channel_id, message.clone()) {
-                log::error!(
-                    "Failed to broadcast unreliable message to {:?}: {}",
-                    connection_id,
-                    e
-                )
+                log::error!("Failed to broadcast unreliable message to {:?}: {}", connection_id, e)
             }
         }
     }
 
-    pub fn broadcast_reliable_message_except(
-        &mut self,
-        except_id: &C,
-        channel_id: u8,
-        message: Vec<u8>,
-    ) {
+    pub fn broadcast_reliable_message_except(&mut self, except_id: &C, channel_id: u8, message: Vec<u8>) {
         for (connection_id, connection) in self.connections.iter_mut() {
             if except_id == connection_id {
                 continue;
             }
 
             if let Err(e) = connection.send_reliable_message(channel_id, message.clone()) {
-                log::error!(
-                    "Failed to broadcast unreliable message to {:?}: {}",
-                    connection_id,
-                    e
-                )
+                log::error!("Failed to broadcast unreliable message to {:?}: {}", connection_id, e)
             }
         }
     }
 
-    pub fn send_reliable_message(
-        &mut self,
-        connection_id: &C,
-        channel_id: u8,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
+    pub fn send_reliable_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
         if let Some(remote_connection) = self.connections.get_mut(connection_id) {
             remote_connection.send_reliable_message(channel_id, message)
         } else {
@@ -169,11 +144,7 @@ impl<C: ClientId> Server<C> {
     pub fn broadcast_unreliable_message(&mut self, message: Vec<u8>) {
         for (connection_id, connection) in self.connections.iter_mut() {
             if let Err(e) = connection.send_unreliable_message(message.clone()) {
-                log::error!(
-                    "Failed to broadcast unreliable message to {:?}: {}",
-                    connection_id,
-                    e
-                )
+                log::error!("Failed to broadcast unreliable message to {:?}: {}", connection_id, e)
             }
         }
     }
@@ -185,20 +156,12 @@ impl<C: ClientId> Server<C> {
             }
 
             if let Err(e) = connection.send_unreliable_message(message.clone()) {
-                log::error!(
-                    "Failed to broadcast unreliable message to {:?}: {}",
-                    connection_id,
-                    e
-                )
+                log::error!("Failed to broadcast unreliable message to {:?}: {}", connection_id, e)
             }
         }
     }
 
-    pub fn send_unreliable_message(
-        &mut self,
-        connection_id: &C,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
+    pub fn send_unreliable_message(&mut self, connection_id: &C, message: Vec<u8>) -> Result<(), RenetError> {
         if let Some(remote_connection) = self.connections.get_mut(connection_id) {
             remote_connection.send_unreliable_message(message)
         } else {
@@ -209,11 +172,7 @@ impl<C: ClientId> Server<C> {
     pub fn broadcast_block_message(&mut self, message: Vec<u8>) {
         for (connection_id, connection) in self.connections.iter_mut() {
             if let Err(e) = connection.send_block_message(message.clone()) {
-                log::error!(
-                    "Failed to broadcast unreliable message to {:?}: {}",
-                    connection_id,
-                    e
-                )
+                log::error!("Failed to broadcast unreliable message to {:?}: {}", connection_id, e)
             }
         }
     }
@@ -225,20 +184,12 @@ impl<C: ClientId> Server<C> {
             }
 
             if let Err(e) = connection.send_block_message(message.clone()) {
-                log::error!(
-                    "Failed to broadcast unreliable message to {:?}: {}",
-                    connection_id,
-                    e
-                )
+                log::error!("Failed to broadcast unreliable message to {:?}: {}", connection_id, e)
             }
         }
     }
 
-    pub fn send_block_message(
-        &mut self,
-        connection_id: &C,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
+    pub fn send_block_message(&mut self, connection_id: &C, message: Vec<u8>) -> Result<(), RenetError> {
         if let Some(remote_connection) = self.connections.get_mut(connection_id) {
             remote_connection.send_block_message(message)
         } else {
@@ -246,11 +197,7 @@ impl<C: ClientId> Server<C> {
         }
     }
 
-    pub fn receive_reliable_message(
-        &mut self,
-        connection_id: &C,
-        channel_id: u8,
-    ) -> Option<Payload> {
+    pub fn receive_reliable_message(&mut self, connection_id: &C, channel_id: u8) -> Option<Payload> {
         if let Some(connection) = self.connections.get_mut(connection_id) {
             return connection.receive_reliable_message(channel_id);
         }
@@ -301,11 +248,7 @@ impl<C: ClientId> Server<C> {
         }
     }
 
-    pub fn process_payload_from(
-        &mut self,
-        payload: &[u8],
-        connection_id: &C,
-    ) -> Result<(), RenetError> {
+    pub fn process_payload_from(&mut self, payload: &[u8], connection_id: &C) -> Result<(), RenetError> {
         match self.connections.get_mut(connection_id) {
             Some(connection) => connection.process_packet(payload),
             None => Err(RenetError::ClientNotFound),

@@ -8,10 +8,10 @@ use renet::{
 
 use log::error;
 use std::{
+    collections::VecDeque,
     io,
     net::{SocketAddr, UdpSocket},
     time::Duration,
-    collections::VecDeque,
 };
 
 #[derive(Debug)]
@@ -85,8 +85,7 @@ impl UdpServer {
 
         self.server.update_connections(duration);
         while let Some((client_id, reason)) = self.server.disconnected_client() {
-            self.events
-                .push_back(ServerEvent::ClientDisconnected(client_id, reason));
+            self.events.push_back(ServerEvent::ClientDisconnected(client_id, reason));
             self.send_disconnect_packet(&client_id, reason);
         }
         Ok(())
@@ -111,11 +110,7 @@ impl UdpServer {
         }
     }
 
-    pub fn receive_reliable_message(
-        &mut self,
-        client: &SocketAddr,
-        channel_id: u8,
-    ) -> Option<Vec<u8>> {
+    pub fn receive_reliable_message(&mut self, client: &SocketAddr, channel_id: u8) -> Option<Vec<u8>> {
         self.server.receive_reliable_message(client, channel_id)
     }
 
@@ -127,54 +122,28 @@ impl UdpServer {
         self.server.receive_unreliable_message(client)
     }
 
-    pub fn send_reliable_message(
-        &mut self,
-        client_id: &SocketAddr,
-        channel_id: u8,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
-        self.server
-            .send_reliable_message(client_id, channel_id, message)
+    pub fn send_reliable_message(&mut self, client_id: &SocketAddr, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
+        self.server.send_reliable_message(client_id, channel_id, message)
     }
 
-    pub fn send_unreliable_message(
-        &mut self,
-        client_id: &SocketAddr,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
+    pub fn send_unreliable_message(&mut self, client_id: &SocketAddr, message: Vec<u8>) -> Result<(), RenetError> {
         self.server.send_unreliable_message(client_id, message)
     }
 
-    pub fn send_block_message(
-        &mut self,
-        client_id: &SocketAddr,
-        message: Vec<u8>,
-    ) -> Result<(), RenetError> {
+    pub fn send_block_message(&mut self, client_id: &SocketAddr, message: Vec<u8>) -> Result<(), RenetError> {
         self.server.send_block_message(client_id, message)
     }
 
-    pub fn broadcast_reliable_message_except(
-        &mut self,
-        client_id: &SocketAddr,
-        channel_id: u8,
-        message: Vec<u8>,
-    ) {
-        self.server
-            .broadcast_reliable_message_except(client_id, channel_id, message)
+    pub fn broadcast_reliable_message_except(&mut self, client_id: &SocketAddr, channel_id: u8, message: Vec<u8>) {
+        self.server.broadcast_reliable_message_except(client_id, channel_id, message)
     }
 
-    pub fn broadcast_unreliable_message_except(
-        &mut self,
-        client_id: &SocketAddr,
-        message: Vec<u8>,
-    ) {
-        self.server
-            .broadcast_unreliable_message_except(client_id, message);
+    pub fn broadcast_unreliable_message_except(&mut self, client_id: &SocketAddr, message: Vec<u8>) {
+        self.server.broadcast_unreliable_message_except(client_id, message);
     }
 
     pub fn broadcast_block_message_except(&mut self, client_id: &SocketAddr, message: Vec<u8>) {
-        self.server
-            .broadcast_block_message_except(client_id, message)
+        self.server.broadcast_block_message_except(client_id, message)
     }
 
     pub fn broadcast_reliable_message(&mut self, channel_id: u8, message: Vec<u8>) {

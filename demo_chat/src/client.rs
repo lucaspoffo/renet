@@ -61,9 +61,7 @@ impl ChatApp {
             ..
         } = self;
 
-        let client = client
-            .as_mut()
-            .expect("Client always exists when drawing chat.");
+        let client = client.as_mut().expect("Client always exists when drawing chat.");
 
         egui::SidePanel::right("right_panel")
             .min_width(150.0)
@@ -119,11 +117,7 @@ impl ChatApp {
                         format!("unknown: {}", message)
                     };
 
-                    let color = if *confirmed {
-                        Color32::WHITE
-                    } else {
-                        Color32::GRAY
-                    };
+                    let color = if *confirmed { Color32::WHITE } else { Color32::GRAY };
                     ui.colored_label(color, label);
                 }
             });
@@ -171,13 +165,8 @@ impl ChatApp {
                             let socket = UdpSocket::bind(client_addr).unwrap();
                             let connection_config = ConnectionConfig::default();
 
-                            let mut remote_client = UdpClient::new(
-                                socket,
-                                server_addr,
-                                connection_config,
-                                reliable_channels_config(),
-                            )
-                            .unwrap();
+                            let mut remote_client =
+                                UdpClient::new(socket, server_addr, connection_config, reliable_channels_config()).unwrap();
 
                             let init_message = ClientMessages::Init { nick: nick.clone() };
                             let init_message = bincode::options().serialize(&init_message).unwrap();
@@ -203,9 +192,7 @@ impl ChatApp {
                     let socket = UdpSocket::bind(client_addr).unwrap();
                     let connection_config = ConnectionConfig::default();
 
-                    let mut remote_client =
-                        UdpClient::new(socket, addr, connection_config, reliable_channels_config())
-                            .unwrap();
+                    let mut remote_client = UdpClient::new(socket, addr, connection_config, reliable_channels_config()).unwrap();
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
@@ -239,9 +226,7 @@ impl ChatApp {
                 .map(|i| {
                     let angle = lerp(start_angle..=end_angle, i as f64 / n_points as f64);
                     let (sin, cos) = angle.sin_cos();
-                    center
-                        + circle_radius * Vec2::new(cos as f32, sin as f32)
-                        + Vec2::new(circle_radius, 0.0)
+                    center + circle_radius * Vec2::new(cos as f32, sin as f32) + Vec2::new(circle_radius, 0.0)
                 })
                 .collect();
             ui.painter().add(Shape::Path {
@@ -293,11 +278,7 @@ impl ChatApp {
                         ServerMessages::ClientDisconnected(id, reason) => {
                             self.clients.remove(&id);
                             let message = format!("client {} disconnect: {}", id, reason);
-                            self.messages.push((
-                                self.connected_server_addr.unwrap(),
-                                message,
-                                true,
-                            ));
+                            self.messages.push((self.connected_server_addr.unwrap(), message, true));
                         }
                         ServerMessages::ClientMessage(nick, text) => {
                             self.messages.push((nick, text, true));

@@ -49,21 +49,13 @@ impl ReassemblyFragment {
 #[derive(Debug, Error)]
 pub enum FragmentError {
     #[error("fragment with sequence {sequence} has invalid number of fragments, expected {expected}, got {got}.")]
-    InvalidTotalFragment {
-        sequence: u16,
-        expected: u8,
-        got: u8,
-    },
+    InvalidTotalFragment { sequence: u16, expected: u8, got: u8 },
     #[error("fragment with sequence {sequence} has invalid id {id}, expected < {total}. ")]
     InvalidFragmentId { sequence: u16, id: u8, total: u8 },
     #[error("fragment with sequence {sequence} and id {id} fragment already processed.")]
     AlreadyProcessed { sequence: u16, id: u8 },
     #[error("fragmentation with sequence {sequence} exceeded maximum count, got {got}, expected < {expected}")]
-    ExceededMaxFragmentCount {
-        sequence: u16,
-        expected: u8,
-        got: u8,
-    },
+    ExceededMaxFragmentCount { sequence: u16, expected: u8, got: u8 },
     #[error("fragment with sequence {sequence} is too old")]
     OldSequence { sequence: u16 },
     #[error("bincode failed to (de)serialize: {0}")]
@@ -86,15 +78,14 @@ impl SequenceBuffer<ReassemblyFragment> {
         } = fragment;
 
         let reassembly_fragment = self
-            .get_or_insert_with(sequence, || {
-                ReassemblyFragment::new(sequence, num_fragments, config.fragment_size)
-            })
+            .get_or_insert_with(sequence, || ReassemblyFragment::new(sequence, num_fragments, config.fragment_size))
             .ok_or(FragmentError::OldSequence { sequence })?;
 
         let max_fragments = (max_packet_size / config.fragment_size as u64) + 1;
         assert!(
             max_fragments <= 255,
-            "Limit for fragments allowed is 255, got {}, reduce the max packet size or increase the fragment size", max_fragments
+            "Limit for fragments allowed is 255, got {}, reduce the max packet size or increase the fragment size",
+            max_fragments
         );
 
         if reassembly_fragment.num_fragments_total as u64 > max_fragments {
@@ -122,10 +113,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         }
 
         if reassembly_fragment.fragments_received[fragment_id as usize] {
-            return Err(FragmentError::AlreadyProcessed {
-                sequence,
-                id: fragment_id,
-            });
+            return Err(FragmentError::AlreadyProcessed { sequence, id: fragment_id });
         }
 
         reassembly_fragment.num_fragments_received += 1;
@@ -141,26 +129,18 @@ impl SequenceBuffer<ReassemblyFragment> {
 
         // Resize buffer to fit the last fragment size
         if fragment_id == num_fragments - 1 {
-            let len = (reassembly_fragment.num_fragments_total - 1) as usize
-                * config.fragment_size as usize
-                + payload.len();
+            let len = (reassembly_fragment.num_fragments_total - 1) as usize * config.fragment_size as usize + payload.len();
             reassembly_fragment.buffer.resize(len, 0);
         }
 
         let start = fragment_id as usize * config.fragment_size as usize;
         reassembly_fragment.buffer[start..start + payload.len()].copy_from_slice(&payload);
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
-            let reassembly_fragment = self
-                .remove(sequence)
-                .expect("ReassemblyFragment always exists here");
+            let reassembly_fragment = self.remove(sequence).expect("ReassemblyFragment always exists here");
 
-            let messages: ChannelMessages =
-                bincode::options().deserialize(&reassembly_fragment.buffer)?;
+            let messages: ChannelMessages = bincode::options().deserialize(&reassembly_fragment.buffer)?;
 
-            trace!(
-                "Completed the reassembly of packet {}.",
-                reassembly_fragment.sequence
-            );
+            trace!("Completed the reassembly of packet {}.", reassembly_fragment.sequence);
             return Ok(Some(messages));
         }
 
@@ -202,10 +182,7 @@ mod tests {
     #[test]
     fn fragment() {
         let config = FragmentConfig::default();
-        let ack_data = AckData {
-            ack: 0,
-            ack_bits: 0,
-        };
+        let ack_data = AckData { ack: 0, ack_bits: 0 };
 
         let messages = ChannelMessages {
             slice_messages: vec![],
@@ -214,8 +191,7 @@ mod tests {
         };
 
         let fragments = build_fragments(messages.clone(), 0, ack_data, &config).unwrap();
-        let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> =
-            SequenceBuffer::with_capacity(256);
+        let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> = SequenceBuffer::with_capacity(256);
         assert_eq!(3, fragments.len());
 
         let fragments: Vec<Fragment> = fragments
@@ -238,21 +214,9 @@ mod tests {
         let result = fragments_reassembly.handle_fragment(fragments[2].clone(), 250_000, &config);
         let result = result.unwrap().unwrap();
 
-        assert_eq!(
-            messages.unreliable_messages.len(),
-            result.unreliable_messages.len()
-        );
-        assert_eq!(
-            messages.unreliable_messages[0],
-            result.unreliable_messages[0]
-        );
-        assert_eq!(
-            messages.unreliable_messages[1],
-            result.unreliable_messages[1]
-        );
-        assert_eq!(
-            messages.unreliable_messages[2],
-            result.unreliable_messages[2]
-        );
+        assert_eq!(messages.unreliable_messages.len(), result.unreliable_messages.len());
+        assert_eq!(messages.unreliable_messages[0], result.unreliable_messages[0]);
+        assert_eq!(messages.unreliable_messages[1], result.unreliable_messages[1]);
+        assert_eq!(messages.unreliable_messages[2], result.unreliable_messages[2]);
     }
 }

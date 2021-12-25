@@ -34,9 +34,7 @@ enum ServerMessages {
     ClientDisconnected(SocketAddr, DisconnectionReason),
     ClientMessage(SocketAddr, String),
     MessageReceived(u64),
-    InitClient {
-        clients: HashMap<SocketAddr, String>,
-    },
+    InitClient { clients: HashMap<SocketAddr, String> },
 }
 
 fn main() {
@@ -85,17 +83,11 @@ impl epi::App for App {
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(self.application == AppType::ChatApp, "Chat App")
-                    .clicked()
-                {
+                if ui.selectable_label(self.application == AppType::ChatApp, "Chat App").clicked() {
                     self.application = AppType::ChatApp;
                 }
 
-                if ui
-                    .selectable_label(self.application == AppType::LoggerApp, "Logger App")
-                    .clicked()
-                {
+                if ui.selectable_label(self.application == AppType::LoggerApp, "Logger App").clicked() {
                     self.application = AppType::LoggerApp;
                 }
             });

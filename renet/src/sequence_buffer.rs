@@ -62,11 +62,7 @@ impl<T: Clone> SequenceBuffer<T> {
     }
 
     pub fn insert(&mut self, sequence: u16, data: T) -> Option<&mut T> {
-        if sequence_less_than(
-            sequence,
-            self.sequence
-                .wrapping_sub(self.entry_sequences.len() as u16),
-        ) {
+        if sequence_less_than(sequence, self.sequence.wrapping_sub(self.entry_sequences.len() as u16)) {
             return None;
         }
 

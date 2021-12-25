@@ -25,13 +25,7 @@ impl ChatServer {
         let socket = UdpSocket::bind(addr).unwrap();
         let server_config = ServerConfig::default();
         let connection_config = ConnectionConfig::default();
-        let server = UdpServer::new(
-            server_config,
-            connection_config,
-            reliable_channels_config(),
-            socket,
-        )
-        .unwrap();
+        let server = UdpServer::new(server_config, connection_config, reliable_channels_config(), socket).unwrap();
 
         Self {
             server,
@@ -75,10 +69,8 @@ impl ChatServer {
                                 let init_message = ServerMessages::InitClient {
                                     clients: self.clients.clone(),
                                 };
-                                let init_message =
-                                    bincode::options().serialize(&init_message).unwrap();
-                                self.server
-                                    .send_reliable_message(client_id, 0, init_message)?;
+                                let init_message = bincode::options().serialize(&init_message).unwrap();
+                                self.server.send_reliable_message(client_id, 0, init_message)?;
                             } else {
                                 println!("Client not initializing");
                             }
@@ -88,19 +80,9 @@ impl ChatServer {
                                 let client_message = bincode::options()
                                     .serialize(&ServerMessages::ClientMessage(*client_id, text))
                                     .unwrap();
-                                self.server.broadcast_reliable_message_except(
-                                    client_id,
-                                    0,
-                                    client_message,
-                                );
-                                let received_message = bincode::options()
-                                    .serialize(&ServerMessages::MessageReceived(id))
-                                    .unwrap();
-                                if let Err(e) = self.server.send_reliable_message(
-                                    client_id,
-                                    0,
-                                    received_message,
-                                ) {
+                                self.server.broadcast_reliable_message_except(client_id, 0, client_message);
+                                let received_message = bincode::options().serialize(&ServerMessages::MessageReceived(id)).unwrap();
+                                if let Err(e) = self.server.send_reliable_message(client_id, 0, received_message) {
                                     log::error!("Error sending confirmation message: {}", e);
                                     self.server.disconnect(client_id);
                                 }
