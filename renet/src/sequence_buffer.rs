@@ -66,7 +66,6 @@ impl<T: Clone> SequenceBuffer<T> {
             return None;
         }
 
-        // TODO: investigate why adding 1 here, we subtracting 1 when generating ack because of this
         if sequence_greater_than(sequence.wrapping_add(1), self.sequence) {
             self.remove_entries(u32::from(sequence));
             self.sequence = sequence.wrapping_add(1);

@@ -14,8 +14,6 @@ pub enum CanConnect {
 
 #[derive(Debug)]
 pub struct Server<C: ClientId> {
-    // TODO: what we do with this config
-    // We will use only max_players
     max_connections: usize,
     connections: HashMap<C, RemoteConnection>,
     reliable_channels_config: Vec<ReliableChannelConfig>,
@@ -201,17 +199,12 @@ impl<C: ClientId> Server<C> {
     }
 
     pub fn update_connections(&mut self, duration: Duration) {
-        let mut disconnected_clients: Vec<(C, DisconnectionReason)> = vec![];
         for (&connection_id, connection) in self.connections.iter_mut() {
             connection.advance_time(duration);
             if connection.update().is_err() {
                 let reason = connection.disconnected().unwrap();
-                disconnected_clients.push((connection_id, reason));
+                self.disconnected_clients.push((connection_id, reason));
             }
-        }
-
-        for &(connection_id, reason) in disconnected_clients.iter() {
-            self.disconnected_clients.push((connection_id, reason));
         }
     }
 
