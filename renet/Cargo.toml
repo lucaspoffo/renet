@@ -1,10 +1,11 @@
 [package]
 name = "renet"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Lucas Poffo <ltkpoffo@gmail.com>"]
 description = "Server/Client network library for multiplayer games"
 keywords = ["gamedev", "networking"]
 repository = "https://github.com/lucaspoffo/renet"
+readme = "README.md"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 
