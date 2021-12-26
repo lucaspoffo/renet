@@ -13,10 +13,16 @@ pub(crate) struct ReliableChannelData {
     pub messages: Vec<ReliableMessage>,
 }
 
-impl ReliableChannelData {
-    pub fn new(channel_id: u8, messages: Vec<ReliableMessage>) -> Self {
-        Self { channel_id, messages }
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct UnreliableChannelData {
+    pub channel_id: u8,
+    pub messages: Vec<Payload>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct BlockChannelData {
+    pub channel_id: u8,
+    pub messages: Vec<SliceMessage>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -35,14 +41,14 @@ pub(crate) enum Packet {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ChannelMessages {
-    pub slice_messages: Vec<SliceMessage>,
-    pub unreliable_messages: Vec<Payload>,
+    pub block_channels_data: Vec<BlockChannelData>,
+    pub unreliable_channels_data: Vec<UnreliableChannelData>,
     pub reliable_channels_data: Vec<ReliableChannelData>,
 }
 
 impl ChannelMessages {
     pub fn is_empty(&self) -> bool {
-        self.slice_messages.is_empty() && self.unreliable_messages.is_empty() && self.reliable_channels_data.is_empty()
+        self.block_channels_data.is_empty() && self.unreliable_channels_data.is_empty() && self.reliable_channels_data.is_empty()
     }
 }
 

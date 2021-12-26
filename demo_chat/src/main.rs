@@ -1,26 +1,18 @@
 use client::ChatApp;
 use eframe::{egui, epi};
 use log::Level;
-use renet_udp::renet::{channel::reliable::ReliableChannelConfig, error::DisconnectionReason};
+use renet_udp::renet::error::DisconnectionReason;
 use serde::{Deserialize, Serialize};
 
 use history_logger::{HistoryLogger, LoggerApp};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 mod client;
 mod history_logger;
 mod server;
-
-fn reliable_channels_config() -> Vec<ReliableChannelConfig> {
-    let reliable_config = ReliableChannelConfig {
-        message_resend_time: Duration::from_millis(500),
-        ..Default::default()
-    };
-    vec![reliable_config]
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 enum ClientMessages {

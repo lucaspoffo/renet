@@ -13,6 +13,7 @@ pub enum DisconnectionReason {
     DisconnectedByClient,
     ClientAlreadyConnected,
     InvalidChannelId(u8),
+    MismatchingChannelType(u8),
     ReliableChannelOutOfSync(u8),
 }
 
@@ -26,7 +27,8 @@ impl fmt::Display for DisconnectionReason {
             DisconnectedByServer => write!(fmt, "connection terminated by server"),
             DisconnectedByClient => write!(fmt, "connection terminated by client"),
             ClientAlreadyConnected => write!(fmt, "connection with same id alredy exists"),
-            InvalidChannelId(id) => write!(fmt, "received message with invalid channel id {}", id),
+            InvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
+            MismatchingChannelType(id) => write!(fmt, "received message from channel {} with mismatching channel type", id),
             ReliableChannelOutOfSync(id) => write!(fmt, "reliable channel {} is out of sync", id),
         }
     }

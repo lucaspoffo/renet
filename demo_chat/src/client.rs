@@ -16,7 +16,7 @@ use std::{
 };
 
 use crate::server::ChatServer;
-use crate::{reliable_channels_config, ClientMessages, ServerMessages};
+use crate::{ClientMessages, ServerMessages};
 
 #[derive(Debug)]
 enum AppState {
@@ -102,7 +102,7 @@ impl ChatApp {
                 pending_messages.insert(*message_id, index);
                 *message_id += 1;
                 text_input.clear();
-                if let Err(e) = client.send_reliable_message(0, message) {
+                if let Err(e) = client.send_message(0, message) {
                     log::error!("{}", e);
                 }
             }
@@ -165,12 +165,11 @@ impl ChatApp {
                             let socket = UdpSocket::bind(client_addr).unwrap();
                             let connection_config = ConnectionConfig::default();
 
-                            let mut remote_client =
-                                UdpClient::new(socket, server_addr, connection_config, reliable_channels_config()).unwrap();
+                            let mut remote_client = UdpClient::new(socket, server_addr, connection_config).unwrap();
 
                             let init_message = ClientMessages::Init { nick: nick.clone() };
                             let init_message = bincode::options().serialize(&init_message).unwrap();
-                            if let Err(e) = remote_client.send_reliable_message(0, init_message) {
+                            if let Err(e) = remote_client.send_message(0, init_message) {
                                 log::error!("{}", e);
                             }
 
@@ -192,11 +191,11 @@ impl ChatApp {
                     let socket = UdpSocket::bind(client_addr).unwrap();
                     let connection_config = ConnectionConfig::default();
 
-                    let mut remote_client = UdpClient::new(socket, addr, connection_config, reliable_channels_config()).unwrap();
+                    let mut remote_client = UdpClient::new(socket, addr, connection_config).unwrap();
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
-                    if let Err(e) = remote_client.send_reliable_message(0, init_message) {
+                    if let Err(e) = remote_client.send_message(0, init_message) {
                         log::error!("{}", e);
                     }
 
@@ -269,7 +268,7 @@ impl ChatApp {
                 self.chat_server = None;
                 self.client = None;
             } else {
-                if let Some(message) = chat_client.receive_reliable_message(0) {
+                while let Some(message) = chat_client.receive_message(0) {
                     let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                     match message {
                         ServerMessages::ClientConnected(id, nick) => {

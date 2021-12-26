@@ -1,8 +1,12 @@
-use crate::{error::RenetError, packet::Payload};
+use crate::{
+    error::RenetError,
+    packet::{Payload, UnreliableChannelData},
+};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 pub struct UnreliableChannelConfig {
+    pub channel_id: u8,
     pub packet_budget: u64,
     pub max_message_size: u64,
     pub message_send_queue_size: usize,
@@ -19,6 +23,7 @@ pub(crate) struct UnreliableChannel {
 impl Default for UnreliableChannelConfig {
     fn default() -> Self {
         Self {
+            channel_id: 1,
             packet_budget: 2000,
             max_message_size: 1200,
             message_send_queue_size: 256,
@@ -58,7 +63,7 @@ impl UnreliableChannel {
         Ok(())
     }
 
-    pub fn get_messages_to_send(&mut self, mut available_bytes: u64) -> Vec<Payload> {
+    pub fn get_messages_to_send(&mut self, mut available_bytes: u64) -> Option<UnreliableChannelData> {
         let mut messages = vec![];
 
         available_bytes = available_bytes.min(self.config.packet_budget);
@@ -73,6 +78,13 @@ impl UnreliableChannel {
             messages.push(message);
         }
 
-        messages
+        if messages.is_empty() {
+            return None;
+        }
+
+        Some(UnreliableChannelData {
+            channel_id: self.config.channel_id,
+            messages,
+        })
     }
 }

@@ -3,7 +3,12 @@ use std::{collections::VecDeque, mem, time::Duration};
 use bincode::Options;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::RenetError, packet::Payload, sequence_buffer::SequenceBuffer, timer::Timer};
+use crate::{
+    error::RenetError,
+    packet::{BlockChannelData, Payload},
+    sequence_buffer::SequenceBuffer,
+    timer::Timer,
+};
 use log::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +27,7 @@ struct PacketSent {
 
 #[derive(Debug, Clone)]
 pub struct BlockChannelConfig {
+    pub channel_id: u8,
     pub slice_size: usize,
     pub resend_time: Duration,
     pub sent_packet_buffer_size: usize,
@@ -57,6 +63,7 @@ struct ChunkReceiver {
 
 #[derive(Debug)]
 pub(crate) struct BlockChannel {
+    channel_id: u8,
     sender: ChunkSender,
     receiver: ChunkReceiver,
     received_messages: VecDeque<Payload>,
@@ -65,6 +72,7 @@ pub(crate) struct BlockChannel {
 impl Default for BlockChannelConfig {
     fn default() -> Self {
         Self {
+            channel_id: 2,
             slice_size: 400,
             resend_time: Duration::from_millis(300),
             sent_packet_buffer_size: 256,
@@ -299,6 +307,7 @@ impl BlockChannel {
         let receiver = ChunkReceiver::new(config.slice_size);
 
         Self {
+            channel_id: config.channel_id,
             sender,
             receiver,
             received_messages: VecDeque::new(),
@@ -311,22 +320,24 @@ impl BlockChannel {
         }
     }
 
-    pub fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Result<Vec<SliceMessage>, RenetError> {
+    pub fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Result<Option<BlockChannelData>, RenetError> {
         let messages: Vec<SliceMessage> = self.sender.generate_slice_packets(available_bytes)?;
 
         if messages.is_empty() {
-            return Ok(messages);
+            return Ok(None);
         }
 
         let slice_ids: Vec<u32> = messages.iter().map(|m| m.slice_id).collect();
-
         let packet_sent = PacketSent::new(slice_ids);
         self.sender.packets_sent.insert(sequence, packet_sent);
 
-        Ok(messages)
+        Ok(Some(BlockChannelData {
+            channel_id: self.channel_id,
+            messages,
+        }))
     }
 
-    pub fn process_slice_messages(&mut self, messages: Vec<SliceMessage>) {
+    pub fn process_messages(&mut self, messages: Vec<SliceMessage>) {
         for message in messages.iter() {
             if let Some(block) = self.receiver.process_slice_message(message) {
                 self.received_messages.push_back(block);
@@ -390,7 +401,7 @@ mod tests {
             if messages.is_empty() {
                 break;
             }
-            receiver_channel.process_slice_messages(messages);
+            receiver_channel.process_messages(messages);
             sender_channel.process_ack(sequence);
             sequence += 1;
         }

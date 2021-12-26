@@ -1,6 +1,5 @@
 use crate::RenetUdpError;
 
-use renet::channel::reliable::ReliableChannelConfig;
 use renet::disconnect_packet;
 use renet::error::{DisconnectionReason, RenetError};
 use renet::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
@@ -19,15 +18,10 @@ pub struct UdpClient {
 }
 
 impl UdpClient {
-    pub fn new(
-        socket: UdpSocket,
-        server_addr: SocketAddr,
-        connection_config: ConnectionConfig,
-        reliable_channels_config: Vec<ReliableChannelConfig>,
-    ) -> Result<Self, std::io::Error> {
+    pub fn new(socket: UdpSocket, server_addr: SocketAddr, connection_config: ConnectionConfig) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
         let id = socket.local_addr()?;
-        let connection = RemoteConnection::new(connection_config, reliable_channels_config);
+        let connection = RemoteConnection::new(connection_config);
 
         Ok(Self {
             socket,
@@ -66,28 +60,12 @@ impl UdpClient {
         }
     }
 
-    pub fn send_reliable_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
-        self.connection.send_reliable_message(channel_id, message)
+    pub fn receive_message(&mut self, channel_id: u8) -> Option<Vec<u8>> {
+        self.connection.receive_message(channel_id)
     }
 
-    pub fn send_unreliable_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
-        self.connection.send_unreliable_message(message)
-    }
-
-    pub fn send_block_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
-        self.connection.send_block_message(message)
-    }
-
-    pub fn receive_reliable_message(&mut self, channel_id: u8) -> Option<Vec<u8>> {
-        self.connection.receive_reliable_message(channel_id)
-    }
-
-    pub fn receive_unreliable_message(&mut self) -> Option<Vec<u8>> {
-        self.connection.receive_unreliable_message()
-    }
-
-    pub fn receive_block_message(&mut self) -> Option<Vec<u8>> {
-        self.connection.receive_block_message()
+    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
+        self.connection.send_message(channel_id, message)
     }
 
     pub fn network_info(&self) -> &NetworkInfo {

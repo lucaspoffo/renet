@@ -162,7 +162,10 @@ impl ReliableChannel {
 
         let packet_sent = PacketSent::new(messages_id);
         self.packets_sent.insert(sequence, packet_sent);
-        Ok(Some(ReliableChannelData::new(self.config.channel_id, messages)))
+        Ok(Some(ReliableChannelData {
+            channel_id: self.config.channel_id,
+            messages,
+        }))
     }
 
     pub fn process_messages(&mut self, messages: Vec<ReliableMessage>) {
