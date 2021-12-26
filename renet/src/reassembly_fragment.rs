@@ -177,6 +177,7 @@ pub(crate) fn build_fragments(
 
 #[cfg(test)]
 mod tests {
+    use crate::packet::UnreliableChannelData;
     use super::*;
 
     #[test]
@@ -185,8 +186,11 @@ mod tests {
         let ack_data = AckData { ack: 0, ack_bits: 0 };
 
         let messages = ChannelMessages {
-            slice_messages: vec![],
-            unreliable_messages: vec![vec![7u8; 1000], vec![255u8; 1000], vec![33u8; 1000]],
+            block_channels_data: vec![],
+            unreliable_channels_data: vec![UnreliableChannelData {
+                channel_id: 0,
+                messages: vec![vec![7u8; 1000], vec![255u8; 1000], vec![33u8; 1000]],
+            }],
             reliable_channels_data: vec![],
         };
 
@@ -214,9 +218,12 @@ mod tests {
         let result = fragments_reassembly.handle_fragment(fragments[2].clone(), 250_000, &config);
         let result = result.unwrap().unwrap();
 
-        assert_eq!(messages.unreliable_messages.len(), result.unreliable_messages.len());
-        assert_eq!(messages.unreliable_messages[0], result.unreliable_messages[0]);
-        assert_eq!(messages.unreliable_messages[1], result.unreliable_messages[1]);
-        assert_eq!(messages.unreliable_messages[2], result.unreliable_messages[2]);
+        assert_eq!(messages.unreliable_channels_data.len(), result.unreliable_channels_data.len());
+        let messages = &messages.unreliable_channels_data[0].messages;
+        let result_messages = &result.unreliable_channels_data[0].messages;
+
+        assert_eq!(messages[0], result_messages[0]);
+        assert_eq!(messages[1], result_messages[1]);
+        assert_eq!(messages[2], result_messages[2]);
     }
 }

@@ -397,13 +397,15 @@ mod tests {
         let mut sequence = 0;
 
         loop {
-            let messages = sender_channel.get_messages_to_send(1600, sequence).unwrap();
-            if messages.is_empty() {
-                break;
+            let channel_data = sender_channel.get_messages_to_send(1600, sequence).unwrap();
+            match channel_data {
+                None => break,
+                Some(data) => {
+                    receiver_channel.process_messages(data.messages);
+                    sender_channel.process_ack(sequence);
+                    sequence += 1;
+                }
             }
-            receiver_channel.process_messages(messages);
-            sender_channel.process_ack(sequence);
-            sequence += 1;
         }
 
         let received_payload = receiver_channel.receive_message().unwrap();
