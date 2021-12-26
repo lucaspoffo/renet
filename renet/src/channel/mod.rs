@@ -1,6 +1,6 @@
-pub mod block;
-pub mod reliable;
-pub mod unreliable;
+pub(crate) mod block;
+pub(crate) mod reliable;
+pub(crate) mod unreliable;
 
 use std::time::Duration;
 
