@@ -97,7 +97,7 @@ impl<C: ClientId> Server<C> {
             }
 
             if let Err(e) = connection.send_message(channel_id, message.clone()) {
-                log::error!("Failed to broadcastmessage to {:?}: {}", connection_id, e)
+                log::error!("Failed to broadcast message to {:?}: {}", connection_id, e)
             }
         }
     }

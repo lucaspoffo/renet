@@ -1,6 +1,6 @@
 [package]
 name = "renet"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Lucas Poffo <ltkpoffo@gmail.com>"]
 description = "Server/Client network library for multiplayer games"
 keywords = ["gamedev", "networking"]
