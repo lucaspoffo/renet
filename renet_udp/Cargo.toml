@@ -14,4 +14,3 @@ edition = "2018"
 renet = { path = "../renet" }
 # renet = "0.0.3"
 log = "0.4.11"
-thiserror = "1.0"

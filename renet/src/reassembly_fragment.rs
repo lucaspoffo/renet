@@ -2,8 +2,9 @@ use crate::packet::{AckData, ChannelMessages, Fragment, Packet, Payload};
 use crate::sequence_buffer::SequenceBuffer;
 
 use bincode::Options;
-use log::{error, trace};
-use thiserror::Error;
+
+use std::error::Error;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct FragmentConfig {
@@ -19,6 +20,59 @@ pub struct ReassemblyFragment {
     num_fragments_total: u8,
     buffer: Vec<u8>,
     fragments_received: Vec<bool>,
+}
+
+#[derive(Debug)]
+pub enum FragmentError {
+    InvalidTotalFragment { sequence: u16, expected: u8, got: u8 },
+    InvalidFragmentId { sequence: u16, id: u8, total: u8 },
+    AlreadyProcessed { sequence: u16, id: u8 },
+    ExceededMaxFragmentCount { sequence: u16, expected: u8, got: u8 },
+    OldSequence { sequence: u16 },
+    BincodeError(bincode::Error),
+}
+
+impl fmt::Display for FragmentError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use FragmentError::*;
+
+        match *self {
+            InvalidTotalFragment { sequence, expected, got } => {
+                write!(
+                    fmt,
+                    "fragment with sequence {} has invalid number of fragments, expected {}, got {}",
+                    sequence, expected, got
+                )
+            }
+            InvalidFragmentId { sequence, id, total } => {
+                write!(
+                    fmt,
+                    "fragment with sequence {} has invalid id {}, expected < {}",
+                    sequence, id, total
+                )
+            }
+            AlreadyProcessed { sequence, id } => {
+                write!(fmt, "fragment with sequence {} and id {} fragment already processed.", sequence, id)
+            }
+            ExceededMaxFragmentCount { sequence, expected, got } => {
+                write!(
+                    fmt,
+                    "fragmentation with sequence {} exceeded maximum count, got {}, expected < {}",
+                    sequence, got, expected
+                )
+            }
+            OldSequence { sequence } => write!(fmt, "fragment with sequence {} is too old", sequence),
+            BincodeError(ref bincode_err) => write!(fmt, "bincode error: {}", bincode_err),
+        }
+    }
+}
+
+impl Error for FragmentError {}
+
+impl From<bincode::Error> for FragmentError {
+    fn from(inner: bincode::Error) -> Self {
+        FragmentError::BincodeError(inner)
+    }
 }
 
 impl Default for FragmentConfig {
@@ -44,22 +98,6 @@ impl ReassemblyFragment {
             fragments_received: vec![false; num_fragments_total as usize],
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum FragmentError {
-    #[error("fragment with sequence {sequence} has invalid number of fragments, expected {expected}, got {got}.")]
-    InvalidTotalFragment { sequence: u16, expected: u8, got: u8 },
-    #[error("fragment with sequence {sequence} has invalid id {id}, expected < {total}. ")]
-    InvalidFragmentId { sequence: u16, id: u8, total: u8 },
-    #[error("fragment with sequence {sequence} and id {id} fragment already processed.")]
-    AlreadyProcessed { sequence: u16, id: u8 },
-    #[error("fragmentation with sequence {sequence} exceeded maximum count, got {got}, expected < {expected}")]
-    ExceededMaxFragmentCount { sequence: u16, expected: u8, got: u8 },
-    #[error("fragment with sequence {sequence} is too old")]
-    OldSequence { sequence: u16 },
-    #[error("bincode failed to (de)serialize: {0}")]
-    BincodeError(#[from] bincode::Error),
 }
 
 impl SequenceBuffer<ReassemblyFragment> {
@@ -119,7 +157,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         reassembly_fragment.num_fragments_received += 1;
         reassembly_fragment.fragments_received[fragment_id as usize] = true;
 
-        trace!(
+        log::trace!(
             "Received fragment {} of packet {} ({}/{})",
             fragment_id,
             sequence,
@@ -140,7 +178,7 @@ impl SequenceBuffer<ReassemblyFragment> {
 
             let messages: ChannelMessages = bincode::options().deserialize(&reassembly_fragment.buffer)?;
 
-            trace!("Completed the reassembly of packet {}.", reassembly_fragment.sequence);
+            log::trace!("Completed the reassembly of packet {}.", reassembly_fragment.sequence);
             return Ok(Some(messages));
         }
 
@@ -177,8 +215,8 @@ pub(crate) fn build_fragments(
 
 #[cfg(test)]
 mod tests {
-    use crate::packet::UnreliableChannelData;
     use super::*;
+    use crate::packet::UnreliableChannelData;
 
     #[test]
     fn fragment() {
