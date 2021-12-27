@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisconnectionReason {
     /// Server has exceeded maximum players capacity
     MaxConnections,

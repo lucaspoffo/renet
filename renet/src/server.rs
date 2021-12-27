@@ -38,7 +38,7 @@ impl<C: ClientId> Server<C> {
         Ok(())
     }
 
-    pub fn has_clients(&self) -> bool {
+    pub fn has_connections(&self) -> bool {
         !self.connections.is_empty()
     }
 
@@ -132,6 +132,7 @@ impl<C: ClientId> Server<C> {
                 self.disconnected_clients.push((connection_id, reason));
             }
         }
+        self.connections.retain(|_, c| c.is_connected());
     }
 
     pub fn get_packets_to_send(&mut self, connection_id: &C) -> Result<Vec<Payload>, RenetError> {

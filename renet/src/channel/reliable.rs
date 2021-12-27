@@ -82,7 +82,7 @@ impl Default for ReliableChannelConfig {
             message_send_queue_size: 1024,
             message_receive_queue_size: 1024,
             max_message_size: 1200,
-            packet_budget: 1200,
+            packet_budget: 2000,
             message_resend_time: Duration::from_millis(100),
         }
     }

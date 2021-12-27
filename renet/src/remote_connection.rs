@@ -260,6 +260,7 @@ impl RemoteConnection {
             }
             Packet::Disconnect(reason) => {
                 self.state = ConnectionState::Disconnected { reason };
+                // TODO: should return Err?
                 return Ok(());
             }
         };
