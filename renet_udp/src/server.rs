@@ -61,14 +61,13 @@ impl UdpServer {
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
-                    if !self.server.is_client_connected(&addr) {
-                        if let Err(reason) = self.server.add_connection(&addr) {
-                            self.send_disconnect_packet(&addr, reason);
-                        } else {
-                            self.events.push_back(ServerEvent::ClientConnected(addr));
+                    if !self.server.is_connected(&addr) {
+                        match self.server.add_connection(&addr) {
+                            Ok(()) => self.events.push_back(ServerEvent::ClientConnected(addr)),
+                            Err(reason) => self.send_disconnect_packet(&addr, reason),
                         }
                     }
-                    if let Err(e) = self.server.process_payload_from(&self.buffer[..len], &addr) {
+                    if let Err(e) = self.server.process_packet_from(&self.buffer[..len], &addr) {
                         error!("Error while processing payload for {}: {}", addr, e)
                     }
                 }

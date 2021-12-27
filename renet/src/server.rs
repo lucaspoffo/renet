@@ -16,7 +16,7 @@ pub struct Server<C: ClientId> {
     max_connections: usize,
     connections: HashMap<C, RemoteConnection>,
     connection_config: ConnectionConfig,
-    disconnected_clients: Vec<(C, DisconnectionReason)>,
+    disconnections: Vec<(C, DisconnectionReason)>,
 }
 
 impl<C: ClientId> Server<C> {
@@ -25,7 +25,7 @@ impl<C: ClientId> Server<C> {
             max_connections,
             connections: HashMap::new(),
             connection_config,
-            disconnected_clients: Vec::new(),
+            disconnections: Vec::new(),
         }
     }
 
@@ -43,7 +43,7 @@ impl<C: ClientId> Server<C> {
     }
 
     pub fn disconnected_client(&mut self) -> Option<(C, DisconnectionReason)> {
-        self.disconnected_clients.pop()
+        self.disconnections.pop()
     }
 
     pub fn can_client_connect(&self, connection_id: &C) -> CanConnect {
@@ -71,7 +71,7 @@ impl<C: ClientId> Server<C> {
 
     pub fn disconnect(&mut self, connection_id: &C) {
         if self.connections.remove(connection_id).is_some() {
-            self.disconnected_clients
+            self.disconnections
                 .push((*connection_id, DisconnectionReason::DisconnectedByServer));
         }
     }
@@ -120,7 +120,7 @@ impl<C: ClientId> Server<C> {
         self.connections.keys().copied().collect()
     }
 
-    pub fn is_client_connected(&self, connection_id: &C) -> bool {
+    pub fn is_connected(&self, connection_id: &C) -> bool {
         self.connections.contains_key(connection_id)
     }
 
@@ -129,7 +129,7 @@ impl<C: ClientId> Server<C> {
             connection.advance_time(duration);
             if connection.update().is_err() {
                 let reason = connection.disconnected().unwrap();
-                self.disconnected_clients.push((connection_id, reason));
+                self.disconnections.push((connection_id, reason));
             }
         }
         self.connections.retain(|_, c| c.is_connected());
@@ -142,7 +142,7 @@ impl<C: ClientId> Server<C> {
         }
     }
 
-    pub fn process_payload_from(&mut self, payload: &[u8], connection_id: &C) -> Result<(), RenetError> {
+    pub fn process_packet_from(&mut self, payload: &[u8], connection_id: &C) -> Result<(), RenetError> {
         match self.connections.get_mut(connection_id) {
             Some(connection) => connection.process_packet(payload),
             None => Err(RenetError::ClientNotFound),

@@ -77,7 +77,7 @@ fn test_server_reliable_channel() {
     loop {
         let packets = client.get_packets_to_send().unwrap();
         for packet in packets.into_iter() {
-            server.process_payload_from(&packet, &client_id).unwrap();
+            server.process_packet_from(&packet, &client_id).unwrap();
         }
 
         while let Some(message) = server.receive_message(&client_id, 0) {
@@ -127,7 +127,7 @@ fn test_client_disconnect() {
     assert_eq!(reason, DisconnectionReason::DisconnectedByClient);
 
     let packet = disconnect_packet(reason).unwrap();
-    server.process_payload_from(&packet, &client_id).unwrap();
+    server.process_packet_from(&packet, &client_id).unwrap();
     server.update_connections(Duration::ZERO);
 
     let (disconnect_id, server_reason) = server.disconnected_client().unwrap();
@@ -189,7 +189,7 @@ fn test_usage() {
                 status.connection.disconnect();
                 let reason = status.connection.disconnected().unwrap();
                 let packet = disconnect_packet(reason).unwrap();
-                server.process_payload_from(&packet, connection_id).unwrap();
+                server.process_packet_from(&packet, connection_id).unwrap();
                 continue;
             }
 
@@ -199,7 +199,7 @@ fn test_usage() {
             // 50% packet loss emulation
             if count % 2 == 0 {
                 for packet in client_packets.iter() {
-                    server.process_payload_from(packet, connection_id).unwrap();
+                    server.process_packet_from(packet, connection_id).unwrap();
                 }
                 for packet in server_packets.iter() {
                     status.connection.process_packet(packet).unwrap();
