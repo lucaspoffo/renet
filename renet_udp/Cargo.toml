@@ -1,6 +1,6 @@
 [package]
 name = "renet_udp"
-version = "0.0.1"
+version = "0.0.2"
 description = "Server/Client network library for multiplayer games using Renet and UDP"
 keywords = ["gamedev", "networking"]
 repository = "https://github.com/lucaspoffo/renet"
@@ -11,6 +11,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-renet = { path = "../renet" }
-# renet = "0.0.3"
+# renet = { path = "../renet" }
+renet = "0.0.4"
 log = "0.4.11"
