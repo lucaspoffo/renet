@@ -1,0 +1,14 @@
+[package]
+name = "renet_code"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chacha20poly1305 = "0.9.0"
+# chacha20poly1305 aead does not have this feature available
+aead = { version = "0.4", features = [ "rand_core" ] }
+rand_chacha = { version = "0.3.1", features = [ "std" ] }
+rand_core = { version = "*", features = ["getrandom"] }
+# getrandom = "0.2.3"
