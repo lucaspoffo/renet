@@ -6,10 +6,10 @@ Implementation of an Server/Client using UDP and [Renet](https://github.com/luca
 #### Server
 ```rust
 let socket = UdpSocket::bind("127.0.0.0:5000").unwrap();
-let server_config = ServerConfig::default();
 // Create one channel for each type reliable (0), unreliable(1), block(2)
 let connection_config = ConnectionConfig::default();
-let mut server: UdpServer = UdpServer::new(server_config, connection_config, socket)?;
+let max_clients = 64;
+let mut server: UdpServer = UdpServer::new(max_clients, connection_config, socket)?;
     
 let frame_duration = Duration::from_millis(100);
 loop {
