@@ -32,6 +32,7 @@ pub struct BlockChannelConfig {
     pub resend_time: Duration,
     pub sent_packet_buffer_size: usize,
     pub packet_budget: u64,
+    pub message_send_queue_size: usize,
 }
 
 #[derive(Debug)]
@@ -66,7 +67,9 @@ pub(crate) struct BlockChannel {
     channel_id: u8,
     sender: ChunkSender,
     receiver: ChunkReceiver,
-    received_messages: VecDeque<Payload>,
+    messages_received: VecDeque<Payload>,
+    messages_to_send: VecDeque<Payload>,
+    message_send_queue_size: usize,
 }
 
 impl Default for BlockChannelConfig {
@@ -77,6 +80,7 @@ impl Default for BlockChannelConfig {
             resend_time: Duration::from_millis(300),
             sent_packet_buffer_size: 256,
             packet_budget: 2000,
+            message_send_queue_size: 8,
         }
     }
 }
@@ -106,9 +110,7 @@ impl ChunkSender {
     }
 
     fn send_message(&mut self, data: Payload) -> Result<(), RenetError> {
-        if self.sending {
-            return Err(RenetError::AlreadySendingBlockMessage);
-        }
+        assert!(!self.sending);
 
         self.sending = true;
         self.num_slices = (data.len() + self.slice_size - 1) / self.slice_size;
@@ -289,6 +291,7 @@ impl ChunkReceiver {
         if self.num_received_slices == self.num_slices {
             info!("Received all slices for chunk {}.", self.chunk_id);
             let block = mem::take(&mut self.chunk_data);
+            self.receiving = false;
             return Some(block);
         }
 
@@ -310,7 +313,9 @@ impl BlockChannel {
             channel_id: config.channel_id,
             sender,
             receiver,
-            received_messages: VecDeque::new(),
+            messages_received: VecDeque::new(),
+            messages_to_send: VecDeque::with_capacity(config.message_send_queue_size),
+            message_send_queue_size: config.message_send_queue_size,
         }
     }
 
@@ -321,6 +326,12 @@ impl BlockChannel {
     }
 
     pub fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Result<Option<BlockChannelData>, RenetError> {
+        if !self.sender.sending {
+            if let Some(message) = self.messages_to_send.pop_front() {
+                self.send_message(message)?;
+            }
+        }
+
         let messages: Vec<SliceMessage> = self.sender.generate_slice_packets(available_bytes)?;
 
         if messages.is_empty() {
@@ -340,7 +351,7 @@ impl BlockChannel {
     pub fn process_messages(&mut self, messages: Vec<SliceMessage>) {
         for message in messages.iter() {
             if let Some(block) = self.receiver.process_slice_message(message) {
-                self.received_messages.push_back(block);
+                self.messages_received.push_back(block);
             }
         }
     }
@@ -350,11 +361,19 @@ impl BlockChannel {
     }
 
     pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
+        if self.sender.sending {
+            if self.messages_to_send.len() > self.message_send_queue_size {
+                return Err(RenetError::ChannelMaxMessagesLimit);
+            }
+            self.messages_to_send.push_back(message_payload);
+            return Ok(());
+        }
+
         self.sender.send_message(message_payload)
     }
 
     pub fn receive_message(&mut self) -> Option<Payload> {
-        self.received_messages.pop_front()
+        self.messages_received.pop_front()
     }
 }
 
@@ -410,5 +429,35 @@ mod tests {
 
         let received_payload = receiver_channel.receive_message().unwrap();
         assert_eq!(payload.len(), received_payload.len());
+    }
+
+    #[test]
+    fn block_channel_queue() {
+        let mut channel = BlockChannel::new(BlockChannelConfig::default());
+        let first_message = vec![1, 1, 1, 1];
+        let second_message = vec![2, 2, 2, 2];
+        channel.send_message(first_message.clone()).unwrap();
+        // Add second message to queue
+        channel.send_message(second_message.clone()).unwrap();
+
+        // First message
+        let block_channel_data = channel.get_messages_to_send(u64::MAX, 0).unwrap().unwrap();
+        assert!(!block_channel_data.messages.is_empty());
+        channel.process_messages(block_channel_data.messages);
+        let received_first_message = channel.receive_message().unwrap();
+        assert_eq!(first_message, received_first_message);
+        channel.process_ack(0);
+
+        // Second message
+        let block_channel_data = channel.get_messages_to_send(u64::MAX, 1).unwrap().unwrap();
+        assert!(!block_channel_data.messages.is_empty());
+        channel.process_messages(block_channel_data.messages);
+        let received_second_message = channel.receive_message().unwrap();
+        assert_eq!(second_message, received_second_message);
+        channel.process_ack(1);
+
+        // Check there is no message to send
+        let block_channel_data = channel.get_messages_to_send(u64::MAX, 2).unwrap();
+        assert!(block_channel_data.is_none());
     }
 }

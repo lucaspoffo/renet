@@ -39,7 +39,6 @@ impl fmt::Display for DisconnectionReason {
 pub enum RenetError {
     MessageSizeAboveLimit,
     ChannelMaxMessagesLimit,
-    AlreadySendingBlockMessage,
     ClientDisconnected(DisconnectionReason),
     ClientNotFound,
     FragmentError(FragmentError),
@@ -55,9 +54,6 @@ impl fmt::Display for RenetError {
         match *self {
             MessageSizeAboveLimit => write!(fmt, "the message is above the limit size"),
             ChannelMaxMessagesLimit => write!(fmt, "the channel has reached the maximum messages"),
-            AlreadySendingBlockMessage => {
-                write!(fmt, "the connection is already sending a block message")
-            }
             ClientNotFound => write!(fmt, "client with given id was not found"),
             ClientDisconnected(reason) => write!(fmt, "client is disconnected: {}", reason),
             BincodeError(ref bincode_err) => write!(fmt, "{}", bincode_err),

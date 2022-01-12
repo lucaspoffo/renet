@@ -16,7 +16,7 @@ pub struct UnreliableChannelConfig {
 #[derive(Debug)]
 pub(crate) struct UnreliableChannel {
     config: UnreliableChannelConfig,
-    messages_send: VecDeque<Payload>,
+    messages_to_send: VecDeque<Payload>,
     messages_received: VecDeque<Payload>,
 }
 
@@ -35,7 +35,7 @@ impl Default for UnreliableChannelConfig {
 impl UnreliableChannel {
     pub fn new(config: UnreliableChannelConfig) -> Self {
         Self {
-            messages_send: VecDeque::with_capacity(config.message_send_queue_size),
+            messages_to_send: VecDeque::with_capacity(config.message_send_queue_size),
             messages_received: VecDeque::with_capacity(config.message_receive_queue_size),
             config,
         }
@@ -56,10 +56,10 @@ impl UnreliableChannel {
     }
 
     pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
-        if self.messages_send.len() > self.config.message_send_queue_size {
+        if self.messages_to_send.len() > self.config.message_send_queue_size {
             return Err(RenetError::ChannelMaxMessagesLimit);
         }
-        self.messages_send.push_back(message_payload);
+        self.messages_to_send.push_back(message_payload);
         Ok(())
     }
 
@@ -68,7 +68,7 @@ impl UnreliableChannel {
 
         available_bytes = available_bytes.min(self.config.packet_budget);
 
-        while let Some(message) = self.messages_send.pop_front() {
+        while let Some(message) = self.messages_to_send.pop_front() {
             let message_size = message.len() as u64;
             if message_size > available_bytes {
                 break;
