@@ -100,17 +100,17 @@ impl PacketType {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Packet {
+pub enum Packet<'a> {
     ConnectionRequest(ConnectionRequest),
     ConnectionDenied,
     Challenge(ConnectionChallenge),
     Response(ConnectionResponse),
     KeepAlive(ConnectionKeepAlive),
-    Payload(usize),
+    Payload(&'a [u8]),
     Disconnect,
 }
 
-impl Packet {
+impl<'a> Packet<'a> {
     pub fn id(&self) -> u8 {
         let packet_type = match self {
             Packet::ConnectionRequest(_) => PacketType::ConnectionRequest,
@@ -130,7 +130,8 @@ impl Packet {
             Packet::Challenge(ref c) => c.write(writer),
             Packet::Response(ref r) => r.write(writer),
             Packet::KeepAlive(ref k) => k.write(writer),
-            Packet::Payload(_) | Packet::ConnectionDenied | Packet::Disconnect => Ok(()),
+            Packet::Payload(ref p) => writer.write_all(p),
+            Packet::ConnectionDenied | Packet::Disconnect => Ok(()),
         }
     }
 
@@ -139,7 +140,6 @@ impl Packet {
         buffer: &mut [u8],
         protocol_id: u64,
         crypto_info: Option<(u64, &[u8; 32])>,
-        payload: Option<&[u8]>,
     ) -> Result<(usize, Option<Tag<ChaCha20Poly1305>>), NetcodeError> {
         if let Packet::ConnectionRequest(ref request) = self {
             let mut writer = io::Cursor::new(buffer);
@@ -161,10 +161,6 @@ impl Packet {
                 let start = writer.position() as usize;
                 self.write(&mut writer)?;
 
-                if let Some(payload) = payload {
-                    writer.write_all(payload)?;
-                }
-
                 let additional_data = get_additional_data(prefix_byte, protocol_id)?;
                 (start, writer.position() as usize, additional_data)
             };
@@ -177,31 +173,46 @@ impl Packet {
     }
 
     pub fn decode(
-        buffer: &mut [u8],
+        mut buffer: &'a mut [u8],
         protocol_id: u64,
         private_key: Option<&[u8; 32]>,
         tag: &Tag<ChaCha20Poly1305>,
     ) -> Result<(u64, Self), NetcodeError> {
-        let src = &mut io::Cursor::new(buffer);
-        let prefix_byte = read_u8(src)?;
+        if buffer.len() < 2 {
+            return Err(NetcodeError::PacketTooSmall);
+        }
+
+        let prefix_byte = buffer[0];
         let (packet_type, sequence_len) = decode_prefix(prefix_byte);
+
         if packet_type == PacketType::ConnectionRequest as u8 {
+            let src = &mut io::Cursor::new(&mut buffer);
+            src.set_position(1);
             Ok((0, Packet::ConnectionRequest(ConnectionRequest::read(src)?)))
         } else if let Some(private_key) = private_key {
-            let sequence = read_sequence(src, sequence_len)?;
-            let additional_data = get_additional_data(prefix_byte, protocol_id)?;
+            let (sequence, aad, read_pos) = {
+                let src = &mut io::Cursor::new(&mut buffer);
+                src.set_position(1);
+                let sequence = read_sequence(src, sequence_len)?;
+                let additional_data = get_additional_data(prefix_byte, protocol_id)?;
+                (sequence, additional_data, src.position() as usize)
+            };
 
-            let pos = src.position() as usize;
-            dencrypted_in_place(&mut src.get_mut()[pos..], sequence, private_key, &additional_data, tag)?;
+            dencrypted_in_place(&mut buffer[read_pos..], sequence, private_key, &aad, tag)?;
             let packet_type = PacketType::from_u8(packet_type)?;
+            if let PacketType::Payload = packet_type {
+                return Ok((sequence, Packet::Payload(&buffer[read_pos..])));
+            }
+
+            let src = &mut io::Cursor::new(buffer);
+            src.set_position(read_pos as u64);
             let packet = match packet_type {
                 PacketType::Challenge => Packet::Challenge(ConnectionChallenge::read(src)?),
                 PacketType::Response => Packet::Response(ConnectionResponse::read(src)?),
                 PacketType::KeepAlive => Packet::KeepAlive(ConnectionKeepAlive::read(src)?),
                 PacketType::ConnectionDenied => Packet::ConnectionDenied,
                 PacketType::Disconnect => Packet::Disconnect,
-                PacketType::Payload => Packet::Payload(pos),
-                PacketType::ConnectionRequest => unreachable!(),
+                PacketType::Payload | PacketType::ConnectionRequest => unreachable!(),
             };
 
             Ok((sequence, packet))
@@ -616,7 +627,7 @@ mod tests {
         let packet = Packet::Disconnect;
         let protocol_id = 12;
         let sequence = 1;
-        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key)), None).unwrap();
+        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key))).unwrap();
         let tag = tag.unwrap();
         let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), &tag).unwrap();
         assert_eq!(sequence, d_sequence);
@@ -630,7 +641,7 @@ mod tests {
         let packet = Packet::ConnectionDenied;
         let protocol_id = 12;
         let sequence = 2;
-        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key)), None).unwrap();
+        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key))).unwrap();
         let tag = tag.unwrap();
         let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), &tag).unwrap();
         assert_eq!(sequence, d_sequence);
@@ -642,17 +653,15 @@ mod tests {
         let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let payload = vec![7u8; NETCODE_MAX_PACKET_SIZE];
         let key = b"an example very very secret key."; // 32-bytes
-        let packet = Packet::Payload(2);
+        let packet = Packet::Payload(&payload);
         let protocol_id = 12;
         let sequence = 2;
-        let (len, tag) = packet
-            .encode(&mut buffer, protocol_id, Some((sequence, key)), Some(&payload))
-            .unwrap();
+        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key))).unwrap();
         let tag = tag.unwrap();
         let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), &tag).unwrap();
         assert_eq!(sequence, d_sequence);
         match d_packet {
-            Packet::Payload(start) => assert_eq!(&payload, &buffer[start..start + NETCODE_MAX_PACKET_SIZE]),
+            Packet::Payload(ref p) => assert_eq!(&payload, p),
             _ => unreachable!(),
         }
         assert_eq!(packet, d_packet);
