@@ -1,11 +1,12 @@
-use aead::{Error as CryptoError};
+use aead::{Error as CryptoError, Tag};
+use chacha20poly1305::ChaCha20Poly1305;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::{error, fmt, io};
 
-use crate::NETCODE_VERSION_INFO;
-use crate::crypto::{encrypt, dencrypted};
+use crate::crypto::{dencrypted, dencrypted_in_place, encrypt, encrypt_in_place};
 use crate::serialize::*;
+use crate::NETCODE_VERSION_INFO;
 
 struct ConnectToken {
     version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
@@ -105,7 +106,7 @@ pub enum Packet {
     Challenge(ConnectionChallenge),
     Response(ConnectionResponse),
     KeepAlive(ConnectionKeepAlive),
-    Payload(Vec<u8>),
+    Payload(usize),
     Disconnect,
 }
 
@@ -129,75 +130,77 @@ impl Packet {
             Packet::Challenge(ref c) => c.write(writer),
             Packet::Response(ref r) => r.write(writer),
             Packet::KeepAlive(ref k) => k.write(writer),
-            Packet::Payload(p) => writer.write_all(p),
-            Packet::ConnectionDenied => Ok(()),
-            Packet::Disconnect => Ok(()),
+            Packet::Payload(_) | Packet::ConnectionDenied | Packet::Disconnect => Ok(()),
         }
     }
 
-    pub fn encode(&self, protocol_id: u64, crypto_info: Option<(u64, &[u8; 32])>) -> Result<Vec<u8>, NetcodeError> {
+    pub fn encode(
+        &self,
+        buffer: &mut [u8],
+        protocol_id: u64,
+        crypto_info: Option<(u64, &[u8; 32])>,
+        payload: Option<&[u8]>,
+    ) -> Result<(usize, Option<Tag<ChaCha20Poly1305>>), NetcodeError> {
         if let Packet::ConnectionRequest(ref request) = self {
+            let mut writer = io::Cursor::new(buffer);
             let prefix_byte = encode_prefix(self.id(), 0);
-            let mut buffer = vec![];
-            buffer.write_all(&prefix_byte.to_le_bytes())?;
+            writer.write_all(&prefix_byte.to_le_bytes())?;
 
-            request.write(&mut buffer)?;
-            Ok(buffer)
+            request.write(&mut writer)?;
+            Ok((writer.position() as usize, None))
         } else if let Some((sequence, private_key)) = crypto_info {
-            let mut buffer = vec![];
-            let prefix_byte = {
-                let prefix_byte = encode_prefix(self.id(), sequence);
-                buffer.write_all(&prefix_byte.to_le_bytes())?;
-                write_sequence(&mut buffer, sequence)?;
-                prefix_byte
+            let (start, end, aad) = {
+                let mut writer = io::Cursor::new(&mut buffer[..]);
+                let prefix_byte = {
+                    let prefix_byte = encode_prefix(self.id(), sequence);
+                    writer.write_all(&prefix_byte.to_le_bytes())?;
+                    write_sequence(&mut writer, sequence)?;
+                    prefix_byte
+                };
+
+                let start = writer.position() as usize;
+                self.write(&mut writer)?;
+
+                if let Some(payload) = payload {
+                    writer.write_all(payload)?;
+                }
+
+                let additional_data = get_additional_data(prefix_byte, protocol_id)?;
+                (start, writer.position() as usize, additional_data)
             };
 
-            let mut scratch = vec![];
-            self.write(&mut scratch)?;
-
-            let additional_data = get_additional_data(prefix_byte, protocol_id)?;
-            println!("scratch_len: {}", scratch.len());
-
-            dbg!(prefix_byte);
-            dbg!(protocol_id);
-            dbg!(additional_data);
-            dbg!(private_key);
-
-            let encrypted = encrypt(&scratch, sequence, private_key, &additional_data)?;
-            buffer.write_all(&encrypted)?;
-            Ok(buffer)
+            let tag = encrypt_in_place(&mut buffer[start..end], sequence, private_key, &aad)?;
+            Ok((end, Some(tag)))
         } else {
             Err(NetcodeError::InvalidPrivateKey)
         }
     }
 
-    pub fn decode(data: &[u8], protocol_id: u64, private_key: Option<&[u8; 32]>) -> Result<(u64, Self), NetcodeError> {
-        let src = &mut io::Cursor::new(data);
+    pub fn decode(
+        buffer: &mut [u8],
+        protocol_id: u64,
+        private_key: Option<&[u8; 32]>,
+        tag: &Tag<ChaCha20Poly1305>,
+    ) -> Result<(u64, Self), NetcodeError> {
+        let src = &mut io::Cursor::new(buffer);
         let prefix_byte = read_u8(src)?;
         let (packet_type, sequence_len) = decode_prefix(prefix_byte);
         if packet_type == PacketType::ConnectionRequest as u8 {
             Ok((0, Packet::ConnectionRequest(ConnectionRequest::read(src)?)))
         } else if let Some(private_key) = private_key {
             let sequence = read_sequence(src, sequence_len)?;
-
-            let payload = &data[src.position() as usize..];
-
             let additional_data = get_additional_data(prefix_byte, protocol_id)?;
 
-            dbg!(prefix_byte);
-            dbg!(protocol_id);
-            dbg!(additional_data);
-            dbg!(private_key);
-
-            let decrypted = dencrypted(payload, sequence, private_key, &additional_data)?;
+            let pos = src.position() as usize;
+            dencrypted_in_place(&mut src.get_mut()[pos..], sequence, private_key, &additional_data, tag)?;
             let packet_type = PacketType::from_u8(packet_type)?;
             let packet = match packet_type {
-                PacketType::Challenge => Packet::Challenge(ConnectionChallenge::read(&mut decrypted.as_slice())?),
-                PacketType::Response => Packet::Response(ConnectionResponse::read(&mut decrypted.as_slice())?),
-                PacketType::KeepAlive => Packet::KeepAlive(ConnectionKeepAlive::read(&mut decrypted.as_slice())?),
+                PacketType::Challenge => Packet::Challenge(ConnectionChallenge::read(src)?),
+                PacketType::Response => Packet::Response(ConnectionResponse::read(src)?),
+                PacketType::KeepAlive => Packet::KeepAlive(ConnectionKeepAlive::read(src)?),
                 PacketType::ConnectionDenied => Packet::ConnectionDenied,
                 PacketType::Disconnect => Packet::Disconnect,
-                PacketType::Payload => Packet::Payload(decrypted),
+                PacketType::Payload => Packet::Payload(pos),
                 PacketType::ConnectionRequest => unreachable!(),
             };
 
@@ -491,7 +494,6 @@ impl From<CryptoError> for NetcodeError {
     }
 }
 
-
 fn decode_prefix(value: u8) -> (u8, usize) {
     ((value & 0xF) as u8, (value >> 4) as usize)
 }
@@ -525,9 +527,10 @@ fn read_sequence(source: &mut impl io::Read, len: usize) -> Result<u64, io::Erro
     Ok(u64::from_le_bytes(seq_scratch))
 }
 
-
 #[cfg(test)]
 mod tests {
+    use crate::{NETCODE_BUFFER_SIZE, NETCODE_MAX_PACKET_SIZE};
+
     use super::*;
 
     #[test]
@@ -608,27 +611,50 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_disconnect_packet() {
+        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::Disconnect;
         let protocol_id = 12;
         let sequence = 1;
-        let encoded = packet.encode(protocol_id, Some((sequence, key))).unwrap();
-        println!("encoded_len: {:?}", encoded.len());
-        let (d_sequence, d_packet) = Packet::decode(&encoded, protocol_id, Some(&key)).unwrap();
+        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key)), None).unwrap();
+        let tag = tag.unwrap();
+        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), &tag).unwrap();
         assert_eq!(sequence, d_sequence);
         assert_eq!(packet, d_packet);
     }
 
     #[test]
     fn test_encrypt_decrypt_denied_packet() {
+        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::ConnectionDenied;
         let protocol_id = 12;
         let sequence = 2;
-        let encoded = packet.encode(protocol_id, Some((sequence, key))).unwrap();
-        println!("encoded_len: {:?}", encoded.len());
-        let (d_sequence, d_packet) = Packet::decode(&encoded, protocol_id, Some(&key)).unwrap();
+        let (len, tag) = packet.encode(&mut buffer, protocol_id, Some((sequence, key)), None).unwrap();
+        let tag = tag.unwrap();
+        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), &tag).unwrap();
         assert_eq!(sequence, d_sequence);
+        assert_eq!(packet, d_packet);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_payload_packet() {
+        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
+        let payload = vec![7u8; NETCODE_MAX_PACKET_SIZE];
+        let key = b"an example very very secret key."; // 32-bytes
+        let packet = Packet::Payload(2);
+        let protocol_id = 12;
+        let sequence = 2;
+        let (len, tag) = packet
+            .encode(&mut buffer, protocol_id, Some((sequence, key)), Some(&payload))
+            .unwrap();
+        let tag = tag.unwrap();
+        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), &tag).unwrap();
+        assert_eq!(sequence, d_sequence);
+        match d_packet {
+            Packet::Payload(start) => assert_eq!(&payload, &buffer[start..start + NETCODE_MAX_PACKET_SIZE]),
+            _ => unreachable!(),
+        }
         assert_eq!(packet, d_packet);
     }
 }

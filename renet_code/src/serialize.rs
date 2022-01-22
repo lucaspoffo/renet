@@ -41,4 +41,3 @@ pub fn read_i32(src: &mut impl io::Read) -> Result<i32, io::Error> {
     src.read_exact(&mut buffer)?;
     Ok(i32::from_le_bytes(buffer))
 }
-

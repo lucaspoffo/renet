@@ -3,10 +3,20 @@ mod packet;
 mod crypto;
 mod token;
 
+
 const NETCODE_VERSION_INFO: &[u8; 13] = b"NETCODE 1.02\0";
+
 const NETCODE_ADDRESS_NONE: u8 = 0;
 const NETCODE_ADDRESS_IPV4: u8 = 1;
 const NETCODE_ADDRESS_IPV6: u8 = 2;
+
+const NETCODE_CONNECT_TOKEN_PRIVATE_BYTES: usize = 1024;
+const NETCODE_MAX_PACKET_SIZE: usize = 1200;
+
+const NETCODE_KEY_BYTES: usize = 32;
+const NETCODE_MAC_BYTES: usize = 16;
+
+const NETCODE_BUFFER_SIZE: usize = NETCODE_MAX_PACKET_SIZE + NETCODE_MAC_BYTES;
 
 /*
      Encryption of the private connect token data is performed with the libsodium AEAD primitive crypto_aead_xchacha20poly1305_ietf_encrypt using the following binary data as the associated data:
