@@ -1,34 +1,12 @@
-use aead::{Error as CryptoError, Tag};
-use chacha20poly1305::ChaCha20Poly1305;
-use std::io::Write;
-use std::net::SocketAddr;
+use aead::Error as CryptoError;
+use chacha20poly1305::Tag;
+use std::io::{Cursor, Write};
 use std::{error, fmt, io};
 
-use crate::crypto::{dencrypted, dencrypted_in_place, encrypt, encrypt_in_place};
-use crate::serialize::*;
-use crate::NETCODE_VERSION_INFO;
-
-struct ConnectToken {
-    version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
-    protocol_id: u64,       // 64 bit value unique to this particular game/application
-    create_timestamp: u64,  // 64 bit unix timestamp when this connect token was created
-    expire_timestamp: u64,  // 64 bit unix timestamp when this connect token expires
-    connect_token_nonce: [u8; 24],
-    /*
-        The nonce used for encryption is a 24 bytes number that is randomly generated for every token.
-        Encryption is performed on the first 1024 - 16 bytes in the buffer, leaving the last 16 bytes to store the HMAC:
-
-            [encrypted private connect token] (1008 bytes)
-            [hmac of encrypted private connect token] (16 bytes)
-    */
-    encrypted_private_token_data: [u8; 1024],
-    timeout_seconds: u64,      // timeout in seconds. negative values disable timeout (dev only)
-    num_server_addresses: u32, // in [1,32] TODO: check necessity if we use Vec
-    server_addresses: [SocketAddr; 32],
-    client_to_server_key: [u8; 32],
-    server_to_client_key: [u8; 32],
-    // <zero pad to 2048 bytes>
-}
+use crate::crypto::{dencrypted_in_place, encrypt_in_place};
+use crate::token::ConnectToken;
+use crate::{serialize::*, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES};
+use crate::{NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO};
 
 /*
     Challenge Token
@@ -51,6 +29,7 @@ struct ConnectToken {
 
 */
 
+#[derive(Debug, PartialEq, Eq)]
 struct ChallengeToken {
     client_id: u64,
     user_data: [u8; 256],
@@ -140,7 +119,7 @@ impl<'a> Packet<'a> {
         buffer: &mut [u8],
         protocol_id: u64,
         crypto_info: Option<(u64, &[u8; 32])>,
-    ) -> Result<(usize, Option<Tag<ChaCha20Poly1305>>), NetcodeError> {
+    ) -> Result<(usize, Option<Tag>), NetcodeError> {
         if let Packet::ConnectionRequest(ref request) = self {
             let mut writer = io::Cursor::new(buffer);
             let prefix_byte = encode_prefix(self.id(), 0);
@@ -161,7 +140,7 @@ impl<'a> Packet<'a> {
                 let start = writer.position() as usize;
                 self.write(&mut writer)?;
 
-                let additional_data = get_additional_data(prefix_byte, protocol_id)?;
+                let additional_data = get_additional_data(prefix_byte, protocol_id);
                 (start, writer.position() as usize, additional_data)
             };
 
@@ -176,7 +155,7 @@ impl<'a> Packet<'a> {
         mut buffer: &'a mut [u8],
         protocol_id: u64,
         private_key: Option<&[u8; 32]>,
-        tag: &Tag<ChaCha20Poly1305>,
+        tag: &Tag,
     ) -> Result<(u64, Self), NetcodeError> {
         if buffer.len() < 2 {
             return Err(NetcodeError::PacketTooSmall);
@@ -194,7 +173,7 @@ impl<'a> Packet<'a> {
                 let src = &mut io::Cursor::new(&mut buffer);
                 src.set_position(1);
                 let sequence = read_sequence(src, sequence_len)?;
-                let additional_data = get_additional_data(prefix_byte, protocol_id)?;
+                let additional_data = get_additional_data(prefix_byte, protocol_id);
                 (sequence, additional_data, src.position() as usize)
             };
 
@@ -222,13 +201,13 @@ impl<'a> Packet<'a> {
     }
 }
 
-fn get_additional_data(prefix: u8, protocol_id: u64) -> Result<[u8; 13 + 8 + 1], io::Error> {
+fn get_additional_data(prefix: u8, protocol_id: u64) -> [u8; 13 + 8 + 1] {
     let mut buffer = [0; 13 + 8 + 1];
     buffer[..13].copy_from_slice(NETCODE_VERSION_INFO);
     buffer[13..21].copy_from_slice(&protocol_id.to_le_bytes());
     buffer[21] = prefix;
 
-    Ok(buffer)
+    buffer
 }
 
 /*
@@ -318,29 +297,29 @@ fn get_additional_data(prefix: u8, protocol_id: u64) -> Result<[u8; 13 + 8 + 1],
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConnectionRequest {
-    version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
-    protocol_id: u64,
-    expire_timestamp: u64,
-    nonce: [u8; 24],
-    data: [u8; 1024],
+    pub version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
+    pub protocol_id: u64,
+    pub expire_timestamp: u64,
+    pub sequence: u64,
+    pub data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConnectionChallenge {
-    token_sequence: u64,
-    token_data: [u8; 300],
+    pub token_sequence: u64,
+    pub token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES],
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConnectionResponse {
-    token_sequence: u64,
-    token_data: [u8; 300],
+    pub token_sequence: u64,
+    pub token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES],
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConnectionKeepAlive {
-    client_index: u32,
-    max_clients: u32,
+    pub client_index: u32,
+    pub max_clients: u32,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -351,18 +330,28 @@ struct ConnectionPayload {
 }
 
 impl ConnectionRequest {
+    pub fn from_token(connect_token: &ConnectToken) -> Self {
+        Self {
+            sequence: connect_token.sequence,
+            version_info: *NETCODE_VERSION_INFO,
+            protocol_id: connect_token.protocol_id,
+            expire_timestamp: connect_token.expire_timestamp,
+            data: connect_token.private_data,
+        }
+    }
+
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
         let version_info = read_bytes(src)?;
         let protocol_id = read_u64(src)?;
         let token_expire_timestamp = read_u64(src)?;
-        let token_nonce = read_bytes(src)?;
+        let sequence = read_u64(src)?;
         let token_data = read_bytes(src)?;
 
         Ok(Self {
             version_info,
             protocol_id,
             expire_timestamp: token_expire_timestamp,
-            nonce: token_nonce,
+            sequence,
             data: token_data,
         })
     }
@@ -371,14 +360,70 @@ impl ConnectionRequest {
         out.write_all(&self.version_info)?;
         out.write_all(&self.protocol_id.to_le_bytes())?;
         out.write_all(&self.expire_timestamp.to_le_bytes())?;
-        out.write_all(&self.nonce)?;
+        out.write_all(&self.sequence.to_le_bytes())?;
         out.write_all(&self.data)?;
 
         Ok(())
     }
 }
 
+impl ChallengeToken {
+    pub fn new(client_id: u64, user_data: &[u8; NETCODE_USER_DATA_BYTES]) -> Self {
+        Self {
+            client_id,
+            user_data: *user_data,
+        }
+    }
+
+    fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
+        let client_id = read_u64(src)?;
+        let user_data: [u8; NETCODE_USER_DATA_BYTES] = read_bytes(src)?;
+
+        Ok(Self { client_id, user_data })
+    }
+
+    fn write(&self, out: &mut impl io::Write) -> Result<(), io::Error> {
+        out.write_all(&self.client_id.to_le_bytes())?;
+        out.write_all(&self.user_data)?;
+
+        Ok(())
+    }
+}
+
 impl ConnectionChallenge {
+    pub fn generate(
+        client_id: u64,
+        user_data: &[u8; NETCODE_USER_DATA_BYTES],
+        challenge_sequence: u64,
+        challenge_key: &[u8; NETCODE_KEY_BYTES],
+    ) -> Result<Self, NetcodeError> {
+        let token = ChallengeToken::new(client_id, user_data);
+        let mut buffer = [0u8; NETCODE_CHALLENGE_TOKEN_BYTES];
+        token.write(&mut Cursor::new(&mut buffer[..]))?;
+        {
+            let (buffer, buffer_tag) = buffer.split_at_mut(NETCODE_CHALLENGE_TOKEN_BYTES - NETCODE_MAC_BYTES);
+
+            let tag = encrypt_in_place(buffer, challenge_sequence, challenge_key, b"")?;
+            buffer_tag.copy_from_slice(&tag);
+        }
+
+        Ok(Self {
+            token_sequence: challenge_sequence,
+            token_data: buffer,
+        })
+    }
+
+    pub fn decode(&self, challenge_key: &[u8; NETCODE_KEY_BYTES]) -> Result<ChallengeToken, NetcodeError> {
+        let (buffer, buffer_tag) = self.token_data.split_at(NETCODE_CHALLENGE_TOKEN_BYTES - NETCODE_MAC_BYTES);
+        let mut decoded = [0u8; NETCODE_CHALLENGE_TOKEN_BYTES - NETCODE_MAC_BYTES];
+        decoded.copy_from_slice(buffer);
+        let tag = Tag::from_slice(buffer_tag);
+
+        dencrypted_in_place(&mut decoded, self.token_sequence, challenge_key, b"", tag)?;
+
+        Ok(ChallengeToken::read(&mut Cursor::new(&mut decoded[..]))?)
+    }
+
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
         let token_sequence: u64 = read_u64(src)?;
         let token_data = read_bytes(src)?;
@@ -472,7 +517,12 @@ impl ConnectionKeepAlive {
 pub enum NetcodeError {
     InvalidPrivateKey,
     InvalidPacketType,
+    InvalidVersion,
     PacketTooSmall,
+    NoMoreServers,
+    Expired,
+    TimedOut,
+    Disconnected,
     CryptoError,
     IoError(io::Error),
 }
@@ -484,7 +534,12 @@ impl fmt::Display for NetcodeError {
         match *self {
             InvalidPrivateKey => write!(fmt, "invalid private key"),
             InvalidPacketType => write!(fmt, "invalid packet type"),
+            InvalidVersion => write!(fmt, "invalid version info"),
             PacketTooSmall => write!(fmt, "packet is too small"),
+            Expired => write!(fmt, "connection expired"),
+            TimedOut => write!(fmt, "connection timed out"),
+            Disconnected => write!(fmt, "disconnected"),
+            NoMoreServers => write!(fmt, "client has no more servers to connect"),
             CryptoError => write!(fmt, "error while encoding or decoding"),
             IoError(ref io_err) => write!(fmt, "{}", io_err),
         }
@@ -540,7 +595,7 @@ fn read_sequence(source: &mut impl io::Read, len: usize) -> Result<u64, io::Erro
 
 #[cfg(test)]
 mod tests {
-    use crate::{NETCODE_BUFFER_SIZE, NETCODE_MAX_PACKET_SIZE};
+    use crate::{crypto::generate_random_bytes, NETCODE_BUFFER_SIZE, NETCODE_MAX_PACKET_SIZE};
 
     use super::*;
 
@@ -550,7 +605,7 @@ mod tests {
             version_info: [0; 13], // "NETCODE 1.02" ASCII with null terminator.
             protocol_id: 1,
             expire_timestamp: 3,
-            nonce: [4; 24],
+            sequence: 4,
             data: [5; 1024],
         };
         let mut buffer = Vec::new();
@@ -603,7 +658,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prefix_sequence() {
+    fn prefix_sequence() {
         let packet_type = Packet::Disconnect.id();
         let sequence = 99999;
 
@@ -621,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypt_decrypt_disconnect_packet() {
+    fn encrypt_decrypt_disconnect_packet() {
         let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::Disconnect;
@@ -635,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypt_decrypt_denied_packet() {
+    fn encrypt_decrypt_denied_packet() {
         let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::ConnectionDenied;
@@ -649,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypt_decrypt_payload_packet() {
+    fn encrypt_decrypt_payload_packet() {
         let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let payload = vec![7u8; NETCODE_MAX_PACKET_SIZE];
         let key = b"an example very very secret key."; // 32-bytes
@@ -665,5 +720,18 @@ mod tests {
             _ => unreachable!(),
         }
         assert_eq!(packet, d_packet);
+    }
+
+    #[test]
+    fn encrypt_decrypt_challenge_token() {
+        let client_id = 0;
+        let user_data = generate_random_bytes();
+        let challenge_key = generate_random_bytes();
+        let challenge_sequence = 1;
+        let token = ChallengeToken::new(client_id, &user_data);
+        let connection_challenge = ConnectionChallenge::generate(client_id, &user_data, challenge_sequence, &challenge_key).unwrap();
+
+        let decoded = connection_challenge.decode(&challenge_key).unwrap();
+        assert_eq!(decoded, token);
     }
 }

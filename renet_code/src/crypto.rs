@@ -1,5 +1,5 @@
-use aead::{Aead, AeadInPlace, Error as CryptoError, NewAead, Payload, Buffer, Tag};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use aead::{Aead, AeadInPlace, Error as CryptoError, NewAead, Payload};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, Tag};
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
 
@@ -20,7 +20,7 @@ pub fn dencrypted_in_place(
     sequence: u64,
     private_key: &[u8; 32],
     aad: &[u8],
-    tag: &Tag<ChaCha20Poly1305>
+    tag: &Tag,
 ) -> Result<(), CryptoError> {
     let mut nonce = [0; 12];
     nonce[4..12].copy_from_slice(&sequence.to_le_bytes());
@@ -44,12 +44,7 @@ pub fn encrypt(packet: &[u8], sequence: u64, key: &[u8; 32], aad: &[u8]) -> Resu
     cipher.encrypt(&nonce, payload)
 }
 
-pub fn encrypt_in_place(
-    buffer: &mut [u8],
-    sequence: u64,
-    key: &[u8; 32],
-    aad: &[u8],
-) -> Result<Tag<ChaCha20Poly1305>, CryptoError> {
+pub fn encrypt_in_place(buffer: &mut [u8], sequence: u64, key: &[u8; 32], aad: &[u8]) -> Result<Tag, CryptoError> {
     let mut nonce = [0; 12];
     nonce[4..12].copy_from_slice(&sequence.to_le_bytes());
     let nonce = Nonce::from(nonce);
@@ -75,7 +70,7 @@ mod tests {
         let key = b"an example very very secret key."; // 32-bytes
         let sequence = 2;
         let aad = b"test";
-        
+
         let mut data = b"some packet data".to_vec();
 
         let tag = encrypt_in_place(&mut data, sequence, &key, aad).unwrap();

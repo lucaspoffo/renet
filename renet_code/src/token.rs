@@ -1,10 +1,20 @@
 use std::{
     error::Error,
-    fmt, io,
+    fmt,
+    io::{self, Cursor},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::{crypto::generate_random_bytes, serialize::*, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6};
+use crate::{
+    crypto::{dencrypted_in_place, encrypt_in_place, generate_random_bytes},
+    packet::NetcodeError,
+    serialize::*,
+    NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES,
+    NETCODE_MAC_BYTES, NETCODE_TIMEOUT_SECONDS, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+};
+use aead::Error as CryptoError;
+use chacha20poly1305::Tag;
 
 /*
    Connect Token
@@ -52,21 +62,46 @@ use crate::{crypto::generate_random_bytes, serialize::*, NETCODE_ADDRESS_IPV4, N
 
    This data is variable size but for simplicity is written to a fixed size buffer of 1024 bytes. Unused bytes are zero padded.
 */
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectToken {
+    pub sequence: u64,
+    pub protocol_id: u64,
+    pub create_timestamp: u64,
+    pub expire_timestamp: u64,
+    pub server_addresses: [Option<SocketAddr>; 32],
+    pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
+    pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
+    pub private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
+    pub timeout_seconds: i32,
+}
 
 #[derive(Debug, PartialEq, Eq)]
-struct PrivateConnectToken {
-    client_id: u64,       // globally unique identifier for an authenticated client
-    timeout_seconds: i32, // timeout in seconds. negative values disable timeout (dev only)
-    server_addresses: [Option<SocketAddr>; 32],
-    client_to_server_key: [u8; 32],
-    server_to_client_key: [u8; 32],
-    user_data: [u8; 256], // user defined data specific to this protocol id
-                          // <zero pad to 1024 bytes>
+pub struct PrivateConnectToken {
+    pub client_id: u64,       // globally unique identifier for an authenticated client
+    pub timeout_seconds: i32, // timeout in seconds. negative values disable timeout (dev only)
+    pub server_addresses: [Option<SocketAddr>; 32],
+    pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
+    pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
+    pub user_data: [u8; NETCODE_USER_DATA_BYTES], // user defined data specific to this protocol id
 }
 
 #[derive(Debug)]
-enum TokenGenerationError {
+pub enum TokenGenerationError {
     MaxHostCount,
+    CryptoError,
+    IoError(io::Error),
+}
+
+impl From<io::Error> for TokenGenerationError {
+    fn from(inner: io::Error) -> Self {
+        TokenGenerationError::IoError(inner)
+    }
+}
+
+impl From<CryptoError> for TokenGenerationError {
+    fn from(_: CryptoError) -> Self {
+        TokenGenerationError::CryptoError
+    }
 }
 
 impl Error for TokenGenerationError {}
@@ -77,7 +112,96 @@ impl fmt::Display for TokenGenerationError {
 
         match *self {
             MaxHostCount => write!(fmt, "max host count"),
+            CryptoError => write!(fmt, "error while encoding or decoding"),
+            IoError(ref io_err) => write!(fmt, "{}", io_err),
         }
+    }
+}
+
+impl ConnectToken {
+    pub fn generate(
+        sequence: u64,
+        protocol_id: u64,
+        expire_seconds: u64,
+        client_id: u64,
+        timeout_seconds: i32,
+        server_addresses: Vec<SocketAddr>,
+        user_data: Option<&[u8; 256]>,
+        private_key: &[u8; NETCODE_KEY_BYTES],
+    ) -> Result<Self, TokenGenerationError> {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let expire_timestamp = now + expire_seconds;
+
+        let private_connect_token = PrivateConnectToken::generate(client_id, timeout_seconds, server_addresses, user_data)?;
+        let mut private_data = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
+        private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, sequence, private_key)?;
+
+        Ok(Self {
+            sequence,
+            protocol_id,
+            private_data,
+            create_timestamp: now,
+            expire_timestamp,
+            server_addresses: private_connect_token.server_addresses,
+            client_to_server_key: private_connect_token.client_to_server_key,
+            server_to_client_key: private_connect_token.server_to_client_key,
+            timeout_seconds: NETCODE_TIMEOUT_SECONDS,
+        })
+    }
+
+    fn decode(&mut self, private_key: &[u8; NETCODE_KEY_BYTES]) -> Result<PrivateConnectToken, TokenGenerationError> {
+        PrivateConnectToken::decode(
+            &mut self.private_data,
+            self.protocol_id,
+            self.expire_timestamp,
+            self.sequence,
+            private_key,
+        )
+    }
+
+    fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
+        writer.write_all(NETCODE_VERSION_INFO)?;
+        writer.write_all(&self.protocol_id.to_le_bytes())?;
+        writer.write_all(&self.create_timestamp.to_le_bytes())?;
+        writer.write_all(&self.expire_timestamp.to_le_bytes())?;
+        writer.write_all(&self.sequence.to_le_bytes())?;
+        writer.write_all(&self.private_data)?;
+        writer.write_all(&self.timeout_seconds.to_le_bytes())?;
+        write_server_adresses(writer, &self.server_addresses)?;
+        writer.write_all(&self.client_to_server_key)?;
+        writer.write_all(&self.server_to_client_key)?;
+
+        Ok(())
+    }
+
+    fn read(src: &mut impl io::Read) -> Result<Self, NetcodeError> {
+        let version: [u8; 13] = read_bytes(src)?;
+        if &version != NETCODE_VERSION_INFO {
+            return Err(NetcodeError::InvalidVersion);
+        }
+
+        let protocol_id = read_u64(src)?;
+        let create_timestamp = read_u64(src)?;
+        let expire_timestamp = read_u64(src)?;
+        let sequence = read_u64(src)?;
+
+        let private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES] = read_bytes(src)?;
+        let timeout_seconds = read_i32(src)?;
+        let server_addresses = read_server_addresses(src)?;
+        let client_to_server_key: [u8; NETCODE_KEY_BYTES] = read_bytes(src)?;
+        let server_to_client_key: [u8; NETCODE_KEY_BYTES] = read_bytes(src)?;
+
+        Ok(Self {
+            protocol_id,
+            create_timestamp,
+            expire_timestamp,
+            sequence,
+            private_data,
+            server_addresses,
+            client_to_server_key,
+            server_to_client_key,
+            timeout_seconds,
+        })
     }
 }
 
@@ -117,34 +241,7 @@ impl PrivateConnectToken {
     fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
         writer.write_all(&self.client_id.to_le_bytes())?;
         writer.write_all(&self.timeout_seconds.to_le_bytes())?;
-        let mut num_server_addresses = 0u32;
-        for addr in self.server_addresses.iter() {
-            if addr.is_some() {
-                num_server_addresses += 1;
-            } else {
-                break;
-            }
-        }
-        writer.write_all(&num_server_addresses.to_le_bytes())?;
-        for i in 0..num_server_addresses as usize {
-            let host = self.server_addresses[i].unwrap();
-            match host {
-                SocketAddr::V4(addr) => {
-                    writer.write_all(&NETCODE_ADDRESS_IPV4.to_le_bytes())?;
-                    for i in addr.ip().octets() {
-                        writer.write_all(&i.to_le_bytes())?;
-                    }
-                }
-                SocketAddr::V6(addr) => {
-                    writer.write_all(&NETCODE_ADDRESS_IPV6.to_le_bytes())?;
-                    for i in addr.ip().octets() {
-                        writer.write_all(&i.to_le_bytes())?;
-                    }
-                }
-            }
-            writer.write_all(&host.port().to_le_bytes())?;
-        }
-
+        write_server_adresses(writer, &self.server_addresses)?;
         writer.write_all(&self.client_to_server_key)?;
         writer.write_all(&self.server_to_client_key)?;
         writer.write_all(&self.user_data)?;
@@ -155,30 +252,7 @@ impl PrivateConnectToken {
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
         let client_id = read_u64(src)?;
         let timeout_seconds = read_i32(src)?;
-        let mut server_addresses = [None; 32];
-        let num_server_addresses = read_u32(src)?;
-        for i in 0..num_server_addresses as usize {
-            let host_type = read_u8(src)?;
-            match host_type {
-                NETCODE_ADDRESS_IPV4 => {
-                    let mut ip = [0u8; 4];
-                    src.read_exact(&mut ip)?;
-                    let port = read_u16(src)?;
-                    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip)), port);
-                    server_addresses[i] = Some(addr);
-                }
-                NETCODE_ADDRESS_IPV6 => {
-                    let mut ip = [0u8; 16];
-                    src.read_exact(&mut ip)?;
-                    let port = read_u16(src)?;
-                    let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port);
-                    server_addresses[i] = Some(addr);
-                }
-                NETCODE_ADDRESS_NONE => {} // skip
-                _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown ip address type")),
-            }
-        }
-
+        let server_addresses = read_server_addresses(src)?;
         let mut client_to_server_key = [0u8; 32];
         src.read_exact(&mut client_to_server_key)?;
 
@@ -197,6 +271,109 @@ impl PrivateConnectToken {
             user_data,
         })
     }
+
+    pub fn encode(
+        &self,
+        buffer: &mut [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
+        protocol_id: u64,
+        expire_timestamp: u64,
+        sequence: u64,
+        private_key: &[u8; NETCODE_KEY_BYTES],
+    ) -> Result<(), TokenGenerationError> {
+        let aad = get_additional_data(protocol_id, expire_timestamp);
+        let (buffer, buffer_tag) = buffer.split_at_mut(NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES);
+
+        self.write(&mut Cursor::new(&mut buffer[..]))?;
+
+        let tag = encrypt_in_place(buffer, sequence, private_key, &aad)?;
+        buffer_tag.copy_from_slice(&tag);
+
+        Ok(())
+    }
+
+    pub fn decode(
+        buffer: &[u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
+        protocol_id: u64,
+        expire_timestamp: u64,
+        sequence: u64,
+        private_key: &[u8; NETCODE_KEY_BYTES],
+    ) -> Result<Self, TokenGenerationError> {
+        let aad = get_additional_data(protocol_id, expire_timestamp);
+        let (buffer, tag) = buffer.split_at(NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES);
+        let tag = Tag::from_slice(tag);
+
+        let mut temp_buffer = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES];
+        temp_buffer.copy_from_slice(buffer);
+
+        dencrypted_in_place(&mut temp_buffer, sequence, private_key, &aad, tag)?;
+
+        let src = &mut io::Cursor::new(&temp_buffer[..]);
+        Ok(Self::read(src)?)
+    }
+}
+
+fn write_server_adresses(writer: &mut impl io::Write, server_addresses: &[Option<SocketAddr>; 32]) -> Result<(), io::Error> {
+    let num_server_addresses: u32 = server_addresses.iter().filter(|a| a.is_some()).count() as u32;
+    writer.write_all(&num_server_addresses.to_le_bytes())?;
+
+    for host in server_addresses.iter() {
+        if let Some(host) = host {
+            match host {
+                SocketAddr::V4(addr) => {
+                    writer.write_all(&NETCODE_ADDRESS_IPV4.to_le_bytes())?;
+                    for i in addr.ip().octets() {
+                        writer.write_all(&i.to_le_bytes())?;
+                    }
+                }
+                SocketAddr::V6(addr) => {
+                    writer.write_all(&NETCODE_ADDRESS_IPV6.to_le_bytes())?;
+                    for i in addr.ip().octets() {
+                        writer.write_all(&i.to_le_bytes())?;
+                    }
+                }
+            }
+            writer.write_all(&host.port().to_le_bytes())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_server_addresses(src: &mut impl io::Read) -> Result<[Option<SocketAddr>; 32], io::Error> {
+    let mut server_addresses = [None; 32];
+    let num_server_addresses = read_u32(src)?;
+    for i in 0..num_server_addresses as usize {
+        let host_type = read_u8(src)?;
+        match host_type {
+            NETCODE_ADDRESS_IPV4 => {
+                let mut ip = [0u8; 4];
+                src.read_exact(&mut ip)?;
+                let port = read_u16(src)?;
+                let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip)), port);
+                server_addresses[i] = Some(addr);
+            }
+            NETCODE_ADDRESS_IPV6 => {
+                let mut ip = [0u8; 16];
+                src.read_exact(&mut ip)?;
+                let port = read_u16(src)?;
+                let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port);
+                server_addresses[i] = Some(addr);
+            }
+            NETCODE_ADDRESS_NONE => {} // skip
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown ip address type")),
+        }
+    }
+
+    Ok(server_addresses)
+}
+
+fn get_additional_data(protocol_id: u64, expire_timestamp: u64) -> [u8; NETCODE_ADDITIONAL_DATA_SIZE] {
+    let mut buffer = [0; NETCODE_ADDITIONAL_DATA_SIZE];
+    buffer[..13].copy_from_slice(NETCODE_VERSION_INFO);
+    buffer[13..21].copy_from_slice(&protocol_id.to_le_bytes());
+    buffer[21..29].copy_from_slice(&expire_timestamp.to_le_bytes());
+
+    buffer
 }
 
 #[cfg(test)]
@@ -213,5 +390,58 @@ mod tests {
         let result = PrivateConnectToken::read(&mut buffer.as_slice()).unwrap();
 
         assert_eq!(token, result);
+    }
+
+    #[test]
+    fn private_connect_token_encode_decode() {
+        let hosts: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
+        let token = PrivateConnectToken::generate(1, 5, hosts, Some(&generate_random_bytes())).unwrap();
+        let key = b"an example very very secret key."; // 32-bytes
+        let protocol_id = 12;
+        let sequence = 2;
+        let expire_timestamp = 0;
+        let mut buffer = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
+
+        token.encode(&mut buffer, protocol_id, expire_timestamp, sequence, key).unwrap();
+
+        let result = PrivateConnectToken::decode(&mut buffer, protocol_id, expire_timestamp, sequence, key).unwrap();
+        assert_eq!(token, result);
+    }
+
+    #[test]
+    fn connect_token_serialization() {
+        let server_addresses: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
+        let user_data = generate_random_bytes();
+        let private_key = b"an example very very secret key."; // 32-bytes
+        let sequence = 1;
+        let protocol_id = 2;
+        let expire_seconds = 3;
+        let client_id = 4;
+        let timeout_seconds = 5;
+        let token = ConnectToken::generate(
+            sequence,
+            protocol_id,
+            expire_seconds,
+            client_id,
+            timeout_seconds,
+            server_addresses,
+            Some(&user_data),
+            private_key,
+        )
+        .unwrap();
+
+        let mut buffer: Vec<u8> = vec![];
+        token.write(&mut buffer).unwrap();
+
+        let mut result = ConnectToken::read(&mut buffer.as_slice()).unwrap();
+        assert_eq!(token, result);
+
+        let private = result.decode(private_key).unwrap();
+        assert_eq!(timeout_seconds, private.timeout_seconds);
+        assert_eq!(client_id, private.client_id);
+        assert_eq!(user_data, private.user_data);
+        assert_eq!(token.server_addresses, private.server_addresses);
+        assert_eq!(token.client_to_server_key, private.client_to_server_key);
+        assert_eq!(token.server_to_client_key, private.server_to_client_key);
     }
 }
