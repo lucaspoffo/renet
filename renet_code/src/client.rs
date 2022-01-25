@@ -133,16 +133,7 @@ impl Client {
         }
 
         match self.state {
-            State::SendingConnectionRequest => {
-                // TODO: ConnectionRequest::from_connect_token
-                Some(Packet::ConnectionRequest(ConnectionRequest {
-                    sequence: self.connect_token.sequence,
-                    version_info: *NETCODE_VERSION_INFO,
-                    protocol_id: self.connect_token.protocol_id,
-                    expire_timestamp: self.connect_token.expire_timestamp,
-                    data: self.connect_token.private_data,
-                }))
-            }
+            State::SendingConnectionRequest => Some(Packet::ConnectionRequest(ConnectionRequest::from_token(&self.connect_token))),
             State::SendingConnectionResponse => Some(Packet::Response(ConnectionResponse {
                 token_sequence: self.challenge_token_sequence,
                 token_data: self.challenge_token_data,

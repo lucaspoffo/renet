@@ -4,51 +4,9 @@ use std::io::{Cursor, Write};
 use std::{error, fmt, io};
 
 use crate::crypto::{dencrypted_in_place, encrypt_in_place};
-use crate::token::ConnectToken;
+use crate::token::{ConnectToken, TokenGenerationError};
 use crate::{serialize::*, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES};
 use crate::{NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO};
-
-/*
-    Challenge Token
-
-    Challenge tokens stop clients with spoofed IP packet source addresses from connecting to servers.
-
-    Prior to encryption, challenge tokens have the following structure:
-
-        [client id] (uint64)
-        [user data] (256 bytes)
-        <zero pad to 300 bytes>
-
-    Encryption of the challenge token data is performed with the libsodium AEAD primitive crypto_aead_chacha20poly1305_ietf_encrypt with no associated data, a random key generated when the dedicated server starts, and a sequence number that starts at zero and increases with each challenge token generated. The sequence number is extended by padding high bits with zero to create a 96 bit nonce.
-
-    Encryption is performed on the first 300 - 16 bytes, and the last 16 bytes store the HMAC of the encrypted buffer:
-
-    [encrypted challenge token] (284 bytes)
-    [hmac of encrypted challenge token data] (16 bytes)
-    This is referred to as the encrypted challenge token data.
-
-*/
-
-#[derive(Debug, PartialEq, Eq)]
-struct ChallengeToken {
-    client_id: u64,
-    user_data: [u8; 256],
-    // <zero pad to 300 bytes>
-}
-
-/*
-    Packets
-
-    netcode.io has the following packets:
-
-    connection request packet (0)
-    connection denied packet (1)
-    connection challenge packet (2)
-    connection response packet (3)
-    connection keep alive packet (4)
-    connection payload packet (5)
-    connection disconnect packet (6)
-*/
 
 #[repr(u8)]
 enum PacketType {
@@ -60,6 +18,51 @@ enum PacketType {
     Payload = 5,
     Disconnect = 6,
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Packet<'a> {
+    ConnectionRequest(ConnectionRequest),
+    ConnectionDenied,
+    Challenge(ConnectionChallenge),
+    Response(ConnectionResponse),
+    KeepAlive(ConnectionKeepAlive),
+    Payload(&'a [u8]),
+    Disconnect,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConnectionRequest {
+    pub version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
+    pub protocol_id: u64,
+    pub expire_timestamp: u64,
+    pub sequence: u64,
+    pub data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConnectionChallenge {
+    pub token_sequence: u64,
+    pub token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES], // encrypted ChallengeToken
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ChallengeToken {
+    client_id: u64,
+    user_data: [u8; 256],
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConnectionResponse {
+    pub token_sequence: u64,
+    pub token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES],
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConnectionKeepAlive {
+    pub client_index: u32,
+    pub max_clients: u32,
+}
+
 impl PacketType {
     fn from_u8(value: u8) -> Result<Self, NetcodeError> {
         use PacketType::*;
@@ -76,17 +79,6 @@ impl PacketType {
         };
         Ok(packet_type)
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Packet<'a> {
-    ConnectionRequest(ConnectionRequest),
-    ConnectionDenied,
-    Challenge(ConnectionChallenge),
-    Response(ConnectionResponse),
-    KeepAlive(ConnectionKeepAlive),
-    Payload(&'a [u8]),
-    Disconnect,
 }
 
 impl<'a> Packet<'a> {
@@ -208,125 +200,6 @@ fn get_additional_data(prefix: u8, protocol_id: u64) -> [u8; 13 + 8 + 1] {
     buffer[21] = prefix;
 
     buffer
-}
-
-/*
-    The first packet type connection request packet (0) is not encrypted and has the following format:
-
-        0 (uint8) // prefix byte of zero
-        [version info] (13 bytes)       // "NETCODE 1.02" ASCII with null terminator.
-        [protocol id] (8 bytes)
-        [connect token expire timestamp] (8 bytes)
-        [connect token nonce] (24 bytes)
-        [encrypted private connect token data] (1024 bytes)
-
-    All other packet types are encrypted.
-
-    Prior to encryption, packet types >= 1 have the following format:
-
-        [prefix byte] (uint8) // non-zero prefix byte
-        [sequence number] (variable length 1-8 bytes)
-        [per-packet type data] (variable length according to packet type)
-
-    The low 4 bits of the prefix byte contain the packet type.
-
-    The high 4 bits contain the number of bytes for the sequence number in the range [1,8].
-
-    The sequence number is encoded by omitting high zero bytes.
-    For example, a sequence number of 1000 is 0x000003E8 and requires only two bytes to send its value.
-    Therefore, the high 4 bits of the prefix byte are set to 2 and the sequence data written to the packet is:
-
-        0xE8,0x03
-
-    The sequence number bytes are reversed when written to the packet like so:
-
-        <for each sequence byte written>
-        {
-            write_byte( sequence_number & 0xFF )
-            sequence_number >>= 8
-        }
-
-    After the sequence number comes the per-packet type data:
-
-    connection denied packet:
-
-        <no data>
-
-    connection challenge packet:
-
-        [challenge token sequence] (uint64)
-        [encrypted challenge token data] (300 bytes)
-
-    connection response packet:
-
-        [challenge token sequence] (uint64)
-        [encrypted challenge token data] (300 bytes)
-
-    connection keep-alive packet:
-
-        [client index] (uint32)
-        [max clients] (uint32)
-
-    connection payload packet:
-
-        [payload data] (1 to 1200 bytes)
-
-    connection disconnect packet:
-
-        <no data>
-
-    The per-packet type data is encrypted using the libsodium AEAD primitive crypto_aead_chacha20poly1305_ietf_encrypt with the following binary data as the associated data:
-
-        [version info] (13 bytes)       // "NETCODE 1.02" ASCII with null terminator.
-        [protocol id] (uint64)          // 64 bit value unique to this particular game/application
-        [prefix byte] (uint8)           // prefix byte in packet. stops an attacker from modifying packet type.
-
-    The packet sequence number is extended by padding high bits with zero to create a 96 bit nonce.
-
-    Packets sent from client to server are encrypted with the client to server key in the connect token.
-
-    Packets sent from server to client are encrypted using the server to client key in the connect token for that client.
-
-    Post encryption, packet types >= 1 have the following format:
-
-        [prefix byte] (uint8) // non-zero prefix byte: ( (num_sequence_bytes<<4) | packet_type )
-        [sequence number] (variable length 1-8 bytes)
-        [encrypted per-packet type data] (variable length according to packet type)
-        [hmac of encrypted per-packet type data] (16 bytes)
-*/
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ConnectionRequest {
-    pub version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
-    pub protocol_id: u64,
-    pub expire_timestamp: u64,
-    pub sequence: u64,
-    pub data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ConnectionChallenge {
-    pub token_sequence: u64,
-    pub token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES],
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ConnectionResponse {
-    pub token_sequence: u64,
-    pub token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES],
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ConnectionKeepAlive {
-    pub client_index: u32,
-    pub max_clients: u32,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ConnectionPayload {
-    // TODO: use config for setting max payload size?
-    //       netcode seems to use an define NETCODE_MAX_PAYLOAD_BYTES
-    payload: Vec<u8>, // [1, 1200] bytes,
 }
 
 impl ConnectionRequest {
@@ -477,42 +350,6 @@ impl ConnectionKeepAlive {
     }
 }
 
-/*
-    Reading Encrypted Packets
-
-    The following steps are taken when reading an encrypted packet, in this exact order:
-
-        If the packet size is less than 18 bytes then it is too small to possibly be valid, ignore the packet.
-
-        If the low 4 bits of the prefix byte are greater than or equal to 7, the packet type is invalid, ignore the packet.
-
-        The server ignores packets with type connection challenge packet.
-
-        The client ignores packets with type connection request packet and connection response packet.
-
-        If the high 4 bits of the prefix byte (sequence bytes) are outside the range [1,8], ignore the packet.
-
-        If the packet size is less than 1 + sequence bytes + 16, it cannot possibly be valid, ignore the packet.
-
-        If the per-packet type data size does not match the expected size for the packet type, ignore the packet.
-
-            0 bytes for connection denied packet
-            308 bytes for connection challenge packet
-            308 bytes for connection response packet
-            8 bytes for connection keep-alive packet
-            [1,1200] bytes for connection payload packet
-            0 bytes for connection disconnect packet
-
-        If the packet type fails the replay protection already received test, ignore the packet.
-        See the section on replay protection below for details.
-
-        If the per-packet type data fails to decrypt, ignore the packet.
-
-        Advance the most recent replay protection sequence #. See the section on replay protection below for details.
-
-        If all the above checks pass, the packet is processed.
-*/
-
 #[derive(Debug)]
 pub enum NetcodeError {
     InvalidPrivateKey,
@@ -524,7 +361,9 @@ pub enum NetcodeError {
     TimedOut,
     Disconnected,
     CryptoError,
+    NotInHostList,
     IoError(io::Error),
+    TokenGenerationError(TokenGenerationError),
 }
 
 impl fmt::Display for NetcodeError {
@@ -541,7 +380,9 @@ impl fmt::Display for NetcodeError {
             Disconnected => write!(fmt, "disconnected"),
             NoMoreServers => write!(fmt, "client has no more servers to connect"),
             CryptoError => write!(fmt, "error while encoding or decoding"),
-            IoError(ref io_err) => write!(fmt, "{}", io_err),
+            NotInHostList => write!(fmt, "token does not contain the server address"),
+            IoError(ref err) => write!(fmt, "{}", err),
+            TokenGenerationError(ref err) => write!(fmt, "{}", err),
         }
     }
 }
@@ -551,6 +392,12 @@ impl error::Error for NetcodeError {}
 impl From<io::Error> for NetcodeError {
     fn from(inner: io::Error) -> Self {
         NetcodeError::IoError(inner)
+    }
+}
+
+impl From<TokenGenerationError> for NetcodeError {
+    fn from(inner: TokenGenerationError) -> Self {
+        NetcodeError::TokenGenerationError(inner)
     }
 }
 

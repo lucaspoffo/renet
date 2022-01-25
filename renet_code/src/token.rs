@@ -16,52 +16,6 @@ use crate::{
 use aead::Error as CryptoError;
 use chacha20poly1305::Tag;
 
-/*
-   Connect Token
-   A connect token ensures that only authenticated clients can connect to dedicated servers.
-
-   The connect token has two parts: public and private.
-
-   The private portion is encrypted and signed with a private key shared between the web backend and dedicated server instances.
-
-   Prior to encryption the private connect token data has the following binary format:
-
-       [client id] (uint64) // globally unique identifier for an authenticated client
-       [timeout seconds] (uint32) // timeout in seconds. negative values disable timeout (dev only)
-       [num server addresses] (uint32) // in [1,32]
-       <for each server address>
-       {
-           [address type] (uint8) // value of 1 = IPv4 address, 2 = IPv6 address.
-           <if IPV4 address>
-           {
-               // for a given IPv4 address: a.b.c.d:port
-               [a] (uint8)
-               [b] (uint8)
-               [c] (uint8)
-               [d] (uint8)
-               [port] (uint16)
-           }
-           <else IPv6 address>
-           {
-               // for a given IPv6 address: [a:b:c:d:e:f:g:h]:port
-               [a] (uint16)
-               [b] (uint16)
-               [c] (uint16)
-               [d] (uint16)
-               [e] (uint16)
-               [f] (uint16)
-               [g] (uint16)
-               [h] (uint16)
-               [port] (uint16)
-           }
-       }
-       [client to server key] (32 bytes)
-       [server to client key] (32 bytes)
-       [user data] (256 bytes) // user defined data specific to this protocol id
-       <zero pad to 1024 bytes>
-
-   This data is variable size but for simplicity is written to a fixed size buffer of 1024 bytes. Unused bytes are zero padded.
-*/
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectToken {
     pub sequence: u64,
