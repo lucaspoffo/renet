@@ -10,8 +10,8 @@ use crate::{
     crypto::{dencrypted_in_place, encrypt_in_place, generate_random_bytes},
     packet::NetcodeError,
     serialize::*,
-    NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES,
-    NETCODE_MAC_BYTES, NETCODE_TIMEOUT_SECONDS, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+    NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES,
+    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_TIMEOUT_SECONDS, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 use aead::Error as CryptoError;
 use chacha20poly1305::Tag;
@@ -103,9 +103,9 @@ impl ConnectToken {
         })
     }
 
-    fn decode(&mut self, private_key: &[u8; NETCODE_KEY_BYTES]) -> Result<PrivateConnectToken, TokenGenerationError> {
+    fn decode(&self, private_key: &[u8; NETCODE_KEY_BYTES]) -> Result<PrivateConnectToken, TokenGenerationError> {
         PrivateConnectToken::decode(
-            &mut self.private_data,
+            &self.private_data,
             self.protocol_id,
             self.expire_timestamp,
             self.sequence,
@@ -237,7 +237,7 @@ impl PrivateConnectToken {
         let aad = get_additional_data(protocol_id, expire_timestamp);
         let (buffer, buffer_tag) = buffer.split_at_mut(NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES);
 
-        self.write(&mut Cursor::new(&mut buffer[..]))?;
+        self.write(&mut Cursor::new(&mut *buffer))?;
 
         let tag = encrypt_in_place(buffer, sequence, private_key, &aad)?;
         buffer_tag.copy_from_slice(&tag);
@@ -270,24 +270,22 @@ fn write_server_adresses(writer: &mut impl io::Write, server_addresses: &[Option
     let num_server_addresses: u32 = server_addresses.iter().filter(|a| a.is_some()).count() as u32;
     writer.write_all(&num_server_addresses.to_le_bytes())?;
 
-    for host in server_addresses.iter() {
-        if let Some(host) = host {
-            match host {
-                SocketAddr::V4(addr) => {
-                    writer.write_all(&NETCODE_ADDRESS_IPV4.to_le_bytes())?;
-                    for i in addr.ip().octets() {
-                        writer.write_all(&i.to_le_bytes())?;
-                    }
-                }
-                SocketAddr::V6(addr) => {
-                    writer.write_all(&NETCODE_ADDRESS_IPV6.to_le_bytes())?;
-                    for i in addr.ip().octets() {
-                        writer.write_all(&i.to_le_bytes())?;
-                    }
+    for host in server_addresses.iter().flatten() {
+        match host {
+            SocketAddr::V4(addr) => {
+                writer.write_all(&NETCODE_ADDRESS_IPV4.to_le_bytes())?;
+                for i in addr.ip().octets() {
+                    writer.write_all(&i.to_le_bytes())?;
                 }
             }
-            writer.write_all(&host.port().to_le_bytes())?;
+            SocketAddr::V6(addr) => {
+                writer.write_all(&NETCODE_ADDRESS_IPV6.to_le_bytes())?;
+                for i in addr.ip().octets() {
+                    writer.write_all(&i.to_le_bytes())?;
+                }
+            }
         }
+        writer.write_all(&host.port().to_le_bytes())?;
     }
 
     Ok(())
@@ -295,8 +293,8 @@ fn write_server_adresses(writer: &mut impl io::Write, server_addresses: &[Option
 
 fn read_server_addresses(src: &mut impl io::Read) -> Result<[Option<SocketAddr>; 32], io::Error> {
     let mut server_addresses = [None; 32];
-    let num_server_addresses = read_u32(src)?;
-    for i in 0..num_server_addresses as usize {
+    let num_server_addresses = read_u32(src)? as usize;
+    for server_address in server_addresses.iter_mut().take(num_server_addresses) {
         let host_type = read_u8(src)?;
         match host_type {
             NETCODE_ADDRESS_IPV4 => {
@@ -304,14 +302,14 @@ fn read_server_addresses(src: &mut impl io::Read) -> Result<[Option<SocketAddr>;
                 src.read_exact(&mut ip)?;
                 let port = read_u16(src)?;
                 let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip)), port);
-                server_addresses[i] = Some(addr);
+                *server_address = Some(addr);
             }
             NETCODE_ADDRESS_IPV6 => {
                 let mut ip = [0u8; 16];
                 src.read_exact(&mut ip)?;
                 let port = read_u16(src)?;
                 let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port);
-                server_addresses[i] = Some(addr);
+                *server_address = Some(addr);
             }
             NETCODE_ADDRESS_NONE => {} // skip
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown ip address type")),

@@ -75,7 +75,7 @@ impl Server {
         }
 
         let token = PrivateConnectToken::decode(
-            &mut request.data,
+            &request.data,
             self.protocol_id,
             request.expire_timestamp,
             request.sequence,
@@ -99,8 +99,8 @@ impl Server {
             None => match packet {
                 Packet::ConnectionRequest(request) => match self.handle_connection_request(addr, request) {
                     Ok(p) => p,
-                    Err(_) => None
-                }
+                    Err(_) => None,
+                },
                 _ => {
                     // TODO(log): log expected connection request
                     None

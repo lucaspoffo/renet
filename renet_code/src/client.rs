@@ -87,7 +87,7 @@ impl Client {
                 self.client_index = keep_alive.client_index;
                 self.state = State::Connected;
             }
-            (Packet::Payload(ref p), State::Connected) => {
+            (Packet::Payload(p), State::Connected) => {
                 self.last_packet_received_time = self.current_time;
                 return Some(p);
             }

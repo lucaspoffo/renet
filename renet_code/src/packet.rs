@@ -101,7 +101,7 @@ impl<'a> Packet<'a> {
             Packet::Challenge(ref c) => c.write(writer),
             Packet::Response(ref r) => r.write(writer),
             Packet::KeepAlive(ref k) => k.write(writer),
-            Packet::Payload(ref p) => writer.write_all(p),
+            Packet::Payload(p) => writer.write_all(p),
             Packet::ConnectionDenied | Packet::Disconnect => Ok(()),
         }
     }
@@ -121,7 +121,7 @@ impl<'a> Packet<'a> {
             Ok((writer.position() as usize, None))
         } else if let Some((sequence, private_key)) = crypto_info {
             let (start, end, aad) = {
-                let mut writer = io::Cursor::new(&mut buffer[..]);
+                let mut writer = io::Cursor::new(&mut *buffer);
                 let prefix_byte = {
                     let prefix_byte = encode_prefix(self.id(), sequence);
                     writer.write_all(&prefix_byte.to_le_bytes())?;
