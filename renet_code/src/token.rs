@@ -7,21 +7,21 @@ use std::{
 };
 
 use crate::{
-    crypto::{dencrypted_in_place, encrypt_in_place, generate_random_bytes},
+    crypto::{dencrypted_in_place_xnonce, encrypt_in_place_xnonce, generate_random_bytes},
     packet::NetcodeError,
     serialize::*,
     NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES,
-    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_TIMEOUT_SECONDS, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+    NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS, NETCODE_USER_DATA_BYTES,
+    NETCODE_VERSION_INFO,
 };
 use aead::Error as CryptoError;
-use chacha20poly1305::Tag;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectToken {
-    pub sequence: u64,
     pub protocol_id: u64,
     pub create_timestamp: u64,
     pub expire_timestamp: u64,
+    pub xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
     pub server_addresses: [Option<SocketAddr>; 32],
     pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
     pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
@@ -74,7 +74,6 @@ impl fmt::Display for TokenGenerationError {
 
 impl ConnectToken {
     pub fn generate(
-        sequence: u64,
         protocol_id: u64,
         expire_seconds: u64,
         client_id: u64,
@@ -88,14 +87,15 @@ impl ConnectToken {
 
         let private_connect_token = PrivateConnectToken::generate(client_id, timeout_seconds, server_addresses, user_data)?;
         let mut private_data = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
-        private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, sequence, private_key)?;
+        let xnonce = generate_random_bytes();
+        private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, &xnonce, private_key)?;
 
         Ok(Self {
-            sequence,
             protocol_id,
             private_data,
             create_timestamp: now,
             expire_timestamp,
+            xnonce,
             server_addresses: private_connect_token.server_addresses,
             client_to_server_key: private_connect_token.client_to_server_key,
             server_to_client_key: private_connect_token.server_to_client_key,
@@ -108,7 +108,7 @@ impl ConnectToken {
             &self.private_data,
             self.protocol_id,
             self.expire_timestamp,
-            self.sequence,
+            &self.xnonce,
             private_key,
         )
     }
@@ -118,7 +118,7 @@ impl ConnectToken {
         writer.write_all(&self.protocol_id.to_le_bytes())?;
         writer.write_all(&self.create_timestamp.to_le_bytes())?;
         writer.write_all(&self.expire_timestamp.to_le_bytes())?;
-        writer.write_all(&self.sequence.to_le_bytes())?;
+        writer.write_all(&self.xnonce)?;
         writer.write_all(&self.private_data)?;
         writer.write_all(&self.timeout_seconds.to_le_bytes())?;
         write_server_adresses(writer, &self.server_addresses)?;
@@ -137,7 +137,7 @@ impl ConnectToken {
         let protocol_id = read_u64(src)?;
         let create_timestamp = read_u64(src)?;
         let expire_timestamp = read_u64(src)?;
-        let sequence = read_u64(src)?;
+        let xnonce = read_bytes(src)?;
 
         let private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES] = read_bytes(src)?;
         let timeout_seconds = read_i32(src)?;
@@ -149,7 +149,7 @@ impl ConnectToken {
             protocol_id,
             create_timestamp,
             expire_timestamp,
-            sequence,
+            xnonce,
             private_data,
             server_addresses,
             client_to_server_key,
@@ -231,16 +231,13 @@ impl PrivateConnectToken {
         buffer: &mut [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
         protocol_id: u64,
         expire_timestamp: u64,
-        sequence: u64,
+        xnonce: &[u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
         private_key: &[u8; NETCODE_KEY_BYTES],
     ) -> Result<(), TokenGenerationError> {
         let aad = get_additional_data(protocol_id, expire_timestamp);
-        let (buffer, buffer_tag) = buffer.split_at_mut(NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES);
+        self.write(&mut Cursor::new(&mut buffer[..]))?;
 
-        self.write(&mut Cursor::new(&mut *buffer))?;
-
-        let tag = encrypt_in_place(buffer, sequence, private_key, &aad)?;
-        buffer_tag.copy_from_slice(&tag);
+        encrypt_in_place_xnonce(buffer, xnonce, private_key, &aad)?;
 
         Ok(())
     }
@@ -249,17 +246,15 @@ impl PrivateConnectToken {
         buffer: &[u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
         protocol_id: u64,
         expire_timestamp: u64,
-        sequence: u64,
+        xnonce: &[u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
         private_key: &[u8; NETCODE_KEY_BYTES],
     ) -> Result<Self, TokenGenerationError> {
         let aad = get_additional_data(protocol_id, expire_timestamp);
-        let (buffer, tag) = buffer.split_at(NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES);
-        let tag = Tag::from_slice(tag);
 
-        let mut temp_buffer = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES];
+        let mut temp_buffer = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
         temp_buffer.copy_from_slice(buffer);
 
-        dencrypted_in_place(&mut temp_buffer, sequence, private_key, &aad, tag)?;
+        dencrypted_in_place_xnonce(&mut temp_buffer, xnonce, private_key, &aad)?;
 
         let src = &mut io::Cursor::new(&temp_buffer[..]);
         Ok(Self::read(src)?)
@@ -353,10 +348,10 @@ mod tests {
         let sequence = 2;
         let expire_timestamp = 0;
         let mut buffer = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
+        let xnonce = generate_random_bytes();
+        token.encode(&mut buffer, protocol_id, expire_timestamp, &xnonce, key).unwrap();
 
-        token.encode(&mut buffer, protocol_id, expire_timestamp, sequence, key).unwrap();
-
-        let result = PrivateConnectToken::decode(&mut buffer, protocol_id, expire_timestamp, sequence, key).unwrap();
+        let result = PrivateConnectToken::decode(&mut buffer, protocol_id, expire_timestamp, &xnonce, key).unwrap();
         assert_eq!(token, result);
     }
 
@@ -365,13 +360,11 @@ mod tests {
         let server_addresses: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
         let user_data = generate_random_bytes();
         let private_key = b"an example very very secret key."; // 32-bytes
-        let sequence = 1;
         let protocol_id = 2;
         let expire_seconds = 3;
         let client_id = 4;
         let timeout_seconds = 5;
         let token = ConnectToken::generate(
-            sequence,
             protocol_id,
             expire_seconds,
             client_id,

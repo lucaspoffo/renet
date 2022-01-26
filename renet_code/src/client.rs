@@ -1,9 +1,9 @@
 use std::{net::SocketAddr, time::Duration};
 
 use crate::{
-    packet::{ConnectionKeepAlive, ConnectionRequest, ConnectionResponse, NetcodeError, Packet},
-    token::{ConnectToken, PrivateConnectToken},
-    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_SEND_RATE, NETCODE_VERSION_INFO,
+    packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
+    token::ConnectToken,
+    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_SEND_RATE,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -65,7 +65,8 @@ impl Client {
         }
     }
 
-    pub fn process_packet<'a>(&mut self, packet: Packet<'a>) -> Option<&'a [u8]> {
+    pub fn process_packet<'a>(&mut self, buffer: &'a mut [u8]) -> Option<&'a [u8]> {
+        let (_, packet) = Packet::decode(buffer, self.connect_token.protocol_id, Some(&self.connect_token.server_to_client_key)).ok()?;
         match (packet, &self.state) {
             (Packet::ConnectionDenied, State::SendingConnectionRequest | State::SendingConnectionResponse) => {
                 self.state = State::Error(ErrorReason::ConnectionDenied);
@@ -121,28 +122,44 @@ impl Client {
         }
     }
 
-    fn generate_packet(&mut self) -> Option<Packet> {
+    pub fn generate_packet(&mut self, buffer: &mut [u8]) -> Option<usize> {
         if let Some(last_packet_send_time) = self.last_packet_send_time {
             if self.current_time - last_packet_send_time < self.send_rate {
                 return None;
             }
         }
 
-        if matches!(self.state, State::SendingConnectionRequest | State::SendingConnectionResponse) {
+        if matches!(
+            self.state,
+            State::Connected | State::SendingConnectionRequest | State::SendingConnectionResponse
+        ) {
             self.last_packet_send_time = Some(self.current_time);
         }
 
-        match self.state {
-            State::SendingConnectionRequest => Some(Packet::ConnectionRequest(ConnectionRequest::from_token(&self.connect_token))),
-            State::SendingConnectionResponse => Some(Packet::Response(ConnectionResponse {
+        let packet = match self.state {
+            State::SendingConnectionRequest => Packet::ConnectionRequest(ConnectionRequest::from_token(self.sequence, &self.connect_token)),
+            State::SendingConnectionResponse => Packet::Response(EncryptedChallengeToken {
                 token_sequence: self.challenge_token_sequence,
                 token_data: self.challenge_token_data,
-            })),
-            State::Connected => Some(Packet::KeepAlive(ConnectionKeepAlive {
+            }),
+            State::Connected => Packet::KeepAlive(ConnectionKeepAlive {
                 client_index: 0,
                 max_clients: 0,
-            })),
-            _ => None,
+            }),
+            _ => return None,
+        };
+
+        let result = packet.encode(
+            buffer,
+            self.connect_token.protocol_id,
+            Some((self.sequence, &self.connect_token.client_to_server_key)),
+        );
+        match result {
+            Err(_) => None,
+            Ok(encoded) => {
+                self.sequence += 1;
+                Some(encoded)
+            }
         }
     }
 
@@ -185,22 +202,21 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_random_bytes, packet::ConnectionChallenge};
+    use crate::{crypto::generate_random_bytes, packet::EncryptedChallengeToken, NETCODE_BUFFER_SIZE};
 
     use super::*;
 
     #[test]
     fn client_connection() {
+        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
         let server_addresses: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
         let user_data = generate_random_bytes();
         let private_key = b"an example very very secret key."; // 32-bytes
-        let sequence = 1;
         let protocol_id = 2;
         let expire_seconds = 3;
         let client_id = 4;
         let timeout_seconds = 5;
         let connect_token = ConnectToken::generate(
-            sequence,
             protocol_id,
             expire_seconds,
             client_id,
@@ -210,33 +226,41 @@ mod tests {
             private_key,
         )
         .unwrap();
+        let server_key = connect_token.server_to_client_key;
+        let client_key = connect_token.client_to_server_key;
         let mut client = Client::new(Duration::ZERO, connect_token);
-        let packet = client.generate_packet().unwrap();
-
+        let len = client.generate_packet(&mut buffer).unwrap();
+        
+        let (r_sequence, packet) = Packet::decode(&mut buffer[..len], protocol_id, None).unwrap();
+        assert_eq!(0, r_sequence);
         assert!(matches!(packet, Packet::ConnectionRequest(_)));
 
         let challenge_sequence = 7;
         let user_data = generate_random_bytes();
         let challenge_key = generate_random_bytes();
         let challenge_packet =
-            Packet::Challenge(ConnectionChallenge::generate(client_id, &user_data, challenge_sequence, &challenge_key).unwrap());
-        client.process_packet(challenge_packet);
+            Packet::Challenge(EncryptedChallengeToken::generate(client_id, &user_data, challenge_sequence, &challenge_key).unwrap());
+            let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key))).unwrap();
+        client.process_packet(&mut buffer[..len]);
+        assert_eq!(State::SendingConnectionResponse, client.state);
 
-        assert_eq!(client.state, State::SendingConnectionResponse);
-        let packet = client.generate_packet().unwrap();
+        let len = client.generate_packet(&mut buffer).unwrap();
+        let (_, packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&client_key)).unwrap();
         assert!(matches!(packet, Packet::Response(_)));
 
         let max_clients = 4;
         let client_index = 2;
         let keep_alive_packet = Packet::KeepAlive(ConnectionKeepAlive { max_clients, client_index });
-        client.process_packet(keep_alive_packet);
+        let len = keep_alive_packet.encode(&mut buffer, protocol_id, Some((1, &server_key))).unwrap();
+        client.process_packet(&mut buffer[..len]);
 
         assert_eq!(client.state, State::Connected);
 
         let payload = vec![7u8; 500];
         let payload_packet = Packet::Payload(&payload[..]);
+        let len = payload_packet.encode(&mut buffer, protocol_id, Some((1, &server_key))).unwrap();
 
-        let payload_client = client.process_packet(payload_packet).unwrap();
+        let payload_client = client.process_packet(&mut buffer[..len]).unwrap();
         assert_eq!(payload, payload_client);
     }
 }
