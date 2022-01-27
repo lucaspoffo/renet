@@ -17,6 +17,7 @@ use aead::Error as CryptoError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectToken {
+    pub version_info: [u8; 13],
     pub protocol_id: u64,
     pub create_timestamp: u64,
     pub expire_timestamp: u64,
@@ -90,6 +91,7 @@ impl ConnectToken {
         private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, &xnonce, private_key)?;
 
         Ok(Self {
+            version_info: *NETCODE_VERSION_INFO,
             protocol_id,
             private_data,
             create_timestamp: now,
@@ -113,7 +115,7 @@ impl ConnectToken {
     }
 
     fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
-        writer.write_all(NETCODE_VERSION_INFO)?;
+        writer.write_all(&self.version_info)?;
         writer.write_all(&self.protocol_id.to_le_bytes())?;
         writer.write_all(&self.create_timestamp.to_le_bytes())?;
         writer.write_all(&self.expire_timestamp.to_le_bytes())?;
@@ -128,8 +130,8 @@ impl ConnectToken {
     }
 
     fn read(src: &mut impl io::Read) -> Result<Self, NetcodeError> {
-        let version: [u8; 13] = read_bytes(src)?;
-        if &version != NETCODE_VERSION_INFO {
+        let version_info: [u8; 13] = read_bytes(src)?;
+        if &version_info != NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
         }
 
@@ -145,6 +147,7 @@ impl ConnectToken {
         let server_to_client_key: [u8; NETCODE_KEY_BYTES] = read_bytes(src)?;
 
         Ok(Self {
+            version_info,
             protocol_id,
             create_timestamp,
             expire_timestamp,
@@ -344,7 +347,6 @@ mod tests {
         let token = PrivateConnectToken::generate(1, 5, hosts, Some(&generate_random_bytes())).unwrap();
         let key = b"an example very very secret key."; // 32-bytes
         let protocol_id = 12;
-        let sequence = 2;
         let expire_timestamp = 0;
         let mut buffer = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
         let xnonce = generate_random_bytes();

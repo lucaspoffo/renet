@@ -2,6 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
+    replay_protection::ReplayProtection,
     token::ConnectToken,
     NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_SEND_RATE,
 };
@@ -41,6 +42,7 @@ pub struct Client {
     max_clients: u32,
     client_index: u32,
     send_rate: Duration,
+    replay_protection: ReplayProtection,
 }
 
 impl Client {
@@ -62,6 +64,7 @@ impl Client {
             send_rate: NETCODE_SEND_RATE,
             challenge_token_data: [0u8; NETCODE_CHALLENGE_TOKEN_BYTES],
             connect_token,
+            replay_protection: ReplayProtection::new(),
         }
     }
 
@@ -74,6 +77,7 @@ impl Client {
             buffer,
             self.connect_token.protocol_id,
             Some(&self.connect_token.server_to_client_key),
+            Some(&mut self.replay_protection),
         )
         .ok()?;
         match (packet, &self.state) {
@@ -240,7 +244,7 @@ mod tests {
         let mut client = Client::new(Duration::ZERO, connect_token);
         let len = client.generate_packet(&mut buffer).unwrap();
 
-        let (r_sequence, packet) = Packet::decode(&mut buffer[..len], protocol_id, None).unwrap();
+        let (r_sequence, packet) = Packet::decode(&mut buffer[..len], protocol_id, None, None).unwrap();
         assert_eq!(0, r_sequence);
         assert!(matches!(packet, Packet::ConnectionRequest(_)));
 
@@ -254,7 +258,7 @@ mod tests {
         assert_eq!(State::SendingConnectionResponse, client.state);
 
         let len = client.generate_packet(&mut buffer).unwrap();
-        let (_, packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&client_key)).unwrap();
+        let (_, packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&client_key), None).unwrap();
         assert!(matches!(packet, Packet::Response(_)));
 
         let max_clients = 4;
@@ -267,7 +271,7 @@ mod tests {
 
         let payload = vec![7u8; 500];
         let payload_packet = Packet::Payload(&payload[..]);
-        let len = payload_packet.encode(&mut buffer, protocol_id, Some((1, &server_key))).unwrap();
+        let len = payload_packet.encode(&mut buffer, protocol_id, Some((2, &server_key))).unwrap();
 
         let payload_client = client.process_packet(&mut buffer[..len]).unwrap();
         assert_eq!(payload, payload_client);

@@ -1,6 +1,7 @@
 pub mod client;
 mod crypto;
 mod packet;
+mod replay_protection;
 mod serialize;
 pub mod server;
 mod token;

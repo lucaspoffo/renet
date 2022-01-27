@@ -7,6 +7,7 @@ use std::{
 use crate::{
     crypto::generate_random_bytes,
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
+    replay_protection::ReplayProtection,
     token::PrivateConnectToken,
     NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_USER_DATA_BYTES,
     NETCODE_VERSION_INFO,
@@ -27,6 +28,7 @@ enum ConnectionState {
 //       payload or keep alive packet after being connected
 #[derive(Debug, Clone)]
 struct Connection {
+    confirmed: bool,
     client_id: ClientID,
     state: ConnectionState,
     send_key: [u8; NETCODE_KEY_BYTES],
@@ -39,6 +41,7 @@ struct Connection {
     sequence: u64,
     expire_timestamp: u64,
     connect_start_time: Duration,
+    replay_protection: ReplayProtection,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -180,7 +183,22 @@ impl Server {
             return Ok(ServerResult::PacketToSend(&mut out[..len]));
         }
 
-        self.pending_clients.entry(addr).or_insert_with(|| Connection {
+        self.challenge_sequence += 1;
+        let packet = Packet::Challenge(EncryptedChallengeToken::generate(
+            connect_token.client_id,
+            &connect_token.user_data,
+            self.challenge_sequence,
+            &self.challenge_key,
+        )?);
+
+        let len = packet.encode(
+            out,
+            self.protocol_id,
+            Some((self.global_sequence, &connect_token.server_to_client_key)),
+        )?;
+
+        let pending = self.pending_clients.entry(addr).or_insert_with(|| Connection {
+            confirmed: false,
             sequence: 0,
             client_id: connect_token.client_id,
             last_packet_received_time: self.current_time,
@@ -193,20 +211,10 @@ impl Server {
             connect_start_time: self.current_time,
             expire_timestamp: request.expire_timestamp,
             user_data: [0u8; NETCODE_USER_DATA_BYTES],
+            replay_protection: ReplayProtection::new(),
         });
+        pending.last_packet_received_time = self.current_time;
 
-        self.challenge_sequence += 1;
-        let packet = Packet::Challenge(EncryptedChallengeToken::generate(
-            connect_token.client_id,
-            &connect_token.user_data,
-            self.challenge_sequence,
-            &self.challenge_key,
-        )?);
-        let len = packet.encode(
-            out,
-            self.protocol_id,
-            Some((self.global_sequence, &connect_token.server_to_client_key)),
-        )?;
         self.global_sequence += 1;
         Ok(ServerResult::PacketToSend(&mut out[..len]))
     }
@@ -275,7 +283,12 @@ impl Server {
 
         // Handle connected client
         if let Some((slot, connection)) = find_client_by_addr(&mut self.clients, addr) {
-            let (_, packet) = Packet::decode(buffer, self.protocol_id, Some(&connection.receive_key))?;
+            let (_, packet) = Packet::decode(
+                buffer,
+                self.protocol_id,
+                Some(&connection.receive_key),
+                Some(&mut connection.replay_protection),
+            )?;
             connection.last_packet_received_time = self.current_time;
             match connection.state {
                 ConnectionState::Connected => match packet {
@@ -285,7 +298,20 @@ impl Server {
                         self.clients[slot] = None;
                         return Ok(ServerResult::None);
                     }
-                    Packet::Payload(payload) => return Ok(ServerResult::Payload(payload)),
+                    Packet::Payload(payload) => {
+                        if !connection.confirmed {
+                            // TODO(log): debug
+                            connection.confirmed = true;
+                        }
+                        return Ok(ServerResult::Payload(payload));
+                    }
+                    Packet::KeepAlive(_) => {
+                        if !connection.confirmed {
+                            // TODO(log): debug
+                            connection.confirmed = true;
+                        }
+                        return Ok(ServerResult::None);
+                    }
                     _ => return Ok(ServerResult::None),
                 },
                 _ => return Ok(ServerResult::None),
@@ -294,7 +320,12 @@ impl Server {
 
         // Handle pending client
         if let Some(pending) = self.pending_clients.get_mut(&addr) {
-            let (_, packet) = Packet::decode(buffer, self.protocol_id, Some(&pending.receive_key))?;
+            let (_, packet) = Packet::decode(
+                buffer,
+                self.protocol_id,
+                Some(&pending.receive_key),
+                Some(&mut pending.replay_protection),
+            )?;
             pending.last_packet_received_time = self.current_time;
             match packet {
                 Packet::ConnectionRequest(request) => return self.handle_connection_request(addr, &request, out),
@@ -334,7 +365,7 @@ impl Server {
         }
 
         // Handle new client
-        let (_, packet) = Packet::decode(buffer, self.protocol_id, None)?;
+        let (_, packet) = Packet::decode(buffer, self.protocol_id, None, None)?;
         match packet {
             Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request, out),
             _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
