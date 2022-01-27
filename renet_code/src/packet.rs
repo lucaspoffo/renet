@@ -37,9 +37,7 @@ pub enum Packet<'a> {
 pub struct ConnectionRequest {
     pub version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
     pub protocol_id: u64,
-    pub create_timestamp: u64,
     pub expire_timestamp: u64,
-    pub sequence: u64,
     pub xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
     pub data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
 }
@@ -201,13 +199,11 @@ fn get_additional_data(prefix: u8, protocol_id: u64) -> [u8; 13 + 8 + 1] {
 }
 
 impl ConnectionRequest {
-    pub fn from_token(sequence: u64, connect_token: &ConnectToken) -> Self {
+    pub fn from_token(connect_token: &ConnectToken) -> Self {
         Self {
-            sequence,
             xnonce: connect_token.xnonce,
             version_info: *NETCODE_VERSION_INFO,
             protocol_id: connect_token.protocol_id,
-            create_timestamp: connect_token.create_timestamp,
             expire_timestamp: connect_token.expire_timestamp,
             data: connect_token.private_data,
         }
@@ -216,18 +212,14 @@ impl ConnectionRequest {
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
         let version_info = read_bytes(src)?;
         let protocol_id = read_u64(src)?;
-        let create_timestamp = read_u64(src)?;
         let expire_timestamp = read_u64(src)?;
-        let sequence = read_u64(src)?;
         let xnonce = read_bytes(src)?;
         let token_data = read_bytes(src)?;
 
         Ok(Self {
             version_info,
             protocol_id,
-            create_timestamp,
             expire_timestamp,
-            sequence,
             xnonce,
             data: token_data,
         })
@@ -236,9 +228,7 @@ impl ConnectionRequest {
     fn write(&self, out: &mut impl io::Write) -> Result<(), io::Error> {
         out.write_all(&self.version_info)?;
         out.write_all(&self.protocol_id.to_le_bytes())?;
-        out.write_all(&self.create_timestamp.to_le_bytes())?;
         out.write_all(&self.expire_timestamp.to_le_bytes())?;
-        out.write_all(&self.sequence.to_le_bytes())?;
         out.write_all(&self.xnonce)?;
         out.write_all(&self.data)?;
 
@@ -333,6 +323,7 @@ impl ConnectionKeepAlive {
 pub enum NetcodeError {
     InvalidPrivateKey,
     InvalidPacketType,
+    InvalidProtocolID,
     InvalidVersion,
     PacketTooSmall,
     NoMoreServers,
@@ -354,6 +345,7 @@ impl fmt::Display for NetcodeError {
         match *self {
             InvalidPrivateKey => write!(fmt, "invalid private key"),
             InvalidPacketType => write!(fmt, "invalid packet type"),
+            InvalidProtocolID => write!(fmt, "invalid protocol id"),
             InvalidVersion => write!(fmt, "invalid version info"),
             PacketTooSmall => write!(fmt, "packet is too small"),
             Expired => write!(fmt, "connection expired"),
@@ -435,9 +427,7 @@ mod tests {
             xnonce: generate_random_bytes(),
             version_info: [0; 13], // "NETCODE 1.02" ASCII with null terminator.
             protocol_id: 1,
-            create_timestamp: 0,
             expire_timestamp: 3,
-            sequence: 4,
             data: [5; 1024],
         };
         let mut buffer = Vec::new();

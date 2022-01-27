@@ -146,7 +146,7 @@ impl Client {
         }
 
         let packet = match self.state {
-            State::SendingConnectionRequest => Packet::ConnectionRequest(ConnectionRequest::from_token(self.sequence, &self.connect_token)),
+            State::SendingConnectionRequest => Packet::ConnectionRequest(ConnectionRequest::from_token(&self.connect_token)),
             State::SendingConnectionResponse => Packet::Response(EncryptedChallengeToken {
                 token_sequence: self.challenge_token_sequence,
                 token_data: self.challenge_token_data,

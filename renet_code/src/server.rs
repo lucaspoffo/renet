@@ -38,7 +38,6 @@ struct Connection {
     timeout_seconds: i32,
     sequence: u64,
     expire_timestamp: u64,
-    create_timestamp: u64,
     connect_start_time: Duration,
 }
 
@@ -193,7 +192,6 @@ impl Server {
             timeout_seconds: connect_token.timeout_seconds,
             connect_start_time: self.current_time,
             expire_timestamp: request.expire_timestamp,
-            create_timestamp: request.create_timestamp,
             user_data: [0u8; NETCODE_USER_DATA_BYTES],
         });
 
@@ -216,6 +214,10 @@ impl Server {
     pub fn validate_client_token(&self, request: &ConnectionRequest) -> Result<PrivateConnectToken, NetcodeError> {
         if request.version_info != *NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
+        }
+
+        if request.protocol_id != self.protocol_id {
+            return Err(NetcodeError::InvalidProtocolID);
         }
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -412,9 +414,8 @@ impl Server {
 
     pub fn update_pending_connections(&mut self) {
         for client in self.pending_clients.values_mut() {
-            let expire_seconds = client.expire_timestamp - client.create_timestamp;
-            let connection_expired = (self.current_time - client.connect_start_time).as_secs() >= expire_seconds;
-            if connection_expired {
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            if now > client.expire_timestamp {
                 client.state = ConnectionState::Disconnected;
             }
         }
