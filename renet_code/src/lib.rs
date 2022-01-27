@@ -1,8 +1,8 @@
-mod client;
+pub mod client;
+pub mod server;
 mod crypto;
 mod packet;
 mod serialize;
-mod server;
 mod token;
 
 use std::time::Duration;

@@ -65,8 +65,17 @@ impl Client {
         }
     }
 
+    pub fn connected(&self) -> bool {
+        self.state == State::Connected
+    }
+
     pub fn process_packet<'a>(&mut self, buffer: &'a mut [u8]) -> Option<&'a [u8]> {
-        let (_, packet) = Packet::decode(buffer, self.connect_token.protocol_id, Some(&self.connect_token.server_to_client_key)).ok()?;
+        let (_, packet) = Packet::decode(
+            buffer,
+            self.connect_token.protocol_id,
+            Some(&self.connect_token.server_to_client_key),
+        )
+        .ok()?;
         match (packet, &self.state) {
             (Packet::ConnectionDenied, State::SendingConnectionRequest | State::SendingConnectionResponse) => {
                 self.state = State::Error(ErrorReason::ConnectionDenied);
@@ -230,7 +239,7 @@ mod tests {
         let client_key = connect_token.client_to_server_key;
         let mut client = Client::new(Duration::ZERO, connect_token);
         let len = client.generate_packet(&mut buffer).unwrap();
-        
+
         let (r_sequence, packet) = Packet::decode(&mut buffer[..len], protocol_id, None).unwrap();
         assert_eq!(0, r_sequence);
         assert!(matches!(packet, Packet::ConnectionRequest(_)));
@@ -240,7 +249,7 @@ mod tests {
         let challenge_key = generate_random_bytes();
         let challenge_packet =
             Packet::Challenge(EncryptedChallengeToken::generate(client_id, &user_data, challenge_sequence, &challenge_key).unwrap());
-            let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key))).unwrap();
+        let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key))).unwrap();
         client.process_packet(&mut buffer[..len]);
         assert_eq!(State::SendingConnectionResponse, client.state);
 
