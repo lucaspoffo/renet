@@ -26,7 +26,7 @@ pub fn dencrypted_in_place_xnonce(buffer: &mut [u8], xnonce: &[u8; 24], private_
     let key = Key::from_slice(private_key);
     let cipher = XChaCha20Poly1305::new(key);
 
-    cipher.decrypt_in_place_detached(&xnonce, aad, buffer, tag)
+    cipher.decrypt_in_place_detached(xnonce, aad, buffer, tag)
 }
 
 pub fn encrypt_in_place(buffer: &mut [u8], sequence: u64, key: &[u8; 32], aad: &[u8]) -> Result<(), CryptoError> {
@@ -49,7 +49,7 @@ pub fn encrypt_in_place_xnonce(buffer: &mut [u8], xnonce: &[u8; 24], key: &[u8; 
     let xnonce = XNonce::from_slice(xnonce);
     let key = Key::from_slice(key);
     let cipher = XChaCha20Poly1305::new(key);
-    let tag = cipher.encrypt_in_place_detached(&xnonce, aad, buffer)?;
+    let tag = cipher.encrypt_in_place_detached(xnonce, aad, buffer)?;
     buffer_tag.copy_from_slice(&tag);
 
     Ok(())
