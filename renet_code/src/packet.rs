@@ -52,8 +52,8 @@ pub struct EncryptedChallengeToken {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ChallengeToken {
-    client_id: u64,
-    user_data: [u8; 256],
+    pub client_id: u64,
+    pub user_data: [u8; 256],
 }
 
 #[derive(Debug, PartialEq, Eq)]

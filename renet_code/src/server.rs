@@ -8,7 +8,8 @@ use crate::{
     crypto::generate_random_bytes,
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
     token::PrivateConnectToken,
-    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_VERSION_INFO,
+    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_USER_DATA_BYTES,
+    NETCODE_VERSION_INFO,
 };
 
 type ClientID = u64;
@@ -22,7 +23,7 @@ enum ConnectionState {
 
 // TODO: Replay Protection
 // TODO: Check what client confirmed is used for connected clients.
-//       A client is considered confirmed after he receives an 
+//       A client is considered confirmed after he receives an
 //       payload or keep alive packet after being connected
 #[derive(Debug, Clone)]
 struct Connection {
@@ -30,6 +31,7 @@ struct Connection {
     state: ConnectionState,
     send_key: [u8; NETCODE_KEY_BYTES],
     receive_key: [u8; NETCODE_KEY_BYTES],
+    user_data: [u8; NETCODE_USER_DATA_BYTES],
     addr: SocketAddr,
     last_packet_received_time: Duration,
     last_packet_send_time: Option<Duration>,
@@ -38,6 +40,13 @@ struct Connection {
     expire_timestamp: u64,
     create_timestamp: u64,
     connect_start_time: Duration,
+}
+
+#[derive(Debug, Copy, Clone)]
+struct ConnectTokenEntry {
+    time: Duration,
+    address: SocketAddr,
+    mac: [u8; NETCODE_MAC_BYTES],
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -49,6 +58,7 @@ pub enum ServerEvent {
 pub struct Server {
     clients: Box<[Option<Connection>]>,
     pending_clients: HashMap<SocketAddr, Connection>,
+    connect_token_entries: [Option<ConnectTokenEntry>; NETCODE_MAX_CLIENTS * 4],
     protocol_id: u64,
     connect_key: [u8; NETCODE_KEY_BYTES],
     max_clients: usize,
@@ -69,11 +79,17 @@ pub enum ServerResult<'a, 'b> {
 
 impl Server {
     pub fn new(max_clients: usize, protocol_id: u64, address: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
+        if max_clients > NETCODE_MAX_CLIENTS {
+            // TODO: do we really need to set a max?
+            //       only using for token entries
+            panic!("The max clients allowed is {}", NETCODE_MAX_CLIENTS);
+        }
         let challenge_key = generate_random_bytes();
         let clients = vec![None; max_clients].into_boxed_slice();
 
         Self {
             clients,
+            connect_token_entries: [None; NETCODE_MAX_CLIENTS * 4],
             pending_clients: HashMap::new(),
             protocol_id,
             connect_key: private_key,
@@ -91,6 +107,40 @@ impl Server {
         self.events.pop_front()
     }
 
+    fn find_or_add_connect_token_entry(&mut self, new_entry: ConnectTokenEntry) -> bool {
+        let mut min = Duration::MAX;
+        let mut oldest_entry = 0;
+        let mut empty_entry = false;
+        let mut matching_entry = None;
+        for (i, entry) in self.connect_token_entries.iter().enumerate() {
+            match entry {
+                Some(e) => {
+                    if e.mac == new_entry.mac {
+                        matching_entry = Some(e);
+                    }
+                    if !empty_entry && e.time < min {
+                        oldest_entry = i;
+                        min = e.time;
+                    }
+                }
+                None => {
+                    if !empty_entry {
+                        empty_entry = true;
+                        oldest_entry = i;
+                    }
+                }
+            }
+        }
+
+        if let Some(entry) = matching_entry {
+            return entry.address == new_entry.address;
+        }
+
+        self.connect_token_entries[oldest_entry] = Some(new_entry);
+
+        true
+    }
+
     pub fn handle_connection_request<'a, 'b>(
         &mut self,
         addr: SocketAddr,
@@ -101,8 +151,21 @@ impl Server {
 
         let id_already_connected = find_client_by_addr(&mut self.clients, addr).is_some();
         let addr_already_connected = find_client_by_id(&mut self.clients, connect_token.client_id).is_some();
-
         if id_already_connected || addr_already_connected {
+            // TODO(log): debug
+            return Ok(ServerResult::None);
+        }
+
+        let mut mac = [0u8; NETCODE_MAC_BYTES];
+        mac.copy_from_slice(&request.data[NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES..]);
+        let connect_token_entry = ConnectTokenEntry {
+            address: addr,
+            time: self.current_time,
+            mac,
+        };
+
+        if !self.find_or_add_connect_token_entry(connect_token_entry) {
+            // TODO(log): debug
             return Ok(ServerResult::None);
         }
 
@@ -131,6 +194,7 @@ impl Server {
             connect_start_time: self.current_time,
             expire_timestamp: request.expire_timestamp,
             create_timestamp: request.create_timestamp,
+            user_data: [0u8; NETCODE_USER_DATA_BYTES],
         });
 
         self.challenge_sequence += 1;
@@ -233,8 +297,12 @@ impl Server {
             match packet {
                 Packet::ConnectionRequest(request) => return self.handle_connection_request(addr, &request, out),
                 Packet::Response(response) => {
-                    response.decode(&self.challenge_key)?;
+                    let challenge_token = response.decode(&self.challenge_key)?;
                     let mut pending = self.pending_clients.remove(&addr).unwrap();
+                    if find_client_by_id(&mut self.clients, challenge_token.client_id).is_some() {
+                        // TODO(log): debug
+                        return Ok(ServerResult::None);
+                    }
                     match self.clients.iter().position(|c| c.is_none()) {
                         None => {
                             let packet = Packet::ConnectionDenied;
@@ -247,6 +315,7 @@ impl Server {
                             self.events.push_back(ServerEvent::ClientConnected(client_index));
                             let send_key = pending.send_key;
                             pending.state = ConnectionState::Connected;
+                            pending.user_data = challenge_token.user_data;
                             self.clients[client_index] = Some(pending);
                             let packet = Packet::KeepAlive(ConnectionKeepAlive {
                                 max_clients: self.max_clients as u32,
@@ -427,5 +496,27 @@ mod tests {
 
         let client_payload = client.process_packet(result).unwrap();
         assert_eq!(payload, client_payload);
+    }
+
+    #[test]
+    fn connect_token_already_used() {
+        let server_addr = "127.0.0.1:5000".parse().unwrap();
+        let private_key = b"an example very very secret key."; // 32-bytes
+        let mut server = Server::new(16, 0, server_addr, *private_key);
+
+        let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
+        let mut connect_token = ConnectTokenEntry {
+            time: Duration::ZERO,
+            address: client_addr,
+            mac: generate_random_bytes(),
+        };
+        // Allow first entry
+        assert!(server.find_or_add_connect_token_entry(connect_token));
+        // Allow same token with the same address
+        assert!(server.find_or_add_connect_token_entry(connect_token));
+        connect_token.address = "127.0.0.1:3001".parse().unwrap();
+
+        // Don't allow same token with different address
+        assert!(!server.find_or_add_connect_token_entry(connect_token));
     }
 }
