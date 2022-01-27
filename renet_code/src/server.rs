@@ -17,10 +17,13 @@ type ClientID = u64;
 enum ConnectionState {
     Disconnected,
     PendingResponse,
-    TimedOut,
     Connected,
 }
 
+// TODO: Replay Protection
+// TODO: Check what client confirmed is used for connected clients.
+//       A client is considered confirmed after he receives an 
+//       payload or keep alive packet after being connected
 #[derive(Debug, Clone)]
 struct Connection {
     client_id: ClientID,
@@ -204,69 +207,66 @@ impl Server {
             return Ok(ServerResult::None);
         }
 
-        let client = find_client_by_addr(&mut self.clients, addr);
-        match client {
-            Some(connection) => {
-                let (_, packet) = Packet::decode(buffer, self.protocol_id, Some(&connection.receive_key))?;
-                connection.last_packet_received_time = self.current_time;
-                match connection.state {
-                    ConnectionState::Connected => match packet {
-                        Packet::Disconnect => {
-                            connection.state = ConnectionState::Disconnected;
-
-                            Ok(ServerResult::None)
-                        }
-                        Packet::Payload(payload) => Ok(ServerResult::Payload(payload)),
-                        _ => Ok(ServerResult::None),
-                    },
-                    _ => Ok(ServerResult::None),
-                }
+        // Handle connected client
+        if let Some((slot, connection)) = find_client_by_addr(&mut self.clients, addr) {
+            let (_, packet) = Packet::decode(buffer, self.protocol_id, Some(&connection.receive_key))?;
+            connection.last_packet_received_time = self.current_time;
+            match connection.state {
+                ConnectionState::Connected => match packet {
+                    Packet::Disconnect => {
+                        connection.state = ConnectionState::Disconnected;
+                        self.events.push_back(ServerEvent::ClientDisconnected(slot));
+                        self.clients[slot] = None;
+                        return Ok(ServerResult::None);
+                    }
+                    Packet::Payload(payload) => return Ok(ServerResult::Payload(payload)),
+                    _ => return Ok(ServerResult::None),
+                },
+                _ => return Ok(ServerResult::None),
             }
-            None => match self.pending_clients.get_mut(&addr) {
-                Some(pending) => {
-                    let (_, packet) = Packet::decode(buffer, self.protocol_id, Some(&pending.receive_key))?;
-                    pending.last_packet_received_time = self.current_time;
-                    match packet {
-                        Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request, out),
-                        Packet::Response(response) => match pending.state {
-                            ConnectionState::PendingResponse => {
-                                response.decode(&self.challenge_key)?;
-                                let mut pending = self.pending_clients.remove(&addr).unwrap();
-                                match self.clients.iter().position(|c| c.is_none()) {
-                                    None => {
-                                        let packet = Packet::ConnectionDenied;
-                                        let len = packet.encode(out, self.protocol_id, Some((self.global_sequence, &pending.send_key)))?;
-                                        self.global_sequence += 1;
-                                        Ok(ServerResult::PacketToSend(&mut out[..len]))
-                                    }
-                                    Some(client_index) => {
-                                        self.events.push_back(ServerEvent::ClientConnected(client_index));
-                                        let send_key = pending.send_key;
-                                        pending.state = ConnectionState::Connected;
-                                        self.clients[client_index] = Some(pending);
-                                        let packet = Packet::KeepAlive(ConnectionKeepAlive {
-                                            max_clients: self.max_clients as u32,
-                                            client_index: client_index as u32,
-                                        });
-                                        let len = packet.encode(out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
-                                        self.global_sequence += 1;
-                                        Ok(ServerResult::PacketToSend(&mut out[..len]))
-                                    }
-                                }
-                            }
-                            _ => Ok(ServerResult::None),
-                        },
-                        _ => Ok(ServerResult::None),
+        }
+
+        // Handle pending client
+        if let Some(pending) = self.pending_clients.get_mut(&addr) {
+            let (_, packet) = Packet::decode(buffer, self.protocol_id, Some(&pending.receive_key))?;
+            pending.last_packet_received_time = self.current_time;
+            match packet {
+                Packet::ConnectionRequest(request) => return self.handle_connection_request(addr, &request, out),
+                Packet::Response(response) => {
+                    response.decode(&self.challenge_key)?;
+                    let mut pending = self.pending_clients.remove(&addr).unwrap();
+                    match self.clients.iter().position(|c| c.is_none()) {
+                        None => {
+                            let packet = Packet::ConnectionDenied;
+                            let len = packet.encode(out, self.protocol_id, Some((self.global_sequence, &pending.send_key)))?;
+                            pending.state = ConnectionState::Disconnected;
+                            self.global_sequence += 1;
+                            return Ok(ServerResult::PacketToSend(&mut out[..len]));
+                        }
+                        Some(client_index) => {
+                            self.events.push_back(ServerEvent::ClientConnected(client_index));
+                            let send_key = pending.send_key;
+                            pending.state = ConnectionState::Connected;
+                            self.clients[client_index] = Some(pending);
+                            let packet = Packet::KeepAlive(ConnectionKeepAlive {
+                                max_clients: self.max_clients as u32,
+                                client_index: client_index as u32,
+                            });
+                            let len = packet.encode(out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
+                            self.global_sequence += 1;
+                            return Ok(ServerResult::PacketToSend(&mut out[..len]));
+                        }
                     }
                 }
-                None => {
-                    let (_, packet) = Packet::decode(buffer, self.protocol_id, None)?;
-                    match packet {
-                        Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request, out),
-                        _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
-                    }
-                }
-            },
+                _ => return Ok(ServerResult::None),
+            }
+        }
+
+        // Handle new client
+        let (_, packet) = Packet::decode(buffer, self.protocol_id, None)?;
+        match packet {
+            Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request, out),
+            _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
         }
     }
 
@@ -358,15 +358,11 @@ fn find_client_by_id(clients: &mut [Option<Connection>], id: ClientID) -> Option
     clients.iter_mut().flatten().find(|c| c.client_id == id)
 }
 
-fn find_client_slot_by_id(clients: &mut [Option<Connection>], id: ClientID) -> Option<&mut Option<Connection>> {
-    clients.iter_mut().find(|c| match c {
-        Some(c) => c.client_id == id,
-        None => false,
+fn find_client_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> Option<(usize, &mut Connection)> {
+    clients.iter_mut().enumerate().find_map(|(i, c)| match c {
+        Some(c) if c.addr == addr => Some((i, c)),
+        _ => None,
     })
-}
-
-fn find_client_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> Option<&mut Connection> {
-    clients.iter_mut().flatten().find(|c| c.addr == addr)
 }
 
 #[cfg(test)]

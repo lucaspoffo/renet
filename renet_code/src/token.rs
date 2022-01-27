@@ -377,7 +377,7 @@ mod tests {
         let mut buffer: Vec<u8> = vec![];
         token.write(&mut buffer).unwrap();
 
-        let mut result = ConnectToken::read(&mut buffer.as_slice()).unwrap();
+        let result = ConnectToken::read(&mut buffer.as_slice()).unwrap();
         assert_eq!(token, result);
 
         let private = result.decode(private_key).unwrap();
