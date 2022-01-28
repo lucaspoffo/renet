@@ -4,7 +4,7 @@ use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
     replay_protection::ReplayProtection,
     token::ConnectToken,
-    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_SEND_RATE,
+    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_SEND_RATE,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,6 +43,7 @@ pub struct Client {
     client_index: u32,
     send_rate: Duration,
     replay_protection: ReplayProtection,
+    out: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
 impl Client {
@@ -65,6 +66,7 @@ impl Client {
             challenge_token_data: [0u8; NETCODE_CHALLENGE_TOKEN_BYTES],
             connect_token,
             replay_protection: ReplayProtection::new(),
+            out: [0u8; NETCODE_MAX_PACKET_BYTES],
         }
     }
 
@@ -135,7 +137,7 @@ impl Client {
         }
     }
 
-    pub fn generate_packet(&mut self, buffer: &mut [u8]) -> Option<usize> {
+    pub fn generate_packet<'s>(&'s mut self) -> Option<&'s mut [u8]> {
         if let Some(last_packet_send_time) = self.last_packet_send_time {
             if self.current_time - last_packet_send_time < self.send_rate {
                 return None;
@@ -163,7 +165,7 @@ impl Client {
         };
 
         let result = packet.encode(
-            buffer,
+            &mut self.out,
             self.connect_token.protocol_id,
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         );
@@ -171,7 +173,7 @@ impl Client {
             Err(_) => None,
             Ok(encoded) => {
                 self.sequence += 1;
-                Some(encoded)
+                Some(&mut self.out[..encoded])
             }
         }
     }
@@ -215,13 +217,13 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_random_bytes, packet::EncryptedChallengeToken, NETCODE_BUFFER_SIZE};
+    use crate::{crypto::generate_random_bytes, packet::EncryptedChallengeToken, NETCODE_MAX_PACKET_BYTES};
 
     use super::*;
 
     #[test]
     fn client_connection() {
-        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
+        let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
         let server_addresses: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
         let user_data = generate_random_bytes();
         let private_key = b"an example very very secret key."; // 32-bytes
@@ -242,9 +244,9 @@ mod tests {
         let server_key = connect_token.server_to_client_key;
         let client_key = connect_token.client_to_server_key;
         let mut client = Client::new(Duration::ZERO, connect_token);
-        let len = client.generate_packet(&mut buffer).unwrap();
+        let packet_buffer = client.generate_packet().unwrap();
 
-        let (r_sequence, packet) = Packet::decode(&mut buffer[..len], protocol_id, None, None).unwrap();
+        let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
         assert_eq!(0, r_sequence);
         assert!(matches!(packet, Packet::ConnectionRequest(_)));
 
@@ -257,8 +259,8 @@ mod tests {
         client.process_packet(&mut buffer[..len]);
         assert_eq!(State::SendingConnectionResponse, client.state);
 
-        let len = client.generate_packet(&mut buffer).unwrap();
-        let (_, packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&client_key), None).unwrap();
+        let packet_buffer = client.generate_packet().unwrap();
+        let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None).unwrap();
         assert!(matches!(packet, Packet::Response(_)));
 
         let max_clients = 4;

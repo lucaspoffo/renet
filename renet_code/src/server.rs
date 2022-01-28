@@ -9,7 +9,7 @@ use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
     replay_protection::ReplayProtection,
     token::PrivateConnectToken,
-    NETCODE_BUFFER_SIZE, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS,
+    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_MAX_PACKET_BYTES,
     NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 
@@ -70,7 +70,7 @@ pub struct Server {
     current_time: Duration,
     global_sequence: u64,
     events: VecDeque<ServerEvent>,
-    out: [u8; NETCODE_BUFFER_SIZE],
+    out: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -103,7 +103,7 @@ impl Server {
             address,
             current_time: Duration::ZERO,
             events: VecDeque::new(),
-            out: [0u8; NETCODE_BUFFER_SIZE],
+            out: [0u8; NETCODE_MAX_PACKET_BYTES],
         }
     }
 
@@ -464,7 +464,7 @@ fn find_client_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::{client::Client, token::ConnectToken, NETCODE_BUFFER_SIZE};
+    use crate::{client::Client, token::ConnectToken};
 
     use super::*;
 
@@ -493,22 +493,20 @@ mod tests {
         )
         .unwrap();
         let mut client = Client::new(Duration::ZERO, connect_token);
+        let client_packet = client.generate_packet().unwrap();
 
-        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
-
-        let len = client.generate_packet(&mut buffer).unwrap();
-
-        let result = server.process_packet(client_addr, &mut buffer[..len]);
+        let result = server.process_packet(client_addr, client_packet);
         assert!(matches!(result, ServerResult::PacketToSend(_)));
         match result {
             ServerResult::PacketToSend(packet) => client.process_packet(packet),
             _ => unreachable!(),
         };
-        let len = client.generate_packet(&mut buffer).unwrap();
-        let result = server.process_packet(client_addr, &mut buffer[..len]);
-        assert!(matches!(result, ServerResult::PacketToSend(_)));
 
         assert!(!client.connected());
+        let client_packet = client.generate_packet().unwrap();
+        let result = server.process_packet(client_addr, client_packet);
+        assert!(matches!(result, ServerResult::PacketToSend(_)));
+
         match result {
             ServerResult::PacketToSend(packet) => client.process_packet(packet),
             _ => unreachable!(),

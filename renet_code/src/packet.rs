@@ -444,7 +444,7 @@ fn read_sequence(source: &mut impl io::Read, len: usize) -> Result<u64, io::Erro
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_random_bytes, NETCODE_BUFFER_SIZE, NETCODE_MAX_PACKET_SIZE};
+    use crate::{crypto::generate_random_bytes, NETCODE_MAX_PACKET_BYTES};
 
     use super::*;
 
@@ -526,7 +526,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_disconnect_packet() {
-        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
+        let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::Disconnect;
         let protocol_id = 12;
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_denied_packet() {
-        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
+        let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::ConnectionDenied;
         let protocol_id = 12;
@@ -552,8 +552,8 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_payload_packet() {
-        let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
-        let payload = vec![7u8; NETCODE_MAX_PACKET_SIZE];
+        let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
+        let payload = vec![7u8; NETCODE_MAX_PACKET_BYTES];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::Payload(&payload);
         let protocol_id = 12;
