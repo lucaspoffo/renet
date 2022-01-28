@@ -9,8 +9,8 @@ use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
     replay_protection::ReplayProtection,
     token::PrivateConnectToken,
-    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_USER_DATA_BYTES,
-    NETCODE_VERSION_INFO,
+    NETCODE_BUFFER_SIZE, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS,
+    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 
 type ClientID = u64;
@@ -70,12 +70,13 @@ pub struct Server {
     current_time: Duration,
     global_sequence: u64,
     events: VecDeque<ServerEvent>,
+    out: [u8; NETCODE_BUFFER_SIZE],
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ServerResult<'a, 'b> {
+pub enum ServerResult<'a, 's> {
     None,
-    PacketToSend(&'b mut [u8]),
+    PacketToSend(&'s mut [u8]),
     Payload(&'a [u8]),
 }
 
@@ -102,6 +103,7 @@ impl Server {
             address,
             current_time: Duration::ZERO,
             events: VecDeque::new(),
+            out: [0u8; NETCODE_BUFFER_SIZE],
         }
     }
 
@@ -143,12 +145,11 @@ impl Server {
         true
     }
 
-    pub fn handle_connection_request<'a, 'b>(
-        &mut self,
+    pub fn handle_connection_request<'a, 's>(
+        &'s mut self,
         addr: SocketAddr,
         request: &ConnectionRequest,
-        out: &'b mut [u8],
-    ) -> Result<ServerResult<'a, 'b>, NetcodeError> {
+    ) -> Result<ServerResult<'a, 's>, NetcodeError> {
         let connect_token = self.validate_client_token(request)?;
 
         let id_already_connected = find_client_by_addr(&mut self.clients, addr).is_some();
@@ -175,12 +176,12 @@ impl Server {
             self.pending_clients.remove(&addr);
             let packet = Packet::ConnectionDenied;
             let len = packet.encode(
-                out,
+                &mut self.out,
                 self.protocol_id,
                 Some((self.global_sequence, &connect_token.server_to_client_key)),
             )?;
             self.global_sequence += 1;
-            return Ok(ServerResult::PacketToSend(&mut out[..len]));
+            return Ok(ServerResult::PacketToSend(&mut self.out[..len]));
         }
 
         self.challenge_sequence += 1;
@@ -192,7 +193,7 @@ impl Server {
         )?);
 
         let len = packet.encode(
-            out,
+            &mut self.out,
             self.protocol_id,
             Some((self.global_sequence, &connect_token.server_to_client_key)),
         )?;
@@ -216,7 +217,7 @@ impl Server {
         pending.last_packet_received_time = self.current_time;
 
         self.global_sequence += 1;
-        Ok(ServerResult::PacketToSend(&mut out[..len]))
+        Ok(ServerResult::PacketToSend(&mut self.out[..len]))
     }
 
     pub fn validate_client_token(&self, request: &ConnectionRequest) -> Result<PrivateConnectToken, NetcodeError> {
@@ -249,34 +250,29 @@ impl Server {
         }
     }
 
-    pub fn generate_payload<'a>(&mut self, slot: usize, payload: &[u8], out: &'a mut [u8]) -> Result<&'a mut [u8], NetcodeError> {
+    pub fn generate_payload<'s>(&'s mut self, slot: usize, payload: &[u8]) -> Result<&'s mut [u8], NetcodeError> {
         if slot >= self.clients.len() {
             return Err(NetcodeError::ClientNotFound);
         }
 
         if let Some(client) = &mut self.clients[slot] {
             let packet = Packet::Payload(payload);
-            let len = packet.encode(out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
+            let len = packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
             client.sequence += 1;
-            return Ok(&mut out[..len]);
+            return Ok(&mut self.out[..len]);
         }
 
         Err(NetcodeError::ClientNotFound)
     }
 
-    pub fn process_packet<'a, 'b>(&mut self, addr: SocketAddr, buffer: &'a mut [u8], out: &'b mut [u8]) -> ServerResult<'a, 'b> {
-        match self.process_packet_internal(addr, buffer, out) {
+    pub fn process_packet<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> ServerResult<'a, 's> {
+        match self.process_packet_internal(addr, buffer) {
             Err(_) => ServerResult::None,
             Ok(r) => r,
         }
     }
 
-    fn process_packet_internal<'a, 'b>(
-        &mut self,
-        addr: SocketAddr,
-        buffer: &'a mut [u8],
-        out: &'b mut [u8],
-    ) -> Result<ServerResult<'a, 'b>, NetcodeError> {
+    fn process_packet_internal<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> Result<ServerResult<'a, 's>, NetcodeError> {
         if buffer.len() <= 2 + NETCODE_MAC_BYTES {
             return Ok(ServerResult::None);
         }
@@ -328,7 +324,7 @@ impl Server {
             )?;
             pending.last_packet_received_time = self.current_time;
             match packet {
-                Packet::ConnectionRequest(request) => return self.handle_connection_request(addr, &request, out),
+                Packet::ConnectionRequest(request) => return self.handle_connection_request(addr, &request),
                 Packet::Response(response) => {
                     let challenge_token = response.decode(&self.challenge_key)?;
                     let mut pending = self.pending_clients.remove(&addr).unwrap();
@@ -339,10 +335,10 @@ impl Server {
                     match self.clients.iter().position(|c| c.is_none()) {
                         None => {
                             let packet = Packet::ConnectionDenied;
-                            let len = packet.encode(out, self.protocol_id, Some((self.global_sequence, &pending.send_key)))?;
+                            let len = packet.encode(&mut self.out, self.protocol_id, Some((self.global_sequence, &pending.send_key)))?;
                             pending.state = ConnectionState::Disconnected;
                             self.global_sequence += 1;
-                            return Ok(ServerResult::PacketToSend(&mut out[..len]));
+                            return Ok(ServerResult::PacketToSend(&mut self.out[..len]));
                         }
                         Some(client_index) => {
                             self.events.push_back(ServerEvent::ClientConnected(client_index));
@@ -354,9 +350,9 @@ impl Server {
                                 max_clients: self.max_clients as u32,
                                 client_index: client_index as u32,
                             });
-                            let len = packet.encode(out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
+                            let len = packet.encode(&mut self.out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
                             self.global_sequence += 1;
-                            return Ok(ServerResult::PacketToSend(&mut out[..len]));
+                            return Ok(ServerResult::PacketToSend(&mut self.out[..len]));
                         }
                     }
                 }
@@ -367,7 +363,7 @@ impl Server {
         // Handle new client
         let (_, packet) = Packet::decode(buffer, self.protocol_id, None, None)?;
         match packet {
-            Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request, out),
+            Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request),
             _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
         }
     }
@@ -499,32 +495,32 @@ mod tests {
         let mut client = Client::new(Duration::ZERO, connect_token);
 
         let mut buffer = [0u8; NETCODE_BUFFER_SIZE];
-        let mut out = [0u8; NETCODE_BUFFER_SIZE];
 
         let len = client.generate_packet(&mut buffer).unwrap();
 
-        let result = server.process_packet(client_addr, &mut buffer[..len], &mut out);
+        let result = server.process_packet(client_addr, &mut buffer[..len]);
         assert!(matches!(result, ServerResult::PacketToSend(_)));
         match result {
             ServerResult::PacketToSend(packet) => client.process_packet(packet),
             _ => unreachable!(),
         };
         let len = client.generate_packet(&mut buffer).unwrap();
-        let result = server.process_packet(client_addr, &mut buffer[..len], &mut out);
+        let result = server.process_packet(client_addr, &mut buffer[..len]);
         assert!(matches!(result, ServerResult::PacketToSend(_)));
-
-        let client_connected = server.get_event().unwrap();
-        assert_eq!(client_connected, ServerEvent::ClientConnected(0));
 
         assert!(!client.connected());
         match result {
             ServerResult::PacketToSend(packet) => client.process_packet(packet),
             _ => unreachable!(),
         };
+
+        let client_connected = server.get_event().unwrap();
+        assert_eq!(client_connected, ServerEvent::ClientConnected(0));
+
         assert!(client.connected());
 
         let payload = [7u8; 300];
-        let result = server.generate_payload(0, &payload, &mut out).unwrap();
+        let result = server.generate_payload(0, &payload).unwrap();
 
         let client_payload = client.process_packet(result).unwrap();
         assert_eq!(payload, client_payload);
