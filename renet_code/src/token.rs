@@ -30,7 +30,7 @@ pub struct ConnectToken {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct PrivateConnectToken {
+pub(crate) struct PrivateConnectToken {
     pub client_id: u64,       // globally unique identifier for an authenticated client
     pub timeout_seconds: i32, // timeout in seconds. negative values disable timeout (dev only)
     pub server_addresses: [Option<SocketAddr>; 32],
@@ -104,17 +104,7 @@ impl ConnectToken {
         })
     }
 
-    fn decode(&self, private_key: &[u8; NETCODE_KEY_BYTES]) -> Result<PrivateConnectToken, TokenGenerationError> {
-        PrivateConnectToken::decode(
-            &self.private_data,
-            self.protocol_id,
-            self.expire_timestamp,
-            &self.xnonce,
-            private_key,
-        )
-    }
-
-    fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
+    pub fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
         writer.write_all(&self.version_info)?;
         writer.write_all(&self.protocol_id.to_le_bytes())?;
         writer.write_all(&self.create_timestamp.to_le_bytes())?;
@@ -129,7 +119,7 @@ impl ConnectToken {
         Ok(())
     }
 
-    fn read(src: &mut impl io::Read) -> Result<Self, NetcodeError> {
+    pub fn read(src: &mut impl io::Read) -> Result<Self, NetcodeError> {
         let version_info: [u8; 13] = read_bytes(src)?;
         if &version_info != NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
@@ -228,7 +218,7 @@ impl PrivateConnectToken {
         })
     }
 
-    pub fn encode(
+    pub(crate) fn encode(
         &self,
         buffer: &mut [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
         protocol_id: u64,
@@ -244,7 +234,7 @@ impl PrivateConnectToken {
         Ok(())
     }
 
-    pub fn decode(
+    pub(crate) fn decode(
         buffer: &[u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
         protocol_id: u64,
         expire_timestamp: u64,
@@ -382,7 +372,14 @@ mod tests {
         let result = ConnectToken::read(&mut buffer.as_slice()).unwrap();
         assert_eq!(token, result);
 
-        let private = result.decode(private_key).unwrap();
+        let private = PrivateConnectToken::decode(
+            &result.private_data,
+            protocol_id,
+            result.expire_timestamp,
+            &result.xnonce,
+            &private_key,
+        )
+        .unwrap();
         assert_eq!(timeout_seconds, private.timeout_seconds);
         assert_eq!(client_id, private.client_id);
         assert_eq!(user_data, private.user_data);

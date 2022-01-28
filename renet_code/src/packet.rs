@@ -7,7 +7,7 @@ use crate::replay_protection::ReplayProtection;
 use crate::token::{ConnectToken, TokenGenerationError};
 use crate::{
     serialize::*, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES,
-    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES,
+    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_PAYLOAD_BYTES,
 };
 use crate::{NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO};
 
@@ -351,6 +351,7 @@ pub enum NetcodeError {
     InvalidProtocolID,
     InvalidVersion,
     PacketTooSmall,
+    PayloadAboveLimit,
     DuplicatedSequence,
     NoMoreServers,
     Expired,
@@ -374,6 +375,7 @@ impl fmt::Display for NetcodeError {
             InvalidProtocolID => write!(fmt, "invalid protocol id"),
             InvalidVersion => write!(fmt, "invalid version info"),
             PacketTooSmall => write!(fmt, "packet is too small"),
+            PayloadAboveLimit => write!(fmt, "payload is above the {} bytes limit", NETCODE_MAX_PAYLOAD_BYTES),
             Expired => write!(fmt, "connection expired"),
             TimedOut => write!(fmt, "connection timed out"),
             DuplicatedSequence => write!(fmt, "sequence already received"),
@@ -444,7 +446,7 @@ fn read_sequence(source: &mut impl io::Read, len: usize) -> Result<u64, io::Erro
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_random_bytes, NETCODE_MAX_PACKET_BYTES};
+    use crate::{crypto::generate_random_bytes, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES};
 
     use super::*;
 
@@ -553,7 +555,7 @@ mod tests {
     #[test]
     fn encrypt_decrypt_payload_packet() {
         let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
-        let payload = vec![7u8; NETCODE_MAX_PACKET_BYTES];
+        let payload = vec![7u8; NETCODE_MAX_PAYLOAD_BYTES];
         let key = b"an example very very secret key."; // 32-bytes
         let packet = Packet::Payload(&payload);
         let protocol_id = 12;

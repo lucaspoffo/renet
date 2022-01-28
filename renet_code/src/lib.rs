@@ -4,7 +4,7 @@ mod packet;
 mod replay_protection;
 mod serialize;
 pub mod server;
-mod token;
+pub mod token;
 
 use std::time::Duration;
 

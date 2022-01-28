@@ -10,7 +10,7 @@ use crate::{
     replay_protection::ReplayProtection,
     token::PrivateConnectToken,
     NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_MAX_PACKET_BYTES,
-    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+    NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 
 type ClientID = u64;
@@ -145,7 +145,7 @@ impl Server {
         true
     }
 
-    pub fn handle_connection_request<'a, 's>(
+    fn handle_connection_request<'a, 's>(
         &'s mut self,
         addr: SocketAddr,
         request: &ConnectionRequest,
@@ -220,7 +220,7 @@ impl Server {
         Ok(ServerResult::PacketToSend(&mut self.out[..len]))
     }
 
-    pub fn validate_client_token(&self, request: &ConnectionRequest) -> Result<PrivateConnectToken, NetcodeError> {
+    fn validate_client_token(&self, request: &ConnectionRequest) -> Result<PrivateConnectToken, NetcodeError> {
         if request.version_info != *NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
         }
@@ -253,6 +253,10 @@ impl Server {
     pub fn generate_payload<'s>(&'s mut self, slot: usize, payload: &[u8]) -> Result<&'s mut [u8], NetcodeError> {
         if slot >= self.clients.len() {
             return Err(NetcodeError::ClientNotFound);
+        }
+
+        if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
+            return Err(NetcodeError::PayloadAboveLimit);
         }
 
         if let Some(client) = &mut self.clients[slot] {
@@ -366,28 +370,6 @@ impl Server {
             Packet::ConnectionRequest(request) => self.handle_connection_request(addr, &request),
             _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
         }
-    }
-
-    pub fn update(&mut self, duration: Duration) -> Vec<(SocketAddr, Packet<'_>)> {
-        self.current_time += duration;
-        let mut disconnect_packets = vec![];
-        for (slot, maybe_client) in self.clients.iter_mut().enumerate() {
-            if let Some(client) = maybe_client {
-                let connection_timed_out = client.timeout_seconds > 0
-                    && (client.last_packet_received_time + Duration::from_secs(client.timeout_seconds as u64) < self.current_time);
-                if connection_timed_out {
-                    client.state = ConnectionState::Disconnected;
-                }
-
-                if client.state == ConnectionState::Disconnected {
-                    self.events.push_back(ServerEvent::ClientDisconnected(slot));
-                    disconnect_packets.push((client.addr, Packet::Disconnect));
-                    *maybe_client = None;
-                }
-            }
-        }
-
-        disconnect_packets
     }
 
     pub fn clients_slot(&self) -> Vec<usize> {
