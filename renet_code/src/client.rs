@@ -4,7 +4,7 @@ use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
     replay_protection::ReplayProtection,
     token::ConnectToken,
-    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_SEND_RATE,
+    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -117,27 +117,26 @@ impl Client {
         None
     }
 
-    fn connect_to_next_server(&mut self) -> Result<(), NetcodeError> {
-        self.server_address_index += 1;
-        if self.server_address_index >= 32 {
-            return Err(NetcodeError::NoMoreServers);
+    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<&mut [u8], NetcodeError> {
+        if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
+            return Err(NetcodeError::PayloadAboveLimit);
         }
-        match self.connect_token.server_addresses[self.server_address_index] {
-            None => Err(NetcodeError::NoMoreServers),
-            Some(server_address) => {
-                self.state = State::SendingConnectionRequest;
-                self.server_address = server_address;
-                self.connect_start_time = self.current_time;
-                self.last_packet_send_time = None;
-                self.last_packet_received_time = self.current_time;
-                self.challenge_token_sequence = 0;
 
-                Ok(())
-            }
+        if self.state != State::Connected {
+            return Err(NetcodeError::ClientNotConnected);
         }
+
+        let packet = Packet::Payload(payload);
+        let len = packet.encode(
+            &mut self.out,
+            self.connect_token.protocol_id,
+            Some((self.sequence, &self.connect_token.client_to_server_key)),
+        )?;
+        self.sequence += 1;
+        return Ok(&mut self.out[..len]);
     }
 
-    pub fn generate_packet<'s>(&'s mut self) -> Option<&'s mut [u8]> {
+    pub fn generate_packet(&mut self) -> Option<&mut [u8]> {
         if let Some(last_packet_send_time) = self.last_packet_send_time {
             if self.current_time - last_packet_send_time < self.send_rate {
                 return None;
@@ -197,7 +196,24 @@ impl Client {
                         ErrorReason::ConnectionRequestTimedOut
                     };
                     self.state = State::Error(reason);
-                    return self.connect_to_next_server();
+                    // Try to connect to the next server address
+                    self.server_address_index += 1;
+                    if self.server_address_index >= 32 {
+                        return Err(NetcodeError::NoMoreServers);
+                    }
+                    match self.connect_token.server_addresses[self.server_address_index] {
+                        None => return Err(NetcodeError::NoMoreServers),
+                        Some(server_address) => {
+                            self.state = State::SendingConnectionRequest;
+                            self.server_address = server_address;
+                            self.connect_start_time = self.current_time;
+                            self.last_packet_send_time = None;
+                            self.last_packet_received_time = self.current_time;
+                            self.challenge_token_sequence = 0;
+
+                            return Ok(())
+                        }
+                    }
                 }
 
                 Ok(())
@@ -277,5 +293,13 @@ mod tests {
 
         let payload_client = client.process_packet(&mut buffer[..len]).unwrap();
         assert_eq!(payload, payload_client);
+
+        let to_send_payload = vec![5u8; 1000];
+        let to_send_packet_payload = client.generate_payload_packet(&to_send_payload).unwrap();
+        let (_, result) = Packet::decode(to_send_packet_payload, protocol_id, Some(&client_key), None).unwrap();
+        match result {
+            Packet::Payload(payload) => assert_eq!(to_send_payload, payload),
+            _ => unreachable!(),
+        }
     }
 }

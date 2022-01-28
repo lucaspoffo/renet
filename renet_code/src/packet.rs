@@ -361,6 +361,7 @@ pub enum NetcodeError {
     NotInHostList,
     BufferTooSmall,
     ClientNotFound,
+    ClientNotConnected,
     IoError(io::Error),
     TokenGenerationError(TokenGenerationError),
 }
@@ -384,6 +385,7 @@ impl fmt::Display for NetcodeError {
             CryptoError => write!(fmt, "error while encoding or decoding"),
             NotInHostList => write!(fmt, "token does not contain the server address"),
             ClientNotFound => write!(fmt, "client was not found"),
+            ClientNotConnected => write!(fmt, "client is disconnected or connecting"),
             BufferTooSmall => write!(fmt, "buffer"),
             IoError(ref err) => write!(fmt, "{}", err),
             TokenGenerationError(ref err) => write!(fmt, "{}", err),
