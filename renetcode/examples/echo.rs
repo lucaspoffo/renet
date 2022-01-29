@@ -2,10 +2,10 @@ use renetcode::{
     client::Client,
     server::{Server, ServerEvent, ServerResult},
     token::ConnectToken,
-    NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES,
+    NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
-use std::thread;
 use std::time::Duration;
+use std::{collections::HashMap, thread};
 use std::{
     net::{SocketAddr, UdpSocket},
     time::Instant,
@@ -17,8 +17,35 @@ use std::{
 
 const PROTOCOL_ID: u64 = 123456789;
 
+// Helper struct to pass an username from the user data passed in the ConnectToken
+struct Username(String);
+
+impl Username {
+    fn to_netcode_user_data(&self) -> [u8; NETCODE_USER_DATA_BYTES] {
+        let mut user_data = [0u8; NETCODE_USER_DATA_BYTES];
+        if self.0.len() > NETCODE_USER_DATA_BYTES - 8 {
+            panic!("Username is too big");
+        }
+        user_data[0..8].copy_from_slice(&(self.0.len() as u64).to_le_bytes());
+        user_data[8..self.0.len() + 8].copy_from_slice(self.0.as_bytes());
+
+        user_data
+    }
+
+    fn from_user_data(user_data: &[u8; NETCODE_USER_DATA_BYTES]) -> Self {
+        let mut buffer = [0u8; 8];
+        buffer.copy_from_slice(&user_data[0..8]);
+        let mut len = u64::from_le_bytes(buffer) as usize;
+        println!("len {}", len);
+        len = len.min(NETCODE_USER_DATA_BYTES - 8);
+        let data = user_data[8..len + 8].to_vec();
+        let username = String::from_utf8(data).unwrap();
+        Self(username)
+    }
+}
+
 fn main() {
-    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT]");
+    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
     let args: Vec<String> = std::env::args().collect();
     let private_key = b"an example very very secret key."; // 32-bytes
 
@@ -26,11 +53,21 @@ fn main() {
     match exec_type.as_str() {
         "client" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
+            let username = Username(format!("{}", args[3]));
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+            println!("Stating connecting at {:?} with username {}", now, username.0,);
             let client_id = now.as_millis() as u64;
-            // TODO: add username as arg and pass to user data
-            let connect_token =
-                ConnectToken::generate(now, PROTOCOL_ID, 300, client_id, 15, vec![server_addr], None, &private_key).unwrap();
+            let connect_token = ConnectToken::generate(
+                now,
+                PROTOCOL_ID,
+                300,
+                client_id,
+                15,
+                vec![server_addr],
+                Some(&username.to_netcode_user_data()),
+                &private_key,
+            )
+            .unwrap();
             client(connect_token);
         }
         "server" => {
@@ -51,12 +88,17 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
+    let mut usernames: HashMap<u64, String> = HashMap::new();
     loop {
         server.advance_time(Instant::now() - last_updated);
         received_messages.clear();
         while let Some(event) = server.get_event() {
             match event {
-                ServerEvent::ClientConnected(id) => println!("Client {} connected.", id),
+                ServerEvent::ClientConnected(id, user_data) => {
+                    let username = Username::from_user_data(&user_data);
+                    println!("Client {} with id {} connected.", username.0, id);
+                    usernames.insert(id, username.0);
+                }
                 ServerEvent::ClientDisconnected(id) => println!("Client {} disconnected.", id),
             }
         }
@@ -68,7 +110,9 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
                     match server.process_packet(addr, &mut buffer[..len]) {
                         ServerResult::Payload(client_id, payload) => {
                             let text = String::from_utf8(payload.to_vec()).unwrap();
-                            println!("Client {} sent message {:?}.", client_id, text);
+                            let username = usernames.get(&client_id).unwrap();
+                            println!("Client {} ({}) sent message {:?}.", username, client_id, text);
+                            let text = format!("{}: {}", username, text);
                             received_messages.push(text);
                         }
                         ServerResult::PacketToSend(packet) => {

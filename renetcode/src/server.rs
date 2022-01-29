@@ -48,7 +48,7 @@ struct ConnectTokenEntry {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ServerEvent {
-    ClientConnected(ClientID),
+    ClientConnected(ClientID, [u8; NETCODE_USER_DATA_BYTES]),
     ClientDisconnected(ClientID),
 }
 
@@ -146,6 +146,14 @@ impl Server {
         true
     }
 
+    pub fn user_data(&self, client_id: ClientID) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
+        if let Some(client) = find_client_by_id(&self.clients, client_id) {
+            return Some(client.user_data);
+        }
+
+        None
+    }
+
     fn handle_connection_request<'a, 's>(
         &'s mut self,
         addr: SocketAddr,
@@ -153,8 +161,8 @@ impl Server {
     ) -> Result<ServerResult<'a, 's>, NetcodeError> {
         let connect_token = self.validate_client_token(request)?;
 
-        let addr_already_connected = find_client_by_addr(&mut self.clients, addr).is_some();
-        let id_already_connected = find_client_by_id(&mut self.clients, connect_token.client_id).is_some();
+        let addr_already_connected = find_client_mut_by_addr(&mut self.clients, addr).is_some();
+        let id_already_connected = find_client_mut_by_id(&mut self.clients, connect_token.client_id).is_some();
         if id_already_connected || addr_already_connected {
             // TODO(log): debug
             return Ok(ServerResult::None);
@@ -217,7 +225,7 @@ impl Server {
             receive_key: connect_token.client_to_server_key,
             timeout_seconds: connect_token.timeout_seconds,
             expire_timestamp: request.expire_timestamp,
-            user_data: [0u8; NETCODE_USER_DATA_BYTES],
+            user_data: connect_token.user_data,
             replay_protection: ReplayProtection::new(),
         });
         pending.last_packet_received_time = self.current_time;
@@ -264,7 +272,7 @@ impl Server {
             return Err(NetcodeError::PayloadAboveLimit);
         }
 
-        if let Some(client) = find_client_by_id(&mut self.clients, client_id) {
+        if let Some(client) = find_client_mut_by_id(&mut self.clients, client_id) {
             let packet = Packet::Payload(payload);
             let len = packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
             client.sequence += 1;
@@ -287,7 +295,7 @@ impl Server {
         }
 
         // Handle connected client
-        if let Some((slot, client)) = find_client_by_addr(&mut self.clients, addr) {
+        if let Some((slot, client)) = find_client_mut_by_addr(&mut self.clients, addr) {
             let (_, packet) = Packet::decode(
                 buffer,
                 self.protocol_id,
@@ -352,7 +360,8 @@ impl Server {
                             return Ok(ServerResult::PacketToSend(&mut self.out[..len]));
                         }
                         Some(client_index) => {
-                            self.events.push_back(ServerEvent::ClientConnected(pending.client_id));
+                            self.events
+                                .push_back(ServerEvent::ClientConnected(pending.client_id, pending.user_data));
                             let send_key = pending.send_key;
                             pending.state = ConnectionState::Connected;
                             pending.user_data = challenge_token.user_data;
@@ -476,8 +485,12 @@ impl Server {
     }
 }
 
-fn find_client_by_id(clients: &mut [Option<Connection>], client_id: ClientID) -> Option<&mut Connection> {
+fn find_client_mut_by_id(clients: &mut [Option<Connection>], client_id: ClientID) -> Option<&mut Connection> {
     clients.iter_mut().flatten().find(|c| c.client_id == client_id)
+}
+
+fn find_client_by_id(clients: &[Option<Connection>], client_id: ClientID) -> Option<&Connection> {
+    clients.iter().flatten().find(|c| c.client_id == client_id)
 }
 
 fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: ClientID) -> Option<usize> {
@@ -487,7 +500,7 @@ fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: ClientID) -
     })
 }
 
-fn find_client_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> Option<(usize, &mut Connection)> {
+fn find_client_mut_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> Option<(usize, &mut Connection)> {
     clients.iter_mut().enumerate().find_map(|(i, c)| match c {
         Some(c) if c.addr == addr => Some((i, c)),
         _ => None,
@@ -546,7 +559,7 @@ mod tests {
         };
 
         let client_connected = server.get_event().unwrap();
-        assert_eq!(client_connected, ServerEvent::ClientConnected(client_id));
+        assert_eq!(client_connected, ServerEvent::ClientConnected(client_id, user_data));
 
         assert!(client.connected());
 
