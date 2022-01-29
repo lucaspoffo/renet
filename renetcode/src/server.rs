@@ -10,7 +10,7 @@ use crate::{
     replay_protection::ReplayProtection,
     token::PrivateConnectToken,
     NetcodeError, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_MAX_PACKET_BYTES,
-    NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+    NETCODE_MAX_PAYLOAD_BYTES, NETCODE_MAX_PENDING_CLIENTS, NETCODE_SEND_RATE, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 
 type ClientID = u64;
@@ -156,6 +156,11 @@ impl Server {
         let addr_already_connected = find_client_by_addr(&mut self.clients, addr).is_some();
         let id_already_connected = find_client_by_id(&mut self.clients, connect_token.client_id).is_some();
         if id_already_connected || addr_already_connected {
+            // TODO(log): debug
+            return Ok(ServerResult::None);
+        }
+
+        if !self.pending_clients.contains_key(&addr) && self.pending_clients.len() >= NETCODE_MAX_PENDING_CLIENTS {
             // TODO(log): debug
             return Ok(ServerResult::None);
         }
@@ -578,7 +583,7 @@ mod tests {
 
         assert!(!client.connected());
         assert!(!server.is_client_connected(client_id));
-        
+
         let client_disconnected = server.get_event().unwrap();
         assert_eq!(client_disconnected, ServerEvent::ClientDisconnected(client_id));
     }
