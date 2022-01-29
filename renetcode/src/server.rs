@@ -48,8 +48,8 @@ struct ConnectTokenEntry {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ServerEvent {
-    ClientConnected(usize),
-    ClientDisconnected(usize),
+    ClientConnected(ClientID),
+    ClientDisconnected(ClientID),
 }
 
 pub struct Server {
@@ -153,8 +153,8 @@ impl Server {
     ) -> Result<ServerResult<'a, 's>, NetcodeError> {
         let connect_token = self.validate_client_token(request)?;
 
-        let id_already_connected = find_client_by_addr(&mut self.clients, addr).is_some();
-        let addr_already_connected = find_client_by_id(&mut self.clients, connect_token.client_id).is_some();
+        let addr_already_connected = find_client_by_addr(&mut self.clients, addr).is_some();
+        let id_already_connected = find_client_by_id(&mut self.clients, connect_token.client_id).is_some();
         if id_already_connected || addr_already_connected {
             // TODO(log): debug
             return Ok(ServerResult::None);
@@ -282,34 +282,34 @@ impl Server {
         }
 
         // Handle connected client
-        if let Some((slot, connection)) = find_client_by_addr(&mut self.clients, addr) {
+        if let Some((slot, client)) = find_client_by_addr(&mut self.clients, addr) {
             let (_, packet) = Packet::decode(
                 buffer,
                 self.protocol_id,
-                Some(&connection.receive_key),
-                Some(&mut connection.replay_protection),
+                Some(&client.receive_key),
+                Some(&mut client.replay_protection),
             )?;
-            connection.last_packet_received_time = self.current_time;
-            match connection.state {
+            client.last_packet_received_time = self.current_time;
+            match client.state {
                 ConnectionState::Connected => match packet {
                     Packet::Disconnect => {
-                        connection.state = ConnectionState::Disconnected;
-                        self.events.push_back(ServerEvent::ClientDisconnected(slot));
+                        client.state = ConnectionState::Disconnected;
+                        self.events.push_back(ServerEvent::ClientDisconnected(client.client_id));
                         self.clients[slot] = None;
                         // TODO(log): debug
                         return Ok(ServerResult::None);
                     }
                     Packet::Payload(payload) => {
-                        if !connection.confirmed {
+                        if !client.confirmed {
                             // TODO(log): debug
-                            connection.confirmed = true;
+                            client.confirmed = true;
                         }
                         return Ok(ServerResult::Payload(slot, payload));
                     }
                     Packet::KeepAlive(_) => {
-                        if !connection.confirmed {
+                        if !client.confirmed {
                             // TODO(log): debug
-                            connection.confirmed = true;
+                            client.confirmed = true;
                         }
                         return Ok(ServerResult::None);
                     }
@@ -333,7 +333,7 @@ impl Server {
                 Packet::Response(response) => {
                     let challenge_token = response.decode(&self.challenge_key)?;
                     let mut pending = self.pending_clients.remove(&addr).unwrap();
-                    if find_client_by_id(&mut self.clients, challenge_token.client_id).is_some() {
+                    if find_client_slot_by_id(&self.clients, challenge_token.client_id).is_some() {
                         // TODO(log): debug
                         return Ok(ServerResult::None);
                     }
@@ -347,7 +347,7 @@ impl Server {
                             return Ok(ServerResult::PacketToSend(&mut self.out[..len]));
                         }
                         Some(client_index) => {
-                            self.events.push_back(ServerEvent::ClientConnected(client_index));
+                            self.events.push_back(ServerEvent::ClientConnected(pending.client_id));
                             let send_key = pending.send_key;
                             pending.state = ConnectionState::Connected;
                             pending.user_data = challenge_token.user_data;
@@ -412,7 +412,7 @@ impl Server {
             }
 
             if client.state == ConnectionState::Disconnected {
-                self.events.push_back(ServerEvent::ClientDisconnected(slot));
+                self.events.push_back(ServerEvent::ClientDisconnected(client.client_id));
                 let packet = Packet::Disconnect;
                 let sequence = client.sequence;
                 let send_key = client.send_key;
@@ -453,10 +453,36 @@ impl Server {
 
         self.pending_clients.retain(|_, c| c.state != ConnectionState::Disconnected);
     }
+
+    pub fn is_client_connected(&self, client_id: ClientID) -> bool {
+        find_client_slot_by_id(&self.clients, client_id).is_some()
+    }
+
+    pub fn disconnect(&mut self, client_id: ClientID) -> Result<(&mut [u8], SocketAddr), NetcodeError> {
+        if let Some(slot) = find_client_slot_by_id(&self.clients, client_id) {
+            let client = self.clients[slot].take().unwrap();
+            self.events.push_back(ServerEvent::ClientDisconnected(client_id));
+            let packet = Packet::Disconnect;
+            let len = packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
+            return Ok((&mut self.out[..len], client.addr));
+        }
+
+        Err(NetcodeError::ClientNotFound)
+    }
 }
 
-fn find_client_by_id(clients: &mut [Option<Connection>], id: ClientID) -> Option<&mut Connection> {
-    clients.iter_mut().flatten().find(|c| c.client_id == id)
+fn find_client_by_id(clients: &mut [Option<Connection>], client_id: ClientID) -> Option<(usize, &mut Connection)> {
+    clients.iter_mut().enumerate().find_map(|(i, c)| match c {
+        Some(c) if c.client_id == client_id => Some((i, c)),
+        _ => None,
+    })
+}
+
+fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: ClientID) -> Option<usize> {
+    clients.iter().enumerate().find_map(|(i, c)| match c {
+        Some(c) if c.client_id == client_id => Some(i),
+        _ => None,
+    })
 }
 
 fn find_client_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> Option<(usize, &mut Connection)> {
@@ -518,7 +544,7 @@ mod tests {
         };
 
         let client_connected = server.get_event().unwrap();
-        assert_eq!(client_connected, ServerEvent::ClientConnected(0));
+        assert_eq!(client_connected, ServerEvent::ClientConnected(client_id));
 
         assert!(client.connected());
 
@@ -543,6 +569,18 @@ mod tests {
             }
             _ => unreachable!(),
         }
+
+        assert!(server.is_client_connected(client_id));
+        let (disconnect_packet, _) = server.disconnect(client_id).unwrap();
+
+        assert!(client.connected());
+        assert!(client.process_packet(disconnect_packet).is_none());
+
+        assert!(!client.connected());
+        assert!(!server.is_client_connected(client_id));
+        
+        let client_disconnected = server.get_event().unwrap();
+        assert_eq!(client_disconnected, ServerEvent::ClientDisconnected(client_id));
     }
 
     #[test]

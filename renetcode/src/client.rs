@@ -74,6 +74,17 @@ impl Client {
         self.state == State::Connected
     }
 
+    pub fn disconnect(&mut self) -> Result<&mut [u8], NetcodeError> {
+        self.state = State::Disconnected;
+        let packet = Packet::Disconnect;
+        let len = packet.encode(
+            &mut self.out,
+            self.connect_token.protocol_id,
+            Some((self.sequence, &self.connect_token.client_to_server_key)),
+        )?;
+        return Ok(&mut self.out[..len]);
+    }
+
     pub fn process_packet<'a>(&mut self, buffer: &'a mut [u8]) -> Option<&'a [u8]> {
         let (_, packet) = Packet::decode(
             buffer,
