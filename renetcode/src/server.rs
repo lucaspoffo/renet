@@ -264,8 +264,7 @@ impl Server {
             return Err(NetcodeError::PayloadAboveLimit);
         }
 
-        if let Some(slot) = find_client_slot_by_id(&self.clients, client_id) {
-            let client = self.clients[slot].as_mut().unwrap();
+        if let Some(client) = find_client_by_id(&mut self.clients, client_id) {
             let packet = Packet::Payload(payload);
             let len = packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
             client.sequence += 1;
@@ -477,11 +476,8 @@ impl Server {
     }
 }
 
-fn find_client_by_id(clients: &mut [Option<Connection>], client_id: ClientID) -> Option<(usize, &mut Connection)> {
-    clients.iter_mut().enumerate().find_map(|(i, c)| match c {
-        Some(c) if c.client_id == client_id => Some((i, c)),
-        _ => None,
-    })
+fn find_client_by_id(clients: &mut [Option<Connection>], client_id: ClientID) -> Option<&mut Connection> {
+    clients.iter_mut().flatten().find(|c| c.client_id == client_id)
 }
 
 fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: ClientID) -> Option<usize> {
