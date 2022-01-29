@@ -3,7 +3,7 @@ use std::{
     fmt,
     io::{self, Cursor},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use crate::{
@@ -74,6 +74,7 @@ impl fmt::Display for TokenGenerationError {
 
 impl ConnectToken {
     pub fn generate(
+        current_time: Duration,
         protocol_id: u64,
         expire_seconds: u64,
         client_id: u64,
@@ -82,8 +83,7 @@ impl ConnectToken {
         user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
         private_key: &[u8; NETCODE_KEY_BYTES],
     ) -> Result<Self, TokenGenerationError> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let expire_timestamp = now + expire_seconds;
+        let expire_timestamp = current_time.as_secs() + expire_seconds;
 
         let private_connect_token = PrivateConnectToken::generate(client_id, timeout_seconds, server_addresses, user_data)?;
         let mut private_data = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
@@ -94,7 +94,7 @@ impl ConnectToken {
             version_info: *NETCODE_VERSION_INFO,
             protocol_id,
             private_data,
-            create_timestamp: now,
+            create_timestamp: current_time.as_secs(),
             expire_timestamp,
             xnonce,
             server_addresses: private_connect_token.server_addresses,
@@ -356,6 +356,7 @@ mod tests {
         let client_id = 4;
         let timeout_seconds = 5;
         let token = ConnectToken::generate(
+            Duration::ZERO,
             protocol_id,
             expire_seconds,
             client_id,

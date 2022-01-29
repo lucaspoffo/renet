@@ -133,7 +133,7 @@ impl Client {
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
         self.sequence += 1;
-        return Ok(&mut self.out[..len]);
+        Ok(&mut self.out[..len])
     }
 
     pub fn generate_packet(&mut self) -> Option<&mut [u8]> {
@@ -248,6 +248,7 @@ mod tests {
         let client_id = 4;
         let timeout_seconds = 5;
         let connect_token = ConnectToken::generate(
+            Duration::ZERO,
             protocol_id,
             expire_seconds,
             client_id,
