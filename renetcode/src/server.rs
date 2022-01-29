@@ -22,10 +22,6 @@ enum ConnectionState {
     Connected,
 }
 
-// TODO: Replay Protection
-// TODO: Check what client confirmed is used for connected clients.
-//       A client is considered confirmed after he receives an
-//       payload or keep alive packet after being connected
 #[derive(Debug, Clone)]
 struct Connection {
     confirmed: bool,
@@ -296,6 +292,7 @@ impl Server {
                         connection.state = ConnectionState::Disconnected;
                         self.events.push_back(ServerEvent::ClientDisconnected(slot));
                         self.clients[slot] = None;
+                        // TODO(log): debug
                         return Ok(ServerResult::None);
                     }
                     Packet::Payload(payload) => {
@@ -391,7 +388,7 @@ impl Server {
         self.max_clients
     }
 
-    pub fn update_client(&mut self, buffer: &mut [u8], slot: usize) -> Option<(usize, SocketAddr)> {
+    pub fn update_client(&mut self, slot: usize) -> Option<(&mut [u8], SocketAddr)> {
         if slot >= self.clients.len() {
             return None;
         }
@@ -400,6 +397,7 @@ impl Server {
             let connection_timed_out = client.timeout_seconds > 0
                 && (client.last_packet_received_time + Duration::from_secs(client.timeout_seconds as u64) < self.current_time);
             if connection_timed_out {
+                // TODO(log): debug
                 client.state = ConnectionState::Disconnected;
             }
 
@@ -410,11 +408,11 @@ impl Server {
                 let send_key = client.send_key;
                 let addr = client.addr;
                 self.clients[slot] = None;
-                let len = match packet.encode(buffer, self.protocol_id, Some((sequence, &send_key))) {
+                let len = match packet.encode(&mut self.out, self.protocol_id, Some((sequence, &send_key))) {
                     Err(_) => return None,
                     Ok(len) => len,
                 };
-                return Some((len, addr));
+                return Some((&mut self.out[..len], addr));
             }
         }
 
@@ -425,6 +423,7 @@ impl Server {
         for client in self.pending_clients.values_mut() {
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             if now > client.expire_timestamp {
+                // TODO(log): debug
                 client.state = ConnectionState::Disconnected;
             }
         }
