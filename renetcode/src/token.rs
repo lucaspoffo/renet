@@ -8,10 +8,10 @@ use std::{
 
 use crate::{
     crypto::{dencrypted_in_place_xnonce, encrypt_in_place_xnonce, generate_random_bytes},
-    packet::NetcodeError,
     serialize::*,
-    NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES,
-    NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+    NetcodeError, NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE,
+    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS,
+    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 use aead::Error as CryptoError;
 
@@ -65,7 +65,7 @@ impl fmt::Display for TokenGenerationError {
         use TokenGenerationError::*;
 
         match *self {
-            MaxHostCount => write!(fmt, "max host count"),
+            MaxHostCount => write!(fmt, "above the max host count 32"),
             CryptoError => write!(fmt, "error while encoding or decoding"),
             IoError(ref io_err) => write!(fmt, "{}", io_err),
         }
@@ -79,7 +79,7 @@ impl ConnectToken {
         client_id: u64,
         timeout_seconds: i32,
         server_addresses: Vec<SocketAddr>,
-        user_data: Option<&[u8; 256]>,
+        user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
         private_key: &[u8; NETCODE_KEY_BYTES],
     ) -> Result<Self, TokenGenerationError> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -156,7 +156,7 @@ impl PrivateConnectToken {
         client_id: u64,
         timeout_seconds: i32,
         server_addresses: Vec<SocketAddr>,
-        user_data: Option<&[u8; 256]>,
+        user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
     ) -> Result<Self, TokenGenerationError> {
         if server_addresses.len() > 32 {
             return Err(TokenGenerationError::MaxHostCount);

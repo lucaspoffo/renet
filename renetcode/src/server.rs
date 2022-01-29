@@ -6,10 +6,10 @@ use std::{
 
 use crate::{
     crypto::generate_random_bytes,
-    packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
+    packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, Packet},
     replay_protection::ReplayProtection,
     token::PrivateConnectToken,
-    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_MAX_PACKET_BYTES,
+    NetcodeError, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS, NETCODE_MAX_PACKET_BYTES,
     NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 

@@ -1,10 +1,13 @@
 pub mod client;
 mod crypto;
+mod error;
 mod packet;
 mod replay_protection;
 mod serialize;
 pub mod server;
 pub mod token;
+
+pub use error::NetcodeError;
 
 use std::time::Duration;
 

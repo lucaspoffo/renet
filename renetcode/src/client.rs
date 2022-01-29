@@ -1,10 +1,10 @@
 use std::{net::SocketAddr, time::Duration};
 
 use crate::{
-    packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, NetcodeError, Packet},
+    packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, Packet},
     replay_protection::ReplayProtection,
     token::ConnectToken,
-    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
+    NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -211,7 +211,7 @@ impl Client {
                             self.last_packet_received_time = self.current_time;
                             self.challenge_token_sequence = 0;
 
-                            return Ok(())
+                            return Ok(());
                         }
                     }
                 }
