@@ -72,7 +72,7 @@ pub struct Server {
 pub enum ServerResult<'a, 's> {
     None,
     PacketToSend(&'s mut [u8]),
-    Payload(usize, &'a [u8]),
+    Payload(ClientID, &'a [u8]),
 }
 
 impl Server {
@@ -255,20 +255,21 @@ impl Server {
         }
     }
 
-    pub fn generate_payload_packet<'s>(&'s mut self, slot: usize, payload: &[u8]) -> Result<&'s mut [u8], NetcodeError> {
-        if slot >= self.clients.len() {
-            return Err(NetcodeError::ClientNotFound);
-        }
-
+    pub fn generate_payload_packet<'s>(
+        &'s mut self,
+        client_id: ClientID,
+        payload: &[u8],
+    ) -> Result<(&'s mut [u8], SocketAddr), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
 
-        if let Some(client) = &mut self.clients[slot] {
+        if let Some(slot) = find_client_slot_by_id(&self.clients, client_id) {
+            let client = self.clients[slot].as_mut().unwrap();
             let packet = Packet::Payload(payload);
             let len = packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
             client.sequence += 1;
-            return Ok(&mut self.out[..len]);
+            return Ok((&mut self.out[..len], client.addr));
         }
 
         Err(NetcodeError::ClientNotFound)
@@ -309,7 +310,7 @@ impl Server {
                             // TODO(log): debug
                             client.confirmed = true;
                         }
-                        return Ok(ServerResult::Payload(slot, payload));
+                        return Ok(ServerResult::Payload(client.client_id, payload));
                     }
                     Packet::KeepAlive(_) => {
                         if !client.confirmed {
@@ -529,7 +530,7 @@ mod tests {
         )
         .unwrap();
         let mut client = Client::new(Duration::ZERO, connect_token);
-        let client_packet = client.generate_packet().unwrap();
+        let (client_packet, _) = client.generate_packet().unwrap();
 
         let result = server.process_packet(client_addr, client_packet);
         assert!(matches!(result, ServerResult::PacketToSend(_)));
@@ -539,7 +540,7 @@ mod tests {
         };
 
         assert!(!client.connected());
-        let client_packet = client.generate_packet().unwrap();
+        let (client_packet, _) = client.generate_packet().unwrap();
         let result = server.process_packet(client_addr, client_packet);
         assert!(matches!(result, ServerResult::PacketToSend(_)));
 
@@ -554,7 +555,7 @@ mod tests {
         assert!(client.connected());
 
         let payload = [7u8; 300];
-        let result = server.generate_payload_packet(0, &payload).unwrap();
+        let (result, _) = server.generate_payload_packet(client_id, &payload).unwrap();
         let result_payload = client.process_packet(result).unwrap();
         assert_eq!(payload, result_payload);
 
@@ -565,11 +566,11 @@ mod tests {
         assert!(client.process_packet(keep_alive_packet).is_none());
 
         let client_payload = [2u8; 300];
-        let result = client.generate_payload_packet(&client_payload).unwrap();
+        let (result, _) = client.generate_payload_packet(&client_payload).unwrap();
 
         match server.process_packet(client_addr, result) {
-            ServerResult::Payload(slot, payload) => {
-                assert_eq!(slot, 0);
+            ServerResult::Payload(id, payload) => {
+                assert_eq!(id, client_id);
                 assert_eq!(client_payload, payload);
             }
             _ => unreachable!(),
