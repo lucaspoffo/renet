@@ -7,7 +7,7 @@ use crate::{
     NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorReason {
     ConnectTokenExpired,
     InvalidConnectToken,
@@ -34,8 +34,8 @@ pub struct Client {
     last_packet_received_time: Duration,
     current_time: Duration,
     sequence: u64,
-    server_address: SocketAddr,
-    server_address_index: usize,
+    server_addr: SocketAddr,
+    server_addr_index: usize,
     connect_token: ConnectToken,
     challenge_token_sequence: u64,
     challenge_token_data: [u8; NETCODE_CHALLENGE_TOKEN_BYTES],
@@ -48,18 +48,19 @@ pub struct Client {
 
 impl Client {
     pub fn new(current_time: Duration, connect_token: ConnectToken) -> Self {
-        let server_address = connect_token.server_addresses[0].unwrap();
+        // TODO(error): handle when there is no server addr available
+        let server_addr = connect_token.server_addresses[0].unwrap();
 
         Self {
             sequence: 0,
-            server_address,
-            server_address_index: 0,
+            server_addr,
+            server_addr_index: 0,
             challenge_token_sequence: 0,
             state: State::SendingConnectionRequest,
-            current_time,
-            connect_start_time: Duration::ZERO,
+            connect_start_time: current_time,
             last_packet_send_time: None,
-            last_packet_received_time: Duration::ZERO,
+            last_packet_received_time: current_time,
+            current_time,
             max_clients: 0,
             client_index: 0,
             send_rate: NETCODE_SEND_RATE,
@@ -72,6 +73,17 @@ impl Client {
 
     pub fn connected(&self) -> bool {
         self.state == State::Connected
+    }
+
+    pub fn error(&self) -> Option<ErrorReason> {
+        if let State::Error(reason) = &self.state {
+            return Some(*reason);
+        }
+        None
+    }
+
+    pub fn server_addr(&self) -> SocketAddr {
+        self.server_addr
     }
 
     pub fn disconnect(&mut self) -> Result<&mut [u8], NetcodeError> {
@@ -128,7 +140,7 @@ impl Client {
         None
     }
 
-    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<&mut [u8], NetcodeError> {
+    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<(&mut [u8], SocketAddr), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
@@ -144,10 +156,10 @@ impl Client {
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
         self.sequence += 1;
-        Ok(&mut self.out[..len])
+        Ok((&mut self.out[..len], self.server_addr))
     }
 
-    pub fn generate_packet(&mut self) -> Option<&mut [u8]> {
+    pub fn generate_packet(&mut self) -> Option<(&mut [u8], SocketAddr)> {
         if let Some(last_packet_send_time) = self.last_packet_send_time {
             if self.current_time - last_packet_send_time < self.send_rate {
                 return None;
@@ -183,12 +195,13 @@ impl Client {
             Err(_) => None,
             Ok(encoded) => {
                 self.sequence += 1;
-                Some(&mut self.out[..encoded])
+                Some((&mut self.out[..encoded], self.server_addr))
             }
         }
     }
 
-    pub fn update(&mut self) -> Result<(), NetcodeError> {
+    pub fn update(&mut self, duration: Duration) -> Result<(), NetcodeError> {
+        self.current_time += duration;
         let connection_timed_out = self.connect_token.timeout_seconds > 0
             && (self.last_packet_received_time + Duration::from_secs(self.connect_token.timeout_seconds as u64) < self.current_time);
 
@@ -208,15 +221,15 @@ impl Client {
                     };
                     self.state = State::Error(reason);
                     // Try to connect to the next server address
-                    self.server_address_index += 1;
-                    if self.server_address_index >= 32 {
+                    self.server_addr_index += 1;
+                    if self.server_addr_index >= 32 {
                         return Err(NetcodeError::NoMoreServers);
                     }
-                    match self.connect_token.server_addresses[self.server_address_index] {
+                    match self.connect_token.server_addresses[self.server_addr_index] {
                         None => return Err(NetcodeError::NoMoreServers),
                         Some(server_address) => {
                             self.state = State::SendingConnectionRequest;
-                            self.server_address = server_address;
+                            self.server_addr = server_address;
                             self.connect_start_time = self.current_time;
                             self.last_packet_send_time = None;
                             self.last_packet_received_time = self.current_time;
@@ -272,7 +285,7 @@ mod tests {
         let server_key = connect_token.server_to_client_key;
         let client_key = connect_token.client_to_server_key;
         let mut client = Client::new(Duration::ZERO, connect_token);
-        let packet_buffer = client.generate_packet().unwrap();
+        let (packet_buffer, _) = client.generate_packet().unwrap();
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
         assert_eq!(0, r_sequence);
@@ -287,7 +300,7 @@ mod tests {
         client.process_packet(&mut buffer[..len]);
         assert_eq!(State::SendingConnectionResponse, client.state);
 
-        let packet_buffer = client.generate_packet().unwrap();
+        let (packet_buffer, _) = client.generate_packet().unwrap();
         let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None).unwrap();
         assert!(matches!(packet, Packet::Response(_)));
 
@@ -307,7 +320,7 @@ mod tests {
         assert_eq!(payload, payload_client);
 
         let to_send_payload = vec![5u8; 1000];
-        let to_send_packet_payload = client.generate_payload_packet(&to_send_payload).unwrap();
+        let (to_send_packet_payload, _) = client.generate_payload_packet(&to_send_payload).unwrap();
         let (_, result) = Packet::decode(to_send_packet_payload, protocol_id, Some(&client_key), None).unwrap();
         match result {
             Packet::Payload(payload) => assert_eq!(to_send_payload, payload),
