@@ -25,4 +25,11 @@ and protects the game server from the following attacks:
 [netcode]: https://github.com/networkprotocol/netcode
 
 ## Usage
-Check out the echo example to see an usage with UDP.
+Check out the echo example to see an usage with UDP. Run the server with: 
+```
+cargo run --example echo -- server 5000 
+```
+run the client with:
+```
+cargo run --example echo -- client 5000 my_username
+```
