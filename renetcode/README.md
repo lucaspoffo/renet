@@ -1,4 +1,9 @@
 # Renetcode
+[![Latest version](https://img.shields.io/crates/v/renetcode.svg)](https://crates.io/crates/renetcode)
+[![Documentation](https://docs.rs/renetcode/badge.svg)](https://docs.rs/renetcode)
+![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
+
 
 Renetcode is a simple connection based client/server protocol agnostic to the transport layer,
 was developed be used in games with UDP in mind. Implements the Netcode 1.02 standard, available
