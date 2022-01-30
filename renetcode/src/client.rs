@@ -7,8 +7,9 @@ use crate::{
     NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
+/// The reason why a client is in error state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorReason {
+pub enum ClientError {
     ConnectTokenExpired,
     InvalidConnectToken,
     ConnectionTimedOut,
@@ -18,17 +19,21 @@ pub enum ErrorReason {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum State {
-    Error(ErrorReason),
+enum ClientState {
+    Error(ClientError),
     Disconnected,
     SendingConnectionRequest,
     SendingConnectionResponse,
     Connected,
 }
 
+/// A client that can generate encrypted packets that be sent to the connected server, or consume
+/// encrypted packets from the server. 
+/// The client is agnostic from the transport layer, only consuming and generating bytes
+/// that can be transported in any way desired.
 #[derive(Debug)]
-pub struct Client {
-    state: State,
+pub struct NetcodeClient {
+    state: ClientState,
     connect_start_time: Duration,
     last_packet_send_time: Option<Duration>,
     last_packet_received_time: Duration,
@@ -46,7 +51,7 @@ pub struct Client {
     out: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
-impl Client {
+impl NetcodeClient {
     pub fn new(current_time: Duration, connect_token: ConnectToken) -> Self {
         // TODO(error): handle when there is no server addr available
         let server_addr = connect_token.server_addresses[0].unwrap();
@@ -56,7 +61,7 @@ impl Client {
             server_addr,
             server_addr_index: 0,
             challenge_token_sequence: 0,
-            state: State::SendingConnectionRequest,
+            state: ClientState::SendingConnectionRequest,
             connect_start_time: current_time,
             last_packet_send_time: None,
             last_packet_received_time: current_time,
@@ -72,22 +77,26 @@ impl Client {
     }
 
     pub fn connected(&self) -> bool {
-        self.state == State::Connected
+        self.state == ClientState::Connected
     }
 
-    pub fn error(&self) -> Option<ErrorReason> {
-        if let State::Error(reason) = &self.state {
+    /// Returns an error if the client is in an invalid state.
+    pub fn error(&self) -> Option<ClientError> {
+        if let ClientState::Error(reason) = &self.state {
             return Some(*reason);
         }
         None
     }
 
+    /// Returns the current server address the client is connected or trying to connect.
     pub fn server_addr(&self) -> SocketAddr {
         self.server_addr
     }
 
+    /// Disconnect the client from the server.
+    /// Returns a disconnect packet that should be sent to the server.
     pub fn disconnect(&mut self) -> Result<&mut [u8], NetcodeError> {
-        self.state = State::Disconnected;
+        self.state = ClientState::Disconnected;
         let packet = Packet::Disconnect;
         let len = packet.encode(
             &mut self.out,
@@ -97,6 +106,9 @@ impl Client {
         return Ok(&mut self.out[..len]);
     }
 
+    /// Process any packet received from the server. This function might return a payload sent from the
+    /// server. If nothing is returned, it was a packet used for the internal protocol or an
+    /// invalid packet.
     pub fn process_packet<'a>(&mut self, buffer: &'a mut [u8]) -> Option<&'a [u8]> {
         let (_, packet) = Packet::decode(
             buffer,
@@ -106,32 +118,32 @@ impl Client {
         )
         .ok()?;
         match (packet, &self.state) {
-            (Packet::ConnectionDenied, State::SendingConnectionRequest | State::SendingConnectionResponse) => {
-                self.state = State::Error(ErrorReason::ConnectionDenied);
+            (Packet::ConnectionDenied, ClientState::SendingConnectionRequest | ClientState::SendingConnectionResponse) => {
+                self.state = ClientState::Error(ClientError::ConnectionDenied);
                 self.last_packet_received_time = self.current_time;
             }
-            (Packet::Challenge(challenge), State::SendingConnectionRequest) => {
+            (Packet::Challenge(challenge), ClientState::SendingConnectionRequest) => {
                 self.challenge_token_sequence = challenge.token_sequence;
                 self.last_packet_received_time = self.current_time;
                 self.last_packet_send_time = None;
                 self.challenge_token_data = challenge.token_data;
-                self.state = State::SendingConnectionResponse;
+                self.state = ClientState::SendingConnectionResponse;
             }
-            (Packet::KeepAlive(_), State::Connected) => {
+            (Packet::KeepAlive(_), ClientState::Connected) => {
                 self.last_packet_received_time = self.current_time;
             }
-            (Packet::KeepAlive(keep_alive), State::SendingConnectionResponse) => {
+            (Packet::KeepAlive(keep_alive), ClientState::SendingConnectionResponse) => {
                 self.last_packet_received_time = self.current_time;
                 self.max_clients = keep_alive.max_clients;
                 self.client_index = keep_alive.client_index;
-                self.state = State::Connected;
+                self.state = ClientState::Connected;
             }
-            (Packet::Payload(p), State::Connected) => {
+            (Packet::Payload(p), ClientState::Connected) => {
                 self.last_packet_received_time = self.current_time;
                 return Some(p);
             }
-            (Packet::Disconnect, State::Connected) => {
-                self.state = State::Disconnected;
+            (Packet::Disconnect, ClientState::Connected) => {
+                self.state = ClientState::Disconnected;
                 self.last_packet_received_time = self.current_time;
             }
             _ => {}
@@ -140,12 +152,13 @@ impl Client {
         None
     }
 
+    /// Returns the server address and an encrypted payload packet that can be sent to the server.
     pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<(&mut [u8], SocketAddr), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
 
-        if self.state != State::Connected {
+        if self.state != ClientState::Connected {
             return Err(NetcodeError::ClientNotConnected);
         }
 
@@ -159,7 +172,72 @@ impl Client {
         Ok((&mut self.out[..len], self.server_addr))
     }
 
-    pub fn generate_packet(&mut self) -> Option<(&mut [u8], SocketAddr)> {
+    /// Update the internal state of the client, receives the duration since last updated.
+    /// Might return the serve address and a protocol packet to be sent to the server.
+    pub fn update(&mut self, duration: Duration) -> Option<(&mut [u8], SocketAddr)> {
+        if let Err(_) = self.update_internal_state(duration) {
+            // TODO(log): error
+            return None;
+        }
+
+        // Generate packet for the current state
+        self.generate_packet()
+    }
+
+    fn update_internal_state(&mut self, duration: Duration) -> Result<(), NetcodeError> {
+        self.current_time += duration;
+        let connection_timed_out = self.connect_token.timeout_seconds > 0
+            && (self.last_packet_received_time + Duration::from_secs(self.connect_token.timeout_seconds as u64) < self.current_time);
+
+        match self.state {
+            ClientState::SendingConnectionRequest | ClientState::SendingConnectionResponse => {
+                let expire_seconds = self.connect_token.expire_timestamp - self.connect_token.create_timestamp;
+                let connection_expired = (self.current_time - self.connect_start_time).as_secs() >= expire_seconds;
+                if connection_expired {
+                    self.state = ClientState::Error(ClientError::ConnectTokenExpired);
+                    return Err(NetcodeError::Expired);
+                }
+                if connection_timed_out {
+                    let reason = if self.state == ClientState::SendingConnectionResponse {
+                        ClientError::ConnectionResponseTimedOut
+                    } else {
+                        ClientError::ConnectionRequestTimedOut
+                    };
+                    self.state = ClientState::Error(reason);
+                    // Try to connect to the next server address
+                    self.server_addr_index += 1;
+                    if self.server_addr_index >= 32 {
+                        return Err(NetcodeError::NoMoreServers);
+                    }
+                    match self.connect_token.server_addresses[self.server_addr_index] {
+                        None => return Err(NetcodeError::NoMoreServers),
+                        Some(server_address) => {
+                            self.state = ClientState::SendingConnectionRequest;
+                            self.server_addr = server_address;
+                            self.connect_start_time = self.current_time;
+                            self.last_packet_send_time = None;
+                            self.last_packet_received_time = self.current_time;
+                            self.challenge_token_sequence = 0;
+
+                            return Ok(());
+                        }
+                    }
+                }
+                Ok(())
+            }
+            ClientState::Connected => {
+                if connection_timed_out {
+                    self.state = ClientState::Error(ClientError::ConnectionTimedOut);
+                    return Err(NetcodeError::TimedOut);
+                }
+
+                Ok(())
+            }
+            ClientState::Disconnected | ClientState::Error(_) => Err(NetcodeError::Disconnected),
+        }
+    }
+
+    fn generate_packet(&mut self) -> Option<(&mut [u8], SocketAddr)> {
         if let Some(last_packet_send_time) = self.last_packet_send_time {
             if self.current_time - last_packet_send_time < self.send_rate {
                 return None;
@@ -168,18 +246,18 @@ impl Client {
 
         if matches!(
             self.state,
-            State::Connected | State::SendingConnectionRequest | State::SendingConnectionResponse
+            ClientState::Connected | ClientState::SendingConnectionRequest | ClientState::SendingConnectionResponse
         ) {
             self.last_packet_send_time = Some(self.current_time);
         }
 
         let packet = match self.state {
-            State::SendingConnectionRequest => Packet::ConnectionRequest(ConnectionRequest::from_token(&self.connect_token)),
-            State::SendingConnectionResponse => Packet::Response(EncryptedChallengeToken {
+            ClientState::SendingConnectionRequest => Packet::ConnectionRequest(ConnectionRequest::from_token(&self.connect_token)),
+            ClientState::SendingConnectionResponse => Packet::Response(EncryptedChallengeToken {
                 token_sequence: self.challenge_token_sequence,
                 token_data: self.challenge_token_data,
             }),
-            State::Connected => Packet::KeepAlive(ConnectionKeepAlive {
+            ClientState::Connected => Packet::KeepAlive(ConnectionKeepAlive {
                 client_index: 0,
                 max_clients: 0,
             }),
@@ -197,60 +275,6 @@ impl Client {
                 self.sequence += 1;
                 Some((&mut self.out[..encoded], self.server_addr))
             }
-        }
-    }
-
-    pub fn update(&mut self, duration: Duration) -> Result<(), NetcodeError> {
-        self.current_time += duration;
-        let connection_timed_out = self.connect_token.timeout_seconds > 0
-            && (self.last_packet_received_time + Duration::from_secs(self.connect_token.timeout_seconds as u64) < self.current_time);
-
-        match self.state {
-            State::SendingConnectionRequest | State::SendingConnectionResponse => {
-                let expire_seconds = self.connect_token.expire_timestamp - self.connect_token.create_timestamp;
-                let connection_expired = (self.current_time - self.connect_start_time).as_secs() >= expire_seconds;
-                if connection_expired {
-                    self.state = State::Error(ErrorReason::ConnectTokenExpired);
-                    return Err(NetcodeError::Expired);
-                }
-                if connection_timed_out {
-                    let reason = if self.state == State::SendingConnectionResponse {
-                        ErrorReason::ConnectionResponseTimedOut
-                    } else {
-                        ErrorReason::ConnectionRequestTimedOut
-                    };
-                    self.state = State::Error(reason);
-                    // Try to connect to the next server address
-                    self.server_addr_index += 1;
-                    if self.server_addr_index >= 32 {
-                        return Err(NetcodeError::NoMoreServers);
-                    }
-                    match self.connect_token.server_addresses[self.server_addr_index] {
-                        None => return Err(NetcodeError::NoMoreServers),
-                        Some(server_address) => {
-                            self.state = State::SendingConnectionRequest;
-                            self.server_addr = server_address;
-                            self.connect_start_time = self.current_time;
-                            self.last_packet_send_time = None;
-                            self.last_packet_received_time = self.current_time;
-                            self.challenge_token_sequence = 0;
-
-                            return Ok(());
-                        }
-                    }
-                }
-
-                Ok(())
-            }
-            State::Connected => {
-                if connection_timed_out {
-                    self.state = State::Error(ErrorReason::ConnectionTimedOut);
-                    return Err(NetcodeError::TimedOut);
-                }
-
-                Ok(())
-            }
-            State::Disconnected | State::Error(_) => Err(NetcodeError::Disconnected),
         }
     }
 }
@@ -284,8 +308,8 @@ mod tests {
         .unwrap();
         let server_key = connect_token.server_to_client_key;
         let client_key = connect_token.client_to_server_key;
-        let mut client = Client::new(Duration::ZERO, connect_token);
-        let (packet_buffer, _) = client.generate_packet().unwrap();
+        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
+        let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
         assert_eq!(0, r_sequence);
@@ -298,9 +322,9 @@ mod tests {
             Packet::Challenge(EncryptedChallengeToken::generate(client_id, &user_data, challenge_sequence, &challenge_key).unwrap());
         let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key))).unwrap();
         client.process_packet(&mut buffer[..len]);
-        assert_eq!(State::SendingConnectionResponse, client.state);
+        assert_eq!(ClientState::SendingConnectionResponse, client.state);
 
-        let (packet_buffer, _) = client.generate_packet().unwrap();
+        let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
         let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None).unwrap();
         assert!(matches!(packet, Packet::Response(_)));
 
@@ -310,7 +334,7 @@ mod tests {
         let len = keep_alive_packet.encode(&mut buffer, protocol_id, Some((1, &server_key))).unwrap();
         client.process_packet(&mut buffer[..len]);
 
-        assert_eq!(client.state, State::Connected);
+        assert_eq!(client.state, ClientState::Connected);
 
         let payload = vec![7u8; 500];
         let payload_packet = Packet::Payload(&payload[..]);

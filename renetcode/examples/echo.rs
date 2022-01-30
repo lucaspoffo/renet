@@ -1,8 +1,5 @@
 use renetcode::{
-    client::Client,
-    server::{Server, ServerEvent, ServerResult},
-    token::ConnectToken,
-    NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
+    NetcodeClient, ConnectToken, NetcodeServer, ServerEvent, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};
@@ -15,9 +12,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+// Unique id used for your game
 const PROTOCOL_ID: u64 = 123456789;
 
-// Helper struct to pass an username from the user data passed in the ConnectToken
+// Helper struct to pass an username in user data inside the ConnectToken
 struct Username(String);
 
 impl Username {
@@ -82,7 +80,7 @@ fn main() {
 
 fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let mut server: Server = Server::new(now, 16, PROTOCOL_ID, addr, private_key);
+    let mut server: NetcodeServer = NetcodeServer::new(now, 16, PROTOCOL_ID, addr, private_key);
     let udp_socket = UdpSocket::bind(addr).unwrap();
     udp_socket.set_nonblocking(true).unwrap();
     let mut received_messages = vec![];
@@ -90,7 +88,7 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
     let mut usernames: HashMap<u64, String> = HashMap::new();
     loop {
-        server.advance_time(Instant::now() - last_updated);
+        server.update(Instant::now() - last_updated);
         received_messages.clear();
         while let Some(event) = server.get_event() {
             match event {
@@ -133,13 +131,12 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
             }
         }
 
-        for i in 0..server.max_clients() {
-            if let Some((packet, addr)) = server.update_client(i) {
+        for client_id in server.clients_id().into_iter() {
+            if let Some((packet, addr)) = server.update_client(client_id) {
                 udp_socket.send_to(packet, addr).unwrap();
             }
         }
 
-        server.update_pending_connections();
         last_updated = Instant::now();
         thread::sleep(Duration::from_millis(50));
     }
@@ -149,14 +146,12 @@ fn client(connect_token: ConnectToken) {
     let udp_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     udp_socket.set_nonblocking(true).unwrap();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let mut client = Client::new(now, connect_token);
+    let mut client = NetcodeClient::new(now, connect_token);
     let stdin_channel = spawn_stdin_channel();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
 
     let mut last_updated = Instant::now();
     loop {
-        client.update(Instant::now() - last_updated).unwrap();
-        last_updated = Instant::now();
         if let Some(err) = client.error() {
             panic!("Client error: {:?}", err);
         }
@@ -192,9 +187,10 @@ fn client(connect_token: ConnectToken) {
             };
         }
 
-        if let Some((packet, addr)) = client.generate_packet() {
+        if let Some((packet, addr)) = client.update(Instant::now() - last_updated) {
             udp_socket.send_to(packet, addr).unwrap();
         }
+        last_updated = Instant::now();
         thread::sleep(Duration::from_millis(50));
     }
 }

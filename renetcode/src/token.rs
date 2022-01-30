@@ -15,18 +15,21 @@ use crate::{
 };
 use aead::Error as CryptoError;
 
+/// A public connect token that the client receives to start connecting to the server.
+/// How the client receives ConnectToken is up to you, could be from a matchmaking
+/// system or from a call to a REST API as an example.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectToken {
-    pub version_info: [u8; 13],
-    pub protocol_id: u64,
-    pub create_timestamp: u64,
-    pub expire_timestamp: u64,
-    pub xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
-    pub server_addresses: [Option<SocketAddr>; 32],
-    pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
-    pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
-    pub private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
-    pub timeout_seconds: i32,
+    pub(crate) version_info: [u8; 13],
+    pub(crate) protocol_id: u64,
+    pub(crate) create_timestamp: u64,
+    pub(crate) expire_timestamp: u64,
+    pub(crate) xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
+    pub(crate) server_addresses: [Option<SocketAddr>; 32],
+    pub(crate) client_to_server_key: [u8; NETCODE_KEY_BYTES],
+    pub(crate) server_to_client_key: [u8; NETCODE_KEY_BYTES],
+    pub(crate) private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
+    pub(crate) timeout_seconds: i32,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +44,7 @@ pub(crate) struct PrivateConnectToken {
 
 #[derive(Debug)]
 pub enum TokenGenerationError {
+    /// The maximum number of address in the token is 32
     MaxHostCount,
     CryptoError,
     IoError(io::Error),
@@ -73,6 +77,8 @@ impl fmt::Display for TokenGenerationError {
 }
 
 impl ConnectToken {
+    /// Generate a token to be sent to an client. The user data is available to the server after an
+    /// successfull conection. The private key and the protocol id must be the same used in server. 
     pub fn generate(
         current_time: Duration,
         protocol_id: u64,

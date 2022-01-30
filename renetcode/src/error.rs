@@ -3,25 +3,42 @@ use std::{error, fmt, io};
 use crate::{token::TokenGenerationError, NETCODE_MAX_PAYLOAD_BYTES};
 use aead::Error as CryptoError;
 
+/// All possible netcode errors that can occur.
 #[derive(Debug)]
 pub enum NetcodeError {
+    /// No private keys was available while decrypting.
     InvalidPrivateKey,
+    /// The type of the packet is invalid.
     InvalidPacketType,
+    /// The connect token has an invalid protocol id.
     InvalidProtocolID,
+    /// The connect token has an invalid version.
     InvalidVersion,
+    /// Packet size is too small to be a netcode packet.
     PacketTooSmall,
+    /// Payload is above the maximum limit
     PayloadAboveLimit,
+    /// The processed packet is duplicated
     DuplicatedSequence,
+    /// No more host are available in the connect token..
     NoMoreServers,
+    /// The connect token has expired.
     Expired,
+    /// The connection has timed out.
     TimedOut,
+    /// The client is disconnected.
     Disconnected,
+    /// An error ocurred while encrypting or decrypting.
     CryptoError,
+    /// The server address is not in the connect token.
     NotInHostList,
-    BufferTooSmall,
+    /// Client was not found.
     ClientNotFound,
+    /// Client is not connected.
     ClientNotConnected,
+    /// IO error.
     IoError(io::Error),
+    /// An error occured while generating the connect token.
     TokenGenerationError(TokenGenerationError),
 }
 
@@ -45,7 +62,6 @@ impl fmt::Display for NetcodeError {
             NotInHostList => write!(fmt, "token does not contain the server address"),
             ClientNotFound => write!(fmt, "client was not found"),
             ClientNotConnected => write!(fmt, "client is disconnected or connecting"),
-            BufferTooSmall => write!(fmt, "buffer"),
             IoError(ref err) => write!(fmt, "{}", err),
             TokenGenerationError(ref err) => write!(fmt, "{}", err),
         }
