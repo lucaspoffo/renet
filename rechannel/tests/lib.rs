@@ -1,8 +1,8 @@
-use renet::{
+use rechannel::{
     disconnect_packet,
     error::DisconnectionReason,
     remote_connection::{ConnectionConfig, RemoteConnection},
-    server::Server,
+    server::RechannelServer,
 };
 
 use bincode::{self, Options};
@@ -23,7 +23,7 @@ struct TestMessage {
 #[test]
 fn test_remote_connection_reliable_channel() {
     init_log();
-    let mut server = Server::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(16, ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
     server.add_connection(&client_id).unwrap();
@@ -60,7 +60,7 @@ fn test_remote_connection_reliable_channel() {
 #[test]
 fn test_server_reliable_channel() {
     init_log();
-    let mut server = Server::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(16, ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
     server.add_connection(&client_id).unwrap();
@@ -97,7 +97,7 @@ fn test_server_reliable_channel() {
 #[test]
 fn test_server_disconnect_client() {
     init_log();
-    let mut server = Server::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(16, ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
     server.add_connection(&client_id).unwrap();
@@ -117,7 +117,7 @@ fn test_server_disconnect_client() {
 #[test]
 fn test_client_disconnect() {
     init_log();
-    let mut server = Server::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(16, ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
     server.add_connection(&client_id).unwrap();
@@ -159,7 +159,7 @@ fn test_usage() {
     // TODO: we can't distinguish the log between the clients
     init_log();
     let max_clients = 8;
-    let mut server = Server::new(max_clients, ConnectionConfig::default());
+    let mut server = RechannelServer::new(max_clients, ConnectionConfig::default());
 
     let mut clients_status: HashMap<usize, ClientStatus> = HashMap::new();
     let mut sent_messages = 0;

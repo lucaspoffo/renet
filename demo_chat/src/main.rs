@@ -1,7 +1,7 @@
 use client::ChatApp;
 use eframe::{egui, epi};
 use log::Level;
-use renet_udp::renet::error::DisconnectionReason;
+use renet::rechannel::error::DisconnectionReason;
 use serde::{Deserialize, Serialize};
 
 use history_logger::{HistoryLogger, LoggerApp};

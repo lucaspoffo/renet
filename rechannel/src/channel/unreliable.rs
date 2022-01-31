@@ -1,5 +1,5 @@
 use crate::{
-    error::RenetError,
+    error::RechannelError,
     packet::{Payload, UnreliableChannelData},
 };
 use std::collections::VecDeque;
@@ -55,9 +55,9 @@ impl UnreliableChannel {
         self.messages_received.pop_front()
     }
 
-    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RechannelError> {
         if self.messages_to_send.len() > self.config.message_send_queue_size {
-            return Err(RenetError::ChannelMaxMessagesLimit);
+            return Err(RechannelError::ChannelMaxMessagesLimit);
         }
         self.messages_to_send.push_back(message_payload);
         Ok(())

@@ -1,5 +1,5 @@
 use crate::channel::{Channel, ChannelConfig};
-use crate::error::{DisconnectionReason, RenetError};
+use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::{ChannelMessages, HeartBeat, Normal, Packet, Payload};
 
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
@@ -159,13 +159,13 @@ impl RemoteConnection {
         };
     }
 
-    pub fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RechannelError> {
         if let Some(reason) = self.disconnected() {
-            return Err(RenetError::ClientDisconnected(reason));
+            return Err(RechannelError::ClientDisconnected(reason));
         }
         let channel = self.channels.get_mut(&channel_id).expect("invalid channel");
         if let Err(e) = channel.send_message(message) {
-            if let RenetError::ClientDisconnected(reason) = e {
+            if let RechannelError::ClientDisconnected(reason) = e {
                 self.state = ConnectionState::Disconnected { reason };
             }
             return Err(e);
@@ -186,9 +186,9 @@ impl RemoteConnection {
         }
     }
 
-    pub fn update(&mut self) -> Result<(), RenetError> {
+    pub fn update(&mut self) -> Result<(), RechannelError> {
         if let Some(reason) = self.disconnected() {
-            return Err(RenetError::ClientDisconnected(reason));
+            return Err(RechannelError::ClientDisconnected(reason));
         }
 
         if self.timeout_timer.is_finished() {
@@ -200,7 +200,7 @@ impl RemoteConnection {
                 if reliable_channel.out_of_sync() {
                     let reason = DisconnectionReason::ReliableChannelOutOfSync(*channel_id);
                     self.state = ConnectionState::Disconnected { reason };
-                    return Err(RenetError::ClientDisconnected(reason));
+                    return Err(RechannelError::ClientDisconnected(reason));
                 }
             }
         }
@@ -216,9 +216,9 @@ impl RemoteConnection {
         Ok(())
     }
 
-    pub fn process_packet(&mut self, packet: &[u8]) -> Result<(), RenetError> {
+    pub fn process_packet(&mut self, packet: &[u8]) -> Result<(), RechannelError> {
         if let Some(reason) = self.disconnected() {
-            return Err(RenetError::ClientDisconnected(reason));
+            return Err(RechannelError::ClientDisconnected(reason));
         }
 
         self.timeout_timer.reset();
@@ -301,9 +301,9 @@ impl RemoteConnection {
         Ok(())
     }
 
-    pub fn get_packets_to_send(&mut self) -> Result<Vec<Payload>, RenetError> {
+    pub fn get_packets_to_send(&mut self) -> Result<Vec<Payload>, RechannelError> {
         if let Some(reason) = self.disconnected() {
-            return Err(RenetError::ClientDisconnected(reason));
+            return Err(RechannelError::ClientDisconnected(reason));
         }
 
         let sequence = self.sequence;
@@ -377,9 +377,9 @@ impl RemoteConnection {
         Ok(vec![])
     }
 
-    pub fn set_disconnected<T>(&mut self, reason: DisconnectionReason) -> Result<T, RenetError> {
+    pub fn set_disconnected<T>(&mut self, reason: DisconnectionReason) -> Result<T, RechannelError> {
         self.state = ConnectionState::Disconnected { reason };
-        Err(RenetError::ClientDisconnected(reason))
+        Err(RechannelError::ClientDisconnected(reason))
     }
 
     fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {

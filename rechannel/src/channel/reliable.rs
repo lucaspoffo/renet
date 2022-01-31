@@ -1,4 +1,4 @@
-use crate::error::{DisconnectionReason, RenetError};
+use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::{Payload, ReliableChannelData};
 use crate::sequence_buffer::SequenceBuffer;
 use crate::timer::Timer;
@@ -192,16 +192,16 @@ impl ReliableChannel {
         }
     }
 
-    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RechannelError> {
         let message_id = self.send_message_id;
         if !self.messages_send.available(message_id) {
             self.out_of_sync = true;
             let reason = DisconnectionReason::ReliableChannelOutOfSync(self.config.channel_id);
-            return Err(RenetError::ClientDisconnected(reason));
+            return Err(RechannelError::ClientDisconnected(reason));
         }
 
         if message_payload.len() as u64 > self.config.max_message_size {
-            return Err(RenetError::MessageSizeAboveLimit);
+            return Err(RechannelError::MessageSizeAboveLimit);
         }
         self.send_message_id = self.send_message_id.wrapping_add(1);
 

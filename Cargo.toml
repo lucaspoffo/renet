@@ -1,2 +1,2 @@
 [workspace]
-members = ["renet", "renet_udp", "demo_chat", "renetcode"]
+members = ["renet", "rechannel", "demo_chat", "renetcode"]

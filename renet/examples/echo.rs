@@ -1,7 +1,7 @@
-use renet_udp::{
-    client::UdpClient,
-    renet::remote_connection::ConnectionConfig,
-    server::{ServerEvent, UdpServer},
+use renet::{
+    client::RenetClient,
+    rechannel::remote_connection::ConnectionConfig,
+    server::{RenetServer, ServerEvent},
 };
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
@@ -34,7 +34,7 @@ fn main() {
 fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let connection_config = ConnectionConfig::default();
-    let mut server: UdpServer = UdpServer::new(64, connection_config, socket).unwrap();
+    let mut server: RenetServer = RenetServer::new(64, connection_config, socket).unwrap();
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
     loop {
@@ -71,7 +71,7 @@ fn server(addr: SocketAddr) {
 fn client(server_addr: SocketAddr) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let connection_config = ConnectionConfig::default();
-    let mut client = UdpClient::new(socket, server_addr, connection_config).unwrap();
+    let mut client = RenetClient::new(socket, server_addr, connection_config).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
@@ -99,7 +99,7 @@ fn spawn_stdin_channel() -> Receiver<String> {
     thread::spawn(move || loop {
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer).unwrap();
-        tx.send(buffer).unwrap();
+        tx.send(buffer.trim_end().to_string()).unwrap();
     });
     rx
 }

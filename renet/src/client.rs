@@ -1,8 +1,10 @@
 use crate::RenetUdpError;
 
-use renet::disconnect_packet;
-use renet::error::{DisconnectionReason, RenetError};
-use renet::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
+use rechannel::{
+    disconnect_packet,
+    error::{DisconnectionReason, RechannelError},
+    remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection},
+};
 
 use log::debug;
 
@@ -10,14 +12,14 @@ use std::io;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
-pub struct UdpClient {
+pub struct RenetClient {
     id: SocketAddr,
     socket: UdpSocket,
     connection: RemoteConnection,
     server_addr: SocketAddr,
 }
 
-impl UdpClient {
+impl RenetClient {
     pub fn new(socket: UdpSocket, server_addr: SocketAddr, connection_config: ConnectionConfig) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
         let id = socket.local_addr()?;
@@ -64,7 +66,7 @@ impl UdpClient {
         self.connection.receive_message(channel_id)
     }
 
-    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
         self.connection.send_message(channel_id, message)
     }
 
@@ -82,7 +84,7 @@ impl UdpClient {
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetUdpError> {
         if let Some(reason) = self.connection.disconnected() {
-            return Err(RenetUdpError::RenetError(RenetError::ClientDisconnected(reason)));
+            return Err(RenetUdpError::RenetError(RechannelError::ClientDisconnected(reason)));
         }
         self.connection.advance_time(duration);
 

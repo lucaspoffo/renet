@@ -4,7 +4,7 @@ use bincode::Options;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::RenetError,
+    error::RechannelError,
     packet::{BlockChannelData, Payload},
     sequence_buffer::SequenceBuffer,
     timer::Timer,
@@ -109,7 +109,7 @@ impl ChunkSender {
         }
     }
 
-    fn send_message(&mut self, data: Payload) -> Result<(), RenetError> {
+    fn send_message(&mut self, data: Payload) -> Result<(), RechannelError> {
         assert!(!self.sending);
 
         self.sending = true;
@@ -124,7 +124,7 @@ impl ChunkSender {
         Ok(())
     }
 
-    fn generate_slice_packets(&mut self, mut available_bytes: u64) -> Result<Vec<SliceMessage>, RenetError> {
+    fn generate_slice_packets(&mut self, mut available_bytes: u64) -> Result<Vec<SliceMessage>, RechannelError> {
         let mut slice_messages: Vec<SliceMessage> = vec![];
         if !self.sending {
             return Ok(slice_messages);
@@ -325,7 +325,7 @@ impl BlockChannel {
         }
     }
 
-    pub fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Result<Option<BlockChannelData>, RenetError> {
+    pub fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Result<Option<BlockChannelData>, RechannelError> {
         if !self.sender.sending {
             if let Some(message) = self.messages_to_send.pop_front() {
                 self.send_message(message)?;
@@ -360,10 +360,10 @@ impl BlockChannel {
         self.sender.process_ack(ack);
     }
 
-    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RechannelError> {
         if self.sender.sending {
             if self.messages_to_send.len() > self.message_send_queue_size {
-                return Err(RenetError::ChannelMaxMessagesLimit);
+                return Err(RechannelError::ChannelMaxMessagesLimit);
             }
             self.messages_to_send.push_back(message_payload);
             return Ok(());

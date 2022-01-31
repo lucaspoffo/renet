@@ -8,7 +8,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-renet_udp = { path = "../renet_udp" }
+renet = { path = "../renet" }
 eframe = "0.13.1"
 serde = { version = "1.0.117", features = [ "derive" ] } 
 bincode = "1.3.1"

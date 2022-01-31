@@ -4,10 +4,7 @@ use eframe::{
     epi,
 };
 use log::error;
-use renet_udp::{
-    client::UdpClient,
-    renet::{error::RenetError, remote_connection::ConnectionConfig},
-};
+use renet::{client::RenetClient, rechannel::remote_connection::ConnectionConfig};
 
 use std::{
     collections::HashMap,
@@ -41,8 +38,8 @@ pub struct ChatApp {
     clients: HashMap<SocketAddr, String>,
     messages: Vec<(SocketAddr, String, bool)>,
     chat_server: Option<ChatServer>,
-    client: Option<UdpClient>,
-    connection_error: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
+    client: Option<RenetClient>,
+    connection_error: Option<String>,
     text_input: String,
     message_id: u64,
     pending_messages: HashMap<u64, usize>,
@@ -165,7 +162,7 @@ impl ChatApp {
                             let socket = UdpSocket::bind(client_addr).unwrap();
                             let connection_config = ConnectionConfig::default();
 
-                            let mut remote_client = UdpClient::new(socket, server_addr, connection_config).unwrap();
+                            let mut remote_client = RenetClient::new(socket, server_addr, connection_config).unwrap();
 
                             let init_message = ClientMessages::Init { nick: nick.clone() };
                             let init_message = bincode::options().serialize(&init_message).unwrap();
@@ -191,7 +188,7 @@ impl ChatApp {
                     let socket = UdpSocket::bind(client_addr).unwrap();
                     let connection_config = ConnectionConfig::default();
 
-                    let mut remote_client = UdpClient::new(socket, addr, connection_config).unwrap();
+                    let mut remote_client = RenetClient::new(socket, addr, connection_config).unwrap();
 
                     let init_message = ClientMessages::Init { nick: nick.clone() };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
@@ -250,7 +247,7 @@ impl ChatApp {
             if let Err(e) = chat_server.update(duration) {
                 error!("Failed updating server: {}", e);
                 self.state = AppState::Start;
-                self.connection_error = Some(Box::new(e));
+                self.connection_error = Some(e.to_string());
                 self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
@@ -263,7 +260,7 @@ impl ChatApp {
             }
             if let Some(e) = chat_client.disconnected() {
                 self.state = AppState::Start;
-                self.connection_error = Some(Box::new(RenetError::ClientDisconnected(e)));
+                self.connection_error = Some(e.to_string());
                 self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;

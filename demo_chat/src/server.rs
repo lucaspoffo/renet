@@ -4,10 +4,10 @@ use std::{
     time::Duration,
 };
 
-use renet_udp::{
-    renet::{error::RenetError, remote_connection::ConnectionConfig},
+use renet::{
+    rechannel::{error::RechannelError, remote_connection::ConnectionConfig},
     server::ServerEvent,
-    server::UdpServer,
+    server::RenetServer,
 };
 
 use crate::{ClientMessages, ServerMessages};
@@ -15,7 +15,7 @@ use bincode::Options;
 use log::info;
 
 pub struct ChatServer {
-    pub server: UdpServer,
+    pub server: RenetServer,
     clients_initializing: HashSet<SocketAddr>,
     clients: HashMap<SocketAddr, String>,
 }
@@ -24,7 +24,7 @@ impl ChatServer {
     pub fn new(addr: SocketAddr) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
         let connection_config = ConnectionConfig::default();
-        let server = UdpServer::new(64, connection_config, socket).unwrap();
+        let server = RenetServer::new(64, connection_config, socket).unwrap();
 
         Self {
             server,
@@ -33,7 +33,7 @@ impl ChatServer {
         }
     }
 
-    pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
+    pub fn update(&mut self, duration: Duration) -> Result<(), RechannelError> {
         self.server.update(duration).unwrap();
 
         while let Some(event) = self.server.get_event() {

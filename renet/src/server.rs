@@ -1,151 +1,143 @@
-use crate::error::{DisconnectionReason, RenetError};
-use crate::packet::Payload;
-use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
-use crate::ClientId;
+use rechannel::{
+    disconnect_packet,
+    error::{DisconnectionReason, RechannelError},
+    remote_connection::ConnectionConfig,
+    server::RechannelServer,
+};
 
-use std::collections::HashMap;
-use std::time::Duration;
-
-pub enum CanConnect {
-    Yes,
-    No { reason: DisconnectionReason },
-}
+use log::error;
+use std::{
+    collections::VecDeque,
+    io,
+    net::{SocketAddr, UdpSocket},
+    time::Duration,
+};
 
 #[derive(Debug)]
-pub struct Server<C: ClientId> {
-    max_connections: usize,
-    connections: HashMap<C, RemoteConnection>,
-    connection_config: ConnectionConfig,
-    disconnections: Vec<(C, DisconnectionReason)>,
+pub struct RenetServer {
+    socket: UdpSocket,
+    server: RechannelServer<SocketAddr>,
+    buffer: Box<[u8]>,
+    events: VecDeque<ServerEvent>,
 }
 
-impl<C: ClientId> Server<C> {
-    pub fn new(max_connections: usize, connection_config: ConnectionConfig) -> Self {
-        Self {
-            max_connections,
-            connections: HashMap::new(),
-            connection_config,
-            disconnections: Vec::new(),
-        }
+#[derive(Debug, Clone)]
+pub enum ServerEvent {
+    ClientConnected(SocketAddr),
+    ClientDisconnected(SocketAddr, DisconnectionReason),
+}
+
+impl RenetServer {
+    pub fn new(max_clients: usize, connection_config: ConnectionConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
+        let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
+        let server = RechannelServer::new(max_clients, connection_config);
+        socket.set_nonblocking(true)?;
+
+        Ok(Self {
+            socket,
+            server,
+            buffer,
+            events: VecDeque::new(),
+        })
     }
 
-    pub fn add_connection(&mut self, connection_id: &C) -> Result<(), DisconnectionReason> {
-        if let CanConnect::No { reason } = self.can_client_connect(connection_id) {
-            return Err(reason);
+    pub fn addr(&self) -> Result<SocketAddr, io::Error> {
+        self.socket.local_addr()
+    }
+
+    pub fn get_event(&mut self) -> Option<ServerEvent> {
+        self.events.pop_front()
+    }
+
+    pub fn disconnect(&mut self, client_id: &SocketAddr) {
+        self.server.disconnect(client_id);
+    }
+
+    pub fn disconnect_clients(&mut self) {
+        self.server.disconnect_all();
+    }
+
+    pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
+        loop {
+            match self.socket.recv_from(&mut self.buffer) {
+                Ok((len, addr)) => {
+                    if !self.server.is_connected(&addr) {
+                        match self.server.add_connection(&addr) {
+                            Ok(()) => self.events.push_back(ServerEvent::ClientConnected(addr)),
+                            Err(reason) => self.send_disconnect_packet(&addr, reason),
+                        }
+                    }
+                    if let Err(e) = self.server.process_packet_from(&self.buffer[..len], &addr) {
+                        error!("Error while processing payload for {}: {}", addr, e)
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
+            };
         }
-        let connection = RemoteConnection::new(self.connection_config.clone());
-        self.connections.insert(*connection_id, connection);
+
+        self.server.update_connections(duration);
+        while let Some((client_id, reason)) = self.server.disconnected_client() {
+            self.events.push_back(ServerEvent::ClientDisconnected(client_id, reason));
+            self.send_disconnect_packet(&client_id, reason);
+        }
         Ok(())
     }
 
-    pub fn has_connections(&self) -> bool {
-        !self.connections.is_empty()
-    }
-
-    pub fn disconnected_client(&mut self) -> Option<(C, DisconnectionReason)> {
-        self.disconnections.pop()
-    }
-
-    pub fn can_client_connect(&self, connection_id: &C) -> CanConnect {
-        if self.connections.contains_key(connection_id) {
-            return CanConnect::No {
-                reason: DisconnectionReason::ClientAlreadyConnected,
-            };
+    fn send_disconnect_packet(&self, addr: &SocketAddr, reason: DisconnectionReason) {
+        if matches!(reason, DisconnectionReason::DisconnectedByClient) {
+            return;
         }
-
-        if self.connections.len() == self.max_connections {
-            return CanConnect::No {
-                reason: DisconnectionReason::MaxConnections,
-            };
-        }
-
-        CanConnect::Yes
-    }
-
-    pub fn network_info(&self, connection_id: C) -> Option<&NetworkInfo> {
-        if let Some(connection) = self.connections.get(&connection_id) {
-            return Some(connection.network_info());
-        }
-        None
-    }
-
-    pub fn disconnect(&mut self, connection_id: &C) {
-        if self.connections.remove(connection_id).is_some() {
-            self.disconnections
-                .push((*connection_id, DisconnectionReason::DisconnectedByServer));
+        match disconnect_packet(reason) {
+            Ok(packet) => {
+                const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
+                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
+                    if let Err(e) = self.socket.send_to(&packet, addr) {
+                        error!("failed to send disconnect packet to {}: {}", addr, e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("failed to serialize disconnect packet: {}", e);
+            }
         }
     }
 
-    pub fn disconnect_all(&mut self) {
-        for connection_id in self.connections_id().iter() {
-            self.disconnect(connection_id);
-        }
+    pub fn receive_message(&mut self, client: &SocketAddr, channel_id: u8) -> Option<Vec<u8>> {
+        self.server.receive_message(client, channel_id)
+    }
+
+    pub fn send_message(&mut self, client_id: &SocketAddr, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
+        self.server.send_message(client_id, channel_id, message)
+    }
+
+    pub fn broadcast_message_except(&mut self, client_id: &SocketAddr, channel_id: u8, message: Vec<u8>) {
+        self.server.broadcast_message_except(client_id, channel_id, message)
     }
 
     pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
-        for (connection_id, connection) in self.connections.iter_mut() {
-            if let Err(e) = connection.send_message(channel_id, message.clone()) {
-                log::error!("Failed to broadcast message to {:?}: {}", connection_id, e)
+        self.server.broadcast_message(channel_id, message);
+    }
+
+    pub fn send_packets(&mut self) -> Result<(), io::Error> {
+        for client_id in self.server.connections_id().iter() {
+            let packets = match self.server.get_packets_to_send(client_id) {
+                Ok(p) => p,
+                Err(e) => {
+                    self.server.disconnect(client_id);
+                    error!("Failed to get packets from {}: {}", client_id, e);
+                    continue;
+                }
+            };
+
+            for packet in packets.iter() {
+                self.socket.send_to(packet, client_id)?;
             }
         }
+        Ok(())
     }
 
-    pub fn broadcast_message_except(&mut self, except_id: &C, channel_id: u8, message: Vec<u8>) {
-        for (connection_id, connection) in self.connections.iter_mut() {
-            if except_id == connection_id {
-                continue;
-            }
-
-            if let Err(e) = connection.send_message(channel_id, message.clone()) {
-                log::error!("Failed to broadcast message to {:?}: {}", connection_id, e)
-            }
-        }
-    }
-
-    pub fn send_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
-        match self.connections.get_mut(connection_id) {
-            Some(connection) => connection.send_message(channel_id, message),
-            None => Err(RenetError::ClientNotFound),
-        }
-    }
-
-    pub fn receive_message(&mut self, connection_id: &C, channel_id: u8) -> Option<Payload> {
-        if let Some(connection) = self.connections.get_mut(connection_id) {
-            return connection.receive_message(channel_id);
-        }
-        None
-    }
-
-    pub fn connections_id(&self) -> Vec<C> {
-        self.connections.keys().copied().collect()
-    }
-
-    pub fn is_connected(&self, connection_id: &C) -> bool {
-        self.connections.contains_key(connection_id)
-    }
-
-    pub fn update_connections(&mut self, duration: Duration) {
-        for (&connection_id, connection) in self.connections.iter_mut() {
-            connection.advance_time(duration);
-            if connection.update().is_err() {
-                let reason = connection.disconnected().unwrap();
-                self.disconnections.push((connection_id, reason));
-            }
-        }
-        self.connections.retain(|_, c| c.is_connected());
-    }
-
-    pub fn get_packets_to_send(&mut self, connection_id: &C) -> Result<Vec<Payload>, RenetError> {
-        match self.connections.get_mut(connection_id) {
-            Some(connection) => connection.get_packets_to_send(),
-            None => Err(RenetError::ClientNotFound),
-        }
-    }
-
-    pub fn process_packet_from(&mut self, payload: &[u8], connection_id: &C) -> Result<(), RenetError> {
-        match self.connections.get_mut(connection_id) {
-            Some(connection) => connection.process_packet(payload),
-            None => Err(RenetError::ClientNotFound),
-        }
+    pub fn clients_id(&self) -> Vec<SocketAddr> {
+        self.server.connections_id()
     }
 }

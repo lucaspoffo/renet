@@ -12,7 +12,7 @@ use block::BlockChannel;
 use reliable::ReliableChannel;
 use unreliable::UnreliableChannel;
 
-use crate::error::RenetError;
+use crate::error::RechannelError;
 
 #[derive(Debug, Clone)]
 pub enum ChannelConfig {
@@ -58,7 +58,7 @@ impl ChannelConfig {
 }
 
 impl Channel {
-    pub fn send_message(&mut self, message: Vec<u8>) -> Result<(), RenetError> {
+    pub fn send_message(&mut self, message: Vec<u8>) -> Result<(), RechannelError> {
         match self {
             Channel::Unreliable(channel) => channel.send_message(message),
             Channel::Reliable(channel) => channel.send_message(message),

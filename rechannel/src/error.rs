@@ -36,7 +36,7 @@ impl fmt::Display for DisconnectionReason {
 
 // Error message not sent
 #[derive(Debug)]
-pub enum RenetError {
+pub enum RechannelError {
     MessageSizeAboveLimit,
     ChannelMaxMessagesLimit,
     ClientDisconnected(DisconnectionReason),
@@ -45,11 +45,11 @@ pub enum RenetError {
     BincodeError(bincode::Error),
 }
 
-impl std::error::Error for RenetError {}
+impl std::error::Error for RechannelError {}
 
-impl fmt::Display for RenetError {
+impl fmt::Display for RechannelError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use RenetError::*;
+        use RechannelError::*;
 
         match *self {
             MessageSizeAboveLimit => write!(fmt, "the message is above the limit size"),
@@ -62,14 +62,14 @@ impl fmt::Display for RenetError {
     }
 }
 
-impl From<bincode::Error> for RenetError {
+impl From<bincode::Error> for RechannelError {
     fn from(inner: bincode::Error) -> Self {
-        RenetError::BincodeError(inner)
+        RechannelError::BincodeError(inner)
     }
 }
 
-impl From<FragmentError> for RenetError {
+impl From<FragmentError> for RechannelError {
     fn from(inner: FragmentError) -> Self {
-        RenetError::FragmentError(inner)
+        RechannelError::FragmentError(inner)
     }
 }
