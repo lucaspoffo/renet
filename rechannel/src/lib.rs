@@ -9,6 +9,8 @@ mod timer;
 
 pub use packet::disconnect_packet;
 
+pub use reassembly_fragment::FragmentConfig;
+
 use std::{fmt::Debug, hash::Hash};
 
 pub trait ClientId: Copy + Debug + Hash + Eq {}

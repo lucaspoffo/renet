@@ -1,10 +1,10 @@
-use crate::RenetUdpError;
+use crate::{RenetConnnectionConfig, RenetError};
 
 use rechannel::{
-    disconnect_packet,
     error::{DisconnectionReason, RechannelError},
-    remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection},
+    remote_connection::{NetworkInfo, RemoteConnection},
 };
+use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
 use log::debug;
 
@@ -14,22 +14,31 @@ use std::time::Duration;
 
 pub struct RenetClient {
     id: SocketAddr,
+    netcode_client: NetcodeClient,
     socket: UdpSocket,
-    connection: RemoteConnection,
-    server_addr: SocketAddr,
+    reliable_connection: RemoteConnection,
+    buffer: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
 impl RenetClient {
-    pub fn new(socket: UdpSocket, server_addr: SocketAddr, connection_config: ConnectionConfig) -> Result<Self, std::io::Error> {
+    pub fn new(
+        current_time: Duration,
+        addr: SocketAddr,
+        connect_token: ConnectToken,
+        config: RenetConnnectionConfig,
+    ) -> Result<Self, std::io::Error> {
+        let socket = UdpSocket::bind(addr)?;
         socket.set_nonblocking(true)?;
         let id = socket.local_addr()?;
-        let connection = RemoteConnection::new(connection_config);
+        let reliable_connection = RemoteConnection::new(config.to_connection_config());
+        let netcode_client = NetcodeClient::new(current_time, connect_token);
 
         Ok(Self {
+            buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
             socket,
             id,
-            connection,
-            server_addr,
+            reliable_connection,
+            netcode_client,
         })
     }
 
@@ -38,75 +47,84 @@ impl RenetClient {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.connection.is_connected()
+        self.reliable_connection.is_connected()
     }
 
     pub fn disconnected(&self) -> Option<DisconnectionReason> {
-        self.connection.disconnected()
+        self.reliable_connection.disconnected()
     }
 
     pub fn disconnect(&mut self) {
-        self.connection.disconnect();
-        match disconnect_packet(DisconnectionReason::DisconnectedByClient) {
-            Ok(packet) => {
+        match self.netcode_client.disconnect() {
+            Ok((packet, server_addr)) => {
                 const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = self.socket.send_to(&packet, self.server_addr) {
+                    if let Err(e) = self.socket.send_to(&packet, server_addr) {
                         log::error!("failed to send disconnect packet to server: {}", e);
                     }
                 }
             }
             Err(e) => {
-                log::error!("failed to serialize disconnect packet: {}", e);
+                log::error!("failed to generate disconnect packet: {}", e);
             }
         }
     }
 
     pub fn receive_message(&mut self, channel_id: u8) -> Option<Vec<u8>> {
-        self.connection.receive_message(channel_id)
+        self.reliable_connection.receive_message(channel_id)
     }
 
     pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
-        self.connection.send_message(channel_id, message)
+        self.reliable_connection.send_message(channel_id, message)
     }
 
     pub fn network_info(&self) -> &NetworkInfo {
-        self.connection.network_info()
+        self.reliable_connection.network_info()
     }
 
-    pub fn send_packets(&mut self) -> Result<(), RenetUdpError> {
-        let packets = self.connection.get_packets_to_send()?;
+    pub fn send_packets(&mut self) -> Result<(), RenetError> {
+        let packets = self.reliable_connection.get_packets_to_send()?;
         for packet in packets.into_iter() {
-            self.socket.send_to(&packet, self.server_addr)?;
+            let (packet, server_addr) = self.netcode_client.generate_payload_packet(&packet)?;
+            self.socket.send_to(&packet, server_addr)?;
         }
         Ok(())
     }
 
-    pub fn update(&mut self, duration: Duration) -> Result<(), RenetUdpError> {
-        if let Some(reason) = self.connection.disconnected() {
-            return Err(RenetUdpError::RenetError(RechannelError::ClientDisconnected(reason)));
+    pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
+        if let Some(_) = self.netcode_client.error() {
+            return Err(NetcodeError::Disconnected.into());
         }
-        self.connection.advance_time(duration);
 
-        let mut buffer = vec![0; self.connection.config.max_packet_size as usize];
+        if let Some(reason) = self.reliable_connection.disconnected() {
+            self.disconnect();
+            return Err(RechannelError::ClientDisconnected(reason).into());
+        }
+
         loop {
-            let packet = match self.socket.recv_from(&mut buffer) {
+            let packet = match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
-                    if addr == self.server_addr {
-                        &buffer[..len]
-                    } else {
+                    if addr != self.netcode_client.server_addr() {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
                     }
+                    
+                    &mut self.buffer[..len]
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetUdpError::IOError(e)),
+                Err(e) => return Err(RenetError::IOError(e)),
             };
 
-            self.connection.process_packet(packet)?;
+            if let Some(payload) = self.netcode_client.process_packet(packet) {
+                self.reliable_connection.process_packet(payload)?;
+            }
         }
 
-        self.connection.update()?;
+        self.reliable_connection.update()?;
+        if let Some((packet, addr)) = self.netcode_client.update(duration) {
+            self.socket.send_to(packet, addr)?;
+        }
+
         Ok(())
     }
 }

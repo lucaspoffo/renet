@@ -25,7 +25,7 @@ pub(crate) struct BlockChannelData {
     pub messages: Vec<SliceMessage>,
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub(crate) struct AckData {
     pub ack: u16,
     pub ack_bits: u32,
@@ -94,6 +94,15 @@ impl From<HeartBeat> for Packet {
 impl From<DisconnectionReason> for Packet {
     fn from(value: DisconnectionReason) -> Self {
         Self::Disconnect(value)
+    }
+}
+
+impl std::fmt::Debug for AckData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ack")
+            .field("last ack", &self.ack)
+            .field("ack mask", &format!("{:031b}", &self.ack_bits))
+            .finish()
     }
 }
 

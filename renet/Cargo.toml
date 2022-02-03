@@ -12,5 +12,5 @@ edition = "2018"
 
 [dependencies]
 rechannel = { path = "../rechannel", version = "0.0.1" }
-# renet = "0.0.4"
+renetcode = { path = "../renetcode", version = "0.0.1" }
 log = "0.4.11"

@@ -46,7 +46,6 @@ pub struct ConnectionConfig {
     pub sent_packets_buffer_size: usize,
     pub received_packets_buffer_size: usize,
     pub measure_smoothing_factor: f64,
-    pub timeout_duration: Duration,
     pub heartbeat_time: Duration,
     pub channels_config: Vec<ChannelConfig>,
     pub fragment_config: FragmentConfig,
@@ -58,7 +57,6 @@ pub struct RemoteConnection {
     sequence: u16,
     channels: HashMap<u8, Channel>,
     heartbeat_timer: Timer,
-    timeout_timer: Timer,
     pub config: ConnectionConfig,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
@@ -90,7 +88,6 @@ impl Default for ConnectionConfig {
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
             measure_smoothing_factor: 0.1,
-            timeout_duration: Duration::from_secs(5),
             heartbeat_time: Duration::from_millis(200),
             fragment_config: FragmentConfig::default(),
             channels_config: vec![
@@ -104,7 +101,6 @@ impl Default for ConnectionConfig {
 
 impl RemoteConnection {
     pub fn new(config: ConnectionConfig) -> Self {
-        let timeout_timer = Timer::new(config.timeout_duration);
         let heartbeat_timer = Timer::new(config.heartbeat_time);
         let reassembly_buffer = SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
@@ -121,7 +117,6 @@ impl RemoteConnection {
         Self {
             state: ConnectionState::Connected,
             channels,
-            timeout_timer,
             heartbeat_timer,
             sequence: 0,
             reassembly_buffer,
@@ -180,7 +175,6 @@ impl RemoteConnection {
 
     pub fn advance_time(&mut self, duration: Duration) {
         self.heartbeat_timer.advance(duration);
-        self.timeout_timer.advance(duration);
         for channel in self.channels.values_mut() {
             channel.advance_time(duration);
         }
@@ -189,10 +183,6 @@ impl RemoteConnection {
     pub fn update(&mut self) -> Result<(), RechannelError> {
         if let Some(reason) = self.disconnected() {
             return Err(RechannelError::ClientDisconnected(reason));
-        }
-
-        if self.timeout_timer.is_finished() {
-            return self.set_disconnected(DisconnectionReason::TimedOut);
         }
 
         for (channel_id, channel) in self.channels.iter() {
@@ -221,7 +211,6 @@ impl RemoteConnection {
             return Err(RechannelError::ClientDisconnected(reason));
         }
 
-        self.timeout_timer.reset();
         let received_bytes = packet.len();
         let packet: Packet = bincode::options().deserialize(packet)?;
 

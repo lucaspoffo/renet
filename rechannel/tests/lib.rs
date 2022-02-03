@@ -196,8 +196,8 @@ fn test_usage() {
             let client_packets = status.connection.get_packets_to_send().unwrap();
             let server_packets = server.get_packets_to_send(connection_id).unwrap();
 
-            // 50% packet loss emulation
-            if count % 2 == 0 {
+            // 66% packet loss emulation
+            if count % 3 == 0 {
                 for packet in client_packets.iter() {
                     server.process_packet_from(packet, connection_id).unwrap();
                 }

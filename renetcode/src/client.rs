@@ -95,7 +95,7 @@ impl NetcodeClient {
 
     /// Disconnect the client from the server.
     /// Returns a disconnect packet that should be sent to the server.
-    pub fn disconnect(&mut self) -> Result<&mut [u8], NetcodeError> {
+    pub fn disconnect(&mut self) -> Result<(&mut [u8], SocketAddr), NetcodeError> {
         self.state = ClientState::Disconnected;
         let packet = Packet::Disconnect;
         let len = packet.encode(
@@ -103,7 +103,7 @@ impl NetcodeClient {
             self.connect_token.protocol_id,
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
-        return Ok(&mut self.out[..len]);
+        return Ok((&mut self.out[..len], self.server_addr));
     }
 
     /// Process any packet received from the server. This function might return a payload sent from the
