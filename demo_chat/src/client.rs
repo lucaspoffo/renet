@@ -4,15 +4,15 @@ use eframe::{
     epi,
 };
 use log::error;
-use renet::{client::RenetClient, rechannel::remote_connection::ConnectionConfig};
+use renet::{ConnectToken, RenetClient, RenetConnectionConfig, NETCODE_KEY_BYTES};
 
 use std::{
     collections::HashMap,
     net::{SocketAddr, UdpSocket},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
-use crate::server::ChatServer;
+use crate::{server::ChatServer, Username};
 use crate::{ClientMessages, ServerMessages};
 
 #[derive(Debug)]
@@ -28,15 +28,14 @@ impl Default for AppState {
     }
 }
 
-#[derive(Default)]
 pub struct ChatApp {
     state: AppState,
     nick: String,
     server_addr: String,
-    connected_server_addr: Option<SocketAddr>,
+    private_key: String,
     client_port: u16,
-    clients: HashMap<SocketAddr, String>,
-    messages: Vec<(SocketAddr, String, bool)>,
+    usernames: HashMap<u64, String>,
+    messages: Vec<(u64, String, bool)>,
     chat_server: Option<ChatServer>,
     client: Option<RenetClient>,
     connection_error: Option<String>,
@@ -45,10 +44,30 @@ pub struct ChatApp {
     pending_messages: HashMap<u64, usize>,
 }
 
+impl Default for ChatApp {
+    fn default() -> Self {
+        Self {
+            state: AppState::Start,
+            nick: String::new(),
+            server_addr: "127.0.0.1:5000".to_string(),
+            private_key: "an example very very secret key.".to_string(),
+            messages: vec![],
+            chat_server: None,
+            client: None,
+            connection_error: None,
+            text_input: String::new(),
+            message_id: 0,
+            client_port: 0,
+            usernames: HashMap::new(),
+            pending_messages: HashMap::new(),
+        }
+    }
+}
+
 impl ChatApp {
     fn draw_chat(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         let Self {
-            clients,
+            usernames,
             messages,
             text_input,
             client,
@@ -58,7 +77,7 @@ impl ChatApp {
             ..
         } = self;
 
-        let client = client.as_mut().expect("Client always exists when drawing chat.");
+        let client = client.as_mut().expect("client always exists when drawing chat.");
 
         egui::SidePanel::right("right_panel")
             .min_width(150.0)
@@ -74,8 +93,8 @@ impl ChatApp {
                 ui.separator();
 
                 egui::ScrollArea::auto_sized().show(ui, |ui| {
-                    for client in clients.values() {
-                        ui.label(client);
+                    for username in usernames.values() {
+                        ui.label(username);
                     }
                 });
             });
@@ -95,7 +114,7 @@ impl ChatApp {
                     .serialize(&ClientMessages::Text(*message_id, text_input.clone()))
                     .unwrap();
                 let index = messages.len();
-                messages.push((client.id(), text_input.clone(), false));
+                messages.push((client.client_id(), text_input.clone(), false));
                 pending_messages.insert(*message_id, index);
                 *message_id += 1;
                 text_input.clear();
@@ -108,8 +127,10 @@ impl ChatApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::auto_sized().show(ui, |ui| {
                 for (client, message, confirmed) in messages.iter() {
-                    let label = if let Some(nick) = clients.get(client) {
+                    let label = if let Some(nick) = usernames.get(client) {
                         format!("{}: {}", nick, message)
+                    } else if *client == 0 {
+                        format!("Server: {}", message)
                     } else {
                         format!("unknown: {}", message)
                     };
@@ -129,8 +150,8 @@ impl ChatApp {
             state,
             client,
             connection_error,
+            private_key,
             client_port,
-            connected_server_addr,
             ..
         } = self;
 
@@ -147,58 +168,57 @@ impl ChatApp {
                     ui.add(egui::DragValue::new(client_port));
                 });
 
+                ui.horizontal(|ui| {
+                    ui.label("Private Key:");
+                    ui.text_edit_singleline(private_key);
+                    private_key.truncate(NETCODE_KEY_BYTES);
+                });
+
                 ui.separator();
 
                 ui.horizontal(|ui| {
                     ui.label("Server Addr:");
-                    ui.text_edit_singleline(server_addr)
+                    ui.text_edit_singleline(server_addr);
                 });
 
                 if ui.button("Connect").clicked() {
                     match server_addr.parse::<SocketAddr>() {
+                        Err(_) => *connection_error = Some("Failed to parse server address".to_string()),
                         Ok(server_addr) => {
-                            *state = AppState::Connecting;
-                            let client_addr = SocketAddr::from(([127, 0, 0, 1], *client_port));
-                            let socket = UdpSocket::bind(client_addr).unwrap();
-                            let connection_config = ConnectionConfig::default();
+                            let mut key: [u8; NETCODE_KEY_BYTES] = [0; NETCODE_KEY_BYTES];
+                            if private_key.as_bytes().len() != NETCODE_KEY_BYTES {
+                                *connection_error = Some("Private key must have 32 bytes.".to_string());
+                            } else {
+                                key.copy_from_slice(private_key.as_bytes());
+                                let remote_client = create_renet_client(*client_port, nick.clone(), server_addr, &key);
 
-                            let mut remote_client = RenetClient::new(socket, server_addr, connection_config).unwrap();
-
-                            let init_message = ClientMessages::Init { nick: nick.clone() };
-                            let init_message = bincode::options().serialize(&init_message).unwrap();
-                            if let Err(e) = remote_client.send_message(0, init_message) {
-                                log::error!("{}", e);
+                                *state = AppState::Connecting;
+                                *client = Some(remote_client);
                             }
-
-                            *client = Some(remote_client);
-                            *connected_server_addr = Some(server_addr);
                         }
-                        Err(e) => error!("{}", e),
                     }
                 }
 
                 ui.separator();
 
                 if ui.button("Host").clicked() {
-                    *state = AppState::Chat;
-                    let addr = "127.0.0.1:5000".parse().unwrap();
-                    let chat_server = ChatServer::new(addr);
+                    match server_addr.parse::<SocketAddr>() {
+                        Err(_) => *connection_error = Some("Failed to parse server address".to_string()),
+                        Ok(server_addr) => {
+                            let mut key: [u8; NETCODE_KEY_BYTES] = [0; NETCODE_KEY_BYTES];
+                            if private_key.as_bytes().len() != NETCODE_KEY_BYTES {
+                                *connection_error = Some("Private key must have 32 bytes.".to_string());
+                            } else {
+                                key.copy_from_slice(private_key.as_bytes());
+                                let remote_client = create_renet_client(*client_port, nick.clone(), server_addr, &key);
+                                *state = AppState::Chat;
+                                let chat_server = ChatServer::new(server_addr, &key);
 
-                    let client_addr = SocketAddr::from(([127, 0, 0, 1], *client_port));
-                    let socket = UdpSocket::bind(client_addr).unwrap();
-                    let connection_config = ConnectionConfig::default();
-
-                    let mut remote_client = RenetClient::new(socket, addr, connection_config).unwrap();
-
-                    let init_message = ClientMessages::Init { nick: nick.clone() };
-                    let init_message = bincode::options().serialize(&init_message).unwrap();
-                    if let Err(e) = remote_client.send_message(0, init_message) {
-                        log::error!("{}", e);
+                                *server = Some(chat_server);
+                                *client = Some(remote_client);
+                            }
+                        }
                     }
-
-                    *server = Some(chat_server);
-                    *client = Some(remote_client);
-                    *connected_server_addr = Some(addr);
                 }
 
                 ui.separator();
@@ -248,7 +268,6 @@ impl ChatApp {
                 error!("Failed updating server: {}", e);
                 self.state = AppState::Start;
                 self.connection_error = Some(e.to_string());
-                self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
             }
@@ -261,7 +280,6 @@ impl ChatApp {
             if let Some(e) = chat_client.disconnected() {
                 self.state = AppState::Start;
                 self.connection_error = Some(e.to_string());
-                self.connected_server_addr = None;
                 self.chat_server = None;
                 self.client = None;
             } else {
@@ -269,15 +287,15 @@ impl ChatApp {
                     let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                     match message {
                         ServerMessages::ClientConnected(id, nick) => {
-                            self.clients.insert(id, nick);
+                            self.usernames.insert(id, nick);
                         }
-                        ServerMessages::ClientDisconnected(id, reason) => {
-                            self.clients.remove(&id);
-                            let message = format!("client {} disconnect: {}", id, reason);
-                            self.messages.push((self.connected_server_addr.unwrap(), message, true));
+                        ServerMessages::ClientDisconnected(id) => {
+                            self.usernames.remove(&id);
+                            let message = format!("client {} disconnect", id);
+                            self.messages.push((0, message, true));
                         }
-                        ServerMessages::ClientMessage(nick, text) => {
-                            self.messages.push((nick, text, true));
+                        ServerMessages::ClientMessage(client_id, text) => {
+                            self.messages.push((client_id, text, true));
                         }
                         ServerMessages::MessageReceived(id) => {
                             if let Some(index) = self.pending_messages.remove(&id) {
@@ -286,11 +304,11 @@ impl ChatApp {
                                 }
                             }
                         }
-                        ServerMessages::InitClient { clients } => {
+                        ServerMessages::InitClient { usernames } => {
                             if matches!(self.state, AppState::Connecting) {
                                 self.connection_error = None;
                                 self.state = AppState::Chat;
-                                self.clients = clients;
+                                self.usernames = usernames;
                             }
                         }
                     }
@@ -303,30 +321,53 @@ impl ChatApp {
     }
 }
 
+fn create_renet_client(client_port: u16, username: String, server_addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES]) -> RenetClient {
+    let client_addr = SocketAddr::from(([127, 0, 0, 1], client_port));
+    let socket = UdpSocket::bind(client_addr).unwrap();
+    let connection_config = RenetConnectionConfig::default();
+
+    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    // Use current time as client_id
+    let client_id = current_time.as_millis() as u64;
+    let user_data = Username(username.clone()).to_netcode_user_data();
+    let connect_token = ConnectToken::generate(
+        current_time,
+        0,
+        300,
+        client_id,
+        15,
+        vec![server_addr],
+        Some(&user_data),
+        private_key,
+    )
+    .unwrap();
+
+    RenetClient::new(current_time, socket, client_id, connect_token, connection_config).unwrap()
+}
+
 fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
     ui.vertical_centered(|ui| {
         ui.heading("Server Commands");
     });
 
     ui.separator();
-    if let Ok(addr) = chat_server.server.addr() {
-        ui.horizontal(|ui| {
-            ui.label(format!("Address: {}", addr));
-            let tooltip = "Click to copy the server address";
-            if ui.button("📋").on_hover_text(tooltip).clicked() {
-                ui.output().copied_text = addr.to_string();
-            }
-        });
+    ui.horizontal(|ui| {
+        let server_addr = chat_server.server.addr();
+        ui.label(format!("Address: {}", server_addr));
+        let tooltip = "Click to copy the server address";
+        if ui.button("📋").on_hover_text(tooltip).clicked() {
+            ui.output().copied_text = server_addr.to_string();
+        }
+    });
 
-        ui.separator();
-    }
+    ui.separator();
 
     egui::ScrollArea::auto_sized().show(ui, |ui| {
         for client_id in chat_server.server.clients_id().into_iter() {
             ui.label(format!("Client {}", client_id));
             ui.horizontal(|ui| {
                 if ui.button("disconnect").clicked() {
-                    chat_server.server.disconnect(&client_id);
+                    chat_server.server.disconnect(client_id);
                 }
             });
         }
