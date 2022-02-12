@@ -32,6 +32,8 @@ pub use token::ConnectToken;
 
 use std::time::Duration;
 
+type ClientID = u64;
+
 const NETCODE_VERSION_INFO: &[u8; 13] = b"NETCODE 1.02\0";
 const NETCODE_MAX_CLIENTS: usize = 1024;
 const NETCODE_MAX_PENDING_CLIENTS: usize = NETCODE_MAX_CLIENTS * 4;
@@ -58,7 +60,7 @@ const NETCODE_ADDITIONAL_DATA_SIZE: usize = 13 + 8 + 8;
 
 const NETCODE_TIMEOUT_SECONDS: i32 = 15;
 
-const NETCODE_SEND_RATE: Duration = Duration::from_millis(100);
+const NETCODE_SEND_RATE: Duration = Duration::from_millis(200);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PacketToSend<'s> {

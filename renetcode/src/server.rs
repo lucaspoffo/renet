@@ -7,10 +7,9 @@ use crate::{
     token::PrivateConnectToken,
     NetcodeError, PacketToSend, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, NETCODE_MAX_CLIENTS,
     NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_MAX_PENDING_CLIENTS, NETCODE_SEND_RATE, NETCODE_USER_DATA_BYTES,
-    NETCODE_VERSION_INFO,
+    NETCODE_VERSION_INFO, ClientID,
 };
 
-type ClientID = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConnectionState {
@@ -582,7 +581,7 @@ mod tests {
             private_key,
         )
         .unwrap();
-        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
+        let mut client = NetcodeClient::new(Duration::ZERO, client_id, connect_token);
         let (client_packet, _) = client.update(Duration::ZERO).unwrap();
 
         let result = server.process_packet(client_addr, client_packet);

@@ -66,7 +66,7 @@ fn main() {
                 &private_key,
             )
             .unwrap();
-            client(connect_token);
+            client(client_id, connect_token);
         }
         "server" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
@@ -154,11 +154,11 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     }
 }
 
-fn client(connect_token: ConnectToken) {
+fn client(client_id: u64, connect_token: ConnectToken) {
     let udp_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     udp_socket.set_nonblocking(true).unwrap();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let mut client = NetcodeClient::new(now, connect_token);
+    let mut client = NetcodeClient::new(now, client_id, connect_token);
     let stdin_channel = spawn_stdin_channel();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
 

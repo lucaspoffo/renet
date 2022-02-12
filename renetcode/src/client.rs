@@ -4,7 +4,8 @@ use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, Packet},
     replay_protection::ReplayProtection,
     token::ConnectToken,
-    NetcodeError, PacketToSend, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
+    ClientID, NetcodeError, PacketToSend, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES,
+    NETCODE_SEND_RATE,
 };
 
 /// The reason why a client is in error state
@@ -34,6 +35,7 @@ enum ClientState {
 #[derive(Debug)]
 pub struct NetcodeClient {
     state: ClientState,
+    client_id: ClientID,
     connect_start_time: Duration,
     last_packet_send_time: Option<Duration>,
     last_packet_received_time: Duration,
@@ -52,12 +54,13 @@ pub struct NetcodeClient {
 }
 
 impl NetcodeClient {
-    pub fn new(current_time: Duration, connect_token: ConnectToken) -> Self {
+    pub fn new(current_time: Duration, client_id: ClientID, connect_token: ConnectToken) -> Self {
         // TODO(error): handle when there is no server addr available
         let server_addr = connect_token.server_addresses[0].unwrap();
 
         Self {
             sequence: 0,
+            client_id,
             server_addr,
             server_addr_index: 0,
             challenge_token_sequence: 0,
@@ -78,6 +81,10 @@ impl NetcodeClient {
 
     pub fn connected(&self) -> bool {
         self.state == ClientState::Connected
+    }
+
+    pub fn client_id(&self) -> ClientID {
+        self.client_id
     }
 
     /// Returns an error if the client is in an invalid state.
@@ -310,7 +317,7 @@ mod tests {
         .unwrap();
         let server_key = connect_token.server_to_client_key;
         let client_key = connect_token.client_to_server_key;
-        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
+        let mut client = NetcodeClient::new(Duration::ZERO, client_id, connect_token);
         let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
