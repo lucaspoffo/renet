@@ -6,8 +6,6 @@ use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisconnectionReason {
-    /// Server has exceeded maximum players capacity
-    MaxConnections,
     DisconnectedByServer,
     DisconnectedByClient,
     ClientAlreadyConnected,
@@ -21,7 +19,6 @@ impl fmt::Display for DisconnectionReason {
         use DisconnectionReason::*;
 
         match *self {
-            MaxConnections => write!(fmt, "server has reached the limit of connections"),
             DisconnectedByServer => write!(fmt, "connection terminated by server"),
             DisconnectedByClient => write!(fmt, "connection terminated by client"),
             ClientAlreadyConnected => write!(fmt, "connection with same id alredy exists"),

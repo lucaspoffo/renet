@@ -13,29 +13,27 @@ pub enum CanConnect {
 
 #[derive(Debug)]
 pub struct RechannelServer<C: ClientId> {
-    max_connections: usize,
     connections: HashMap<C, RemoteConnection>,
     connection_config: ConnectionConfig,
     disconnections: Vec<(C, DisconnectionReason)>,
 }
 
 impl<C: ClientId> RechannelServer<C> {
-    pub fn new(max_connections: usize, connection_config: ConnectionConfig) -> Self {
+    pub fn new(connection_config: ConnectionConfig) -> Self {
         Self {
-            max_connections,
             connections: HashMap::new(),
             connection_config,
             disconnections: Vec::new(),
         }
     }
 
-    pub fn add_connection(&mut self, connection_id: &C) -> Result<(), DisconnectionReason> {
-        if let CanConnect::No { reason } = self.can_client_connect(connection_id) {
-            return Err(reason);
+    pub fn add_connection(&mut self, connection_id: &C) {
+        if self.connections.contains_key(connection_id) {
+            return;
         }
+
         let connection = RemoteConnection::new(self.connection_config.clone());
         self.connections.insert(*connection_id, connection);
-        Ok(())
     }
 
     pub fn has_connections(&self) -> bool {
@@ -50,12 +48,6 @@ impl<C: ClientId> RechannelServer<C> {
         if self.connections.contains_key(connection_id) {
             return CanConnect::No {
                 reason: DisconnectionReason::ClientAlreadyConnected,
-            };
-        }
-
-        if self.connections.len() == self.max_connections {
-            return CanConnect::No {
-                reason: DisconnectionReason::MaxConnections,
             };
         }
 
