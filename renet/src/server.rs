@@ -1,9 +1,10 @@
 use rechannel::{
     disconnect_packet,
     error::{DisconnectionReason, RechannelError},
-    remote_connection::ConnectionConfig,
     server::RechannelServer,
 };
+
+use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 use log::error;
 use std::{
@@ -13,131 +14,203 @@ use std::{
     time::Duration,
 };
 
+use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
+
 #[derive(Debug)]
 pub struct RenetServer {
     socket: UdpSocket,
-    server: RechannelServer<SocketAddr>,
+    reliable_server: RechannelServer<u64>,
+    netcode_server: NetcodeServer,
     buffer: Box<[u8]>,
     events: VecDeque<ServerEvent>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
-    ClientConnected(SocketAddr),
-    ClientDisconnected(SocketAddr, DisconnectionReason),
+    ClientConnected(u64, [u8; NETCODE_USER_DATA_BYTES]),
+    ClientDisconnected(u64),
+}
+
+pub struct ServerConfig {
+    pub max_clients: usize,
+    pub protocol_id: u64,
+    pub server_addr: SocketAddr,
+    pub private_key: [u8; NETCODE_KEY_BYTES],
+}
+
+impl ServerConfig {
+    pub fn new(max_clients: usize, protocol_id: u64, server_addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
+        Self {
+            max_clients,
+            protocol_id,
+            server_addr,
+            private_key,
+        }
+    }
 }
 
 impl RenetServer {
-    pub fn new(max_clients: usize, connection_config: ConnectionConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
+    pub fn new(
+        current_time: Duration,
+        server_config: ServerConfig,
+        connection_config: RenetConnectionConfig,
+        socket: UdpSocket,
+    ) -> Result<Self, std::io::Error> {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
-        let server = RechannelServer::new(max_clients, connection_config);
+        let reliable_server = RechannelServer::new(connection_config.to_connection_config());
+        let netcode_server = NetcodeServer::new(
+            current_time,
+            server_config.max_clients,
+            server_config.protocol_id,
+            server_config.server_addr,
+            server_config.private_key,
+        );
+
         socket.set_nonblocking(true)?;
 
         Ok(Self {
             socket,
-            server,
+            netcode_server,
+            reliable_server,
             buffer,
             events: VecDeque::new(),
         })
     }
 
-    pub fn addr(&self) -> Result<SocketAddr, io::Error> {
-        self.socket.local_addr()
+    pub fn addr(&self) -> SocketAddr {
+        self.netcode_server.address()
     }
 
     pub fn get_event(&mut self) -> Option<ServerEvent> {
         self.events.pop_front()
     }
 
-    pub fn disconnect(&mut self, client_id: &SocketAddr) {
-        self.server.disconnect(client_id);
+    pub fn disconnect(&mut self, client_id: u64) {
+        self.reliable_server.disconnect(&client_id);
     }
 
     pub fn disconnect_clients(&mut self) {
-        self.server.disconnect_all();
+        self.reliable_server.disconnect_all();
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
-                    if !self.server.is_connected(&addr) {
-                        match self.server.add_connection(&addr) {
-                            Ok(()) => self.events.push_back(ServerEvent::ClientConnected(addr)),
-                            Err(reason) => self.send_disconnect_packet(&addr, reason),
-                        }
-                    }
-                    if let Err(e) = self.server.process_packet_from(&self.buffer[..len], &addr) {
-                        error!("Error while processing payload for {}: {}", addr, e)
-                    }
+                    let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
+                    handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             };
         }
 
-        self.server.update_connections(duration);
-        while let Some((client_id, reason)) = self.server.disconnected_client() {
-            self.events.push_back(ServerEvent::ClientDisconnected(client_id, reason));
-            self.send_disconnect_packet(&client_id, reason);
+        self.reliable_server.update_connections(duration);
+        self.netcode_server.update(duration);
+
+        for client_id in self.netcode_server.clients_id().into_iter() {
+            let server_result = self.netcode_server.update_client(client_id);
+            handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
         }
+
+        // Handle disconnected clients from Rechannel
+        while let Some((client_id, reason)) = self.reliable_server.disconnected_client() {
+            self.events.push_back(ServerEvent::ClientDisconnected(client_id));
+            if reason != DisconnectionReason::DisconnectedByClient {
+                match disconnect_packet(reason) {
+                    Err(e) => error!("failed to serialize disconnect packet: {}", e),
+                    Ok(packet) => match self.netcode_server.generate_payload_packet(client_id, &packet) {
+                        Err(e) => error!("failed to encrypt disconnect packet: {}", e),
+                        Ok(PacketToSend { packet, address }) => {
+                            for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
+                                self.socket.send_to(packet, address)?;
+                            }
+                        }
+                    },
+                }
+            }
+            self.netcode_server.disconnect(client_id);
+        }
+
         Ok(())
     }
 
-    fn send_disconnect_packet(&self, addr: &SocketAddr, reason: DisconnectionReason) {
-        if matches!(reason, DisconnectionReason::DisconnectedByClient) {
-            return;
-        }
-        match disconnect_packet(reason) {
-            Ok(packet) => {
-                const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
-                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = self.socket.send_to(&packet, addr) {
-                        error!("failed to send disconnect packet to {}: {}", addr, e);
-                    }
-                }
-            }
-            Err(e) => {
-                error!("failed to serialize disconnect packet: {}", e);
-            }
-        }
+    pub fn receive_message(&mut self, client_id: u64, channel_id: u8) -> Option<Vec<u8>> {
+        self.reliable_server.receive_message(&client_id, channel_id)
     }
 
-    pub fn receive_message(&mut self, client: &SocketAddr, channel_id: u8) -> Option<Vec<u8>> {
-        self.server.receive_message(client, channel_id)
+    pub fn send_message(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
+        self.reliable_server.send_message(&client_id, channel_id, message)
     }
 
-    pub fn send_message(&mut self, client_id: &SocketAddr, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
-        self.server.send_message(client_id, channel_id, message)
-    }
-
-    pub fn broadcast_message_except(&mut self, client_id: &SocketAddr, channel_id: u8, message: Vec<u8>) {
-        self.server.broadcast_message_except(client_id, channel_id, message)
+    pub fn broadcast_message_except(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) {
+        self.reliable_server.broadcast_message_except(&client_id, channel_id, message)
     }
 
     pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
-        self.server.broadcast_message(channel_id, message);
+        self.reliable_server.broadcast_message(channel_id, message);
     }
 
     pub fn send_packets(&mut self) -> Result<(), io::Error> {
-        for client_id in self.server.connections_id().iter() {
-            let packets = match self.server.get_packets_to_send(client_id) {
+        for client_id in self.reliable_server.connections_id().into_iter() {
+            let packets = match self.reliable_server.get_packets_to_send(&client_id) {
                 Ok(p) => p,
                 Err(e) => {
-                    self.server.disconnect(client_id);
                     error!("Failed to get packets from {}: {}", client_id, e);
                     continue;
                 }
             };
 
             for packet in packets.iter() {
-                self.socket.send_to(packet, client_id)?;
+                match self.netcode_server.generate_payload_packet(client_id, packet) {
+                    Ok(PacketToSend { packet, address }) => {
+                        self.socket.send_to(packet, address)?;
+                    }
+                    Err(e) => error!("failed to encrypt payload packet: {}", e),
+                }
             }
         }
+
         Ok(())
     }
 
-    pub fn clients_id(&self) -> Vec<SocketAddr> {
-        self.server.connections_id()
+    pub fn clients_id(&self) -> Vec<u64> {
+        self.netcode_server.clients_id()
     }
+}
+
+fn handle_server_result(
+    server_result: ServerResult,
+    socket: &UdpSocket,
+    reliable_server: &mut RechannelServer<u64>,
+    events: &mut VecDeque<ServerEvent>,
+) -> Result<(), io::Error> {
+    match server_result {
+        ServerResult::None => {}
+        ServerResult::PacketToSend(PacketToSend { packet, address }) => {
+            socket.send_to(packet, address)?;
+        }
+        ServerResult::Payload(client_id, payload) => {
+            if !reliable_server.is_connected(&client_id) {
+                reliable_server.add_connection(&client_id);
+            }
+            if let Err(e) = reliable_server.process_packet_from(payload, &client_id) {
+                log::error!("Error while processing payload for {}: {}", client_id, e)
+            }
+        }
+        ServerResult::ClientConnected(client_id, user_data, PacketToSend { packet, address }) => {
+            events.push_back(ServerEvent::ClientConnected(client_id, user_data));
+            socket.send_to(packet, address)?;
+        }
+        ServerResult::ClientDisconnected(client_id, packet_to_send) => {
+            events.push_back(ServerEvent::ClientDisconnected(client_id));
+            if let Some(PacketToSend { packet, address }) = packet_to_send {
+                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
+                    socket.send_to(packet, address).unwrap();
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

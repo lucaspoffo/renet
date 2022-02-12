@@ -1,13 +1,19 @@
-pub mod client;
-pub mod server;
+mod client;
+mod server;
 
-pub use rechannel;
-use rechannel::{channel::ChannelConfig, FragmentConfig, remote_connection::ConnectionConfig};
-use renetcode::NETCODE_MAX_PAYLOAD_BYTES;
+pub use rechannel::channel::ChannelConfig;
+use rechannel::{remote_connection::ConnectionConfig, FragmentConfig};
+pub use renetcode::ConnectToken;
+pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES};
+
+pub use client::RenetClient;
+pub use server::{RenetServer, ServerConfig, ServerEvent};
 
 use std::error::Error;
 use std::fmt;
 use std::time::Duration;
+
+const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
 
 #[derive(Debug)]
 pub enum RenetError {
@@ -46,7 +52,7 @@ impl From<std::io::Error> for RenetError {
     }
 }
 
-pub struct RenetConnnectionConfig {
+pub struct RenetConnectionConfig {
     pub max_packet_size: u64,
     pub sent_packets_buffer_size: usize,
     pub received_packets_buffer_size: usize,
@@ -54,10 +60,27 @@ pub struct RenetConnnectionConfig {
     pub measure_smoothing_factor: f64,
     pub heartbeat_time: Duration,
     pub channels_config: Vec<ChannelConfig>,
-    pub fragment_config: FragmentConfig,
 }
 
-impl RenetConnnectionConfig {
+impl Default for RenetConnectionConfig {
+    fn default() -> Self {
+        Self {
+            max_packet_size: 16 * 1024,
+            sent_packets_buffer_size: 256,
+            received_packets_buffer_size: 256,
+            reassembly_buffer_size: 256,
+            measure_smoothing_factor: 0.1,
+            heartbeat_time: Duration::from_millis(200),
+            channels_config: vec![
+                ChannelConfig::Reliable(Default::default()),
+                ChannelConfig::Unreliable(Default::default()),
+                ChannelConfig::Block(Default::default()),
+            ],
+        }
+    }
+}
+
+impl RenetConnectionConfig {
     fn to_connection_config(&self) -> ConnectionConfig {
         let fragment_config = FragmentConfig {
             fragment_above: NETCODE_MAX_PAYLOAD_BYTES as u64 - 40,
