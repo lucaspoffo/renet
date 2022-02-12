@@ -199,6 +199,7 @@ fn handle_server_result(
             }
         }
         ServerResult::ClientConnected(client_id, user_data, PacketToSend { packet, address }) => {
+            reliable_server.add_connection(&client_id);
             events.push_back(ServerEvent::ClientConnected(client_id, user_data));
             socket.send_to(packet, address)?;
         }
