@@ -70,7 +70,7 @@ impl Default for RenetConnectionConfig {
             received_packets_buffer_size: 256,
             reassembly_buffer_size: 256,
             measure_smoothing_factor: 0.1,
-            heartbeat_time: Duration::from_millis(200),
+            heartbeat_time: Duration::from_millis(100),
             channels_config: vec![
                 ChannelConfig::Reliable(Default::default()),
                 ChannelConfig::Unreliable(Default::default()),

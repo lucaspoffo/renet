@@ -127,22 +127,24 @@ fn client(server_addr: SocketAddr, username: Username) {
         PRIVATE_KEY,
     )
     .unwrap();
-    let mut client = RenetClient::new(current_time, socket, connect_token, connection_config).unwrap();
+    let mut client = RenetClient::new(current_time, socket, client_id, connect_token, connection_config).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
     loop {
         client.update(Instant::now() - last_updated).unwrap();
         last_updated = Instant::now();
-        match stdin_channel.try_recv() {
-            Ok(text) => client.send_message(0, text.as_bytes().to_vec()).unwrap(),
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
-        }
+        if client.is_connected() {
+            match stdin_channel.try_recv() {
+                Ok(text) => client.send_message(0, text.as_bytes().to_vec()).unwrap(),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
+            }
 
-        while let Some(text) = client.receive_message(0) {
-            let text = String::from_utf8(text).unwrap();
-            println!("{}", text);
+            while let Some(text) = client.receive_message(0) {
+                let text = String::from_utf8(text).unwrap();
+                println!("{}", text);
+            }
         }
 
         client.send_packets().unwrap();

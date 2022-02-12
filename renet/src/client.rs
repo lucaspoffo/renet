@@ -23,12 +23,13 @@ impl RenetClient {
     pub fn new(
         current_time: Duration,
         socket: UdpSocket,
+        client_id: u64,
         connect_token: ConnectToken,
         config: RenetConnectionConfig,
     ) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
         let reliable_connection = RemoteConnection::new(config.to_connection_config());
-        let netcode_client = NetcodeClient::new(current_time, connect_token);
+        let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
 
         Ok(Self {
             buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
@@ -36,6 +37,10 @@ impl RenetClient {
             reliable_connection,
             netcode_client,
         })
+    }
+
+    pub fn client_id(&self) -> u64 {
+        self.netcode_client.client_id()
     }
 
     pub fn is_connected(&self) -> bool {
@@ -74,15 +79,18 @@ impl RenetClient {
     }
 
     pub fn send_packets(&mut self) -> Result<(), RenetError> {
-        let packets = self.reliable_connection.get_packets_to_send()?;
-        for packet in packets.into_iter() {
-            let PacketToSend { packet, address } = self.netcode_client.generate_payload_packet(&packet)?;
-            self.socket.send_to(packet, address)?;
+        if self.netcode_client.connected() {
+            let packets = self.reliable_connection.get_packets_to_send()?;
+            for packet in packets.into_iter() {
+                let PacketToSend { packet, address } = self.netcode_client.generate_payload_packet(&packet)?;
+                self.socket.send_to(packet, address)?;
+            }
         }
         Ok(())
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
+        self.reliable_connection.advance_time(duration);
         if self.netcode_client.error().is_some() {
             return Err(NetcodeError::Disconnected.into());
         }
