@@ -78,7 +78,7 @@ impl fmt::Display for TokenGenerationError {
 
 impl ConnectToken {
     /// Generate a token to be sent to an client. The user data is available to the server after an
-    /// successfull conection. The private key and the protocol id must be the same used in server. 
+    /// successfull conection. The private key and the protocol id must be the same used in server.
     pub fn generate(
         current_time: Duration,
         protocol_id: u64,

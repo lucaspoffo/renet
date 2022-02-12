@@ -1,5 +1,6 @@
 use renetcode::{
-    NetcodeClient, ConnectToken, NetcodeServer, ServerEvent, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
+    ConnectToken, NetcodeClient, NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES,
+    NETCODE_USER_DATA_BYTES,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};
@@ -34,7 +35,6 @@ impl Username {
         let mut buffer = [0u8; 8];
         buffer.copy_from_slice(&user_data[0..8]);
         let mut len = u64::from_le_bytes(buffer) as usize;
-        println!("len {}", len);
         len = len.min(NETCODE_USER_DATA_BYTES - 8);
         let data = user_data[8..len + 8].to_vec();
         let username = String::from_utf8(data).unwrap();
@@ -51,7 +51,7 @@ fn main() {
     match exec_type.as_str() {
         "client" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
-            let username = Username(format!("{}", args[3]));
+            let username = Username(args[3].clone());
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             println!("Stating connecting at {:?} with username {}", now, username.0,);
             let client_id = now.as_millis() as u64;
@@ -78,6 +78,40 @@ fn main() {
     }
 }
 
+fn handle_server_result(
+    server_result: ServerResult,
+    socket: &UdpSocket,
+    received_messages: &mut Vec<String>,
+    usernames: &mut HashMap<u64, String>,
+) {
+    match server_result {
+        ServerResult::Payload(client_id, payload) => {
+            let text = String::from_utf8(payload.to_vec()).unwrap();
+            let username = usernames.get(&client_id).unwrap();
+            println!("Client {} ({}) sent message {:?}.", username, client_id, text);
+            let text = format!("{}: {}", username, text);
+            received_messages.push(text);
+        }
+        ServerResult::PacketToSend(PacketToSend { packet, address }) => {
+            socket.send_to(packet, address).unwrap();
+        }
+        ServerResult::ClientConnected(id, user_data, PacketToSend { packet, address }) => {
+            let username = Username::from_user_data(&user_data);
+            println!("Client {} with id {} connected.", username.0, id);
+            usernames.insert(id, username.0);
+            socket.send_to(packet, address).unwrap();
+        }
+        ServerResult::ClientDisconnected(id, packet_to_send) => {
+            println!("Client {} disconnected.", id);
+            usernames.remove_entry(&id);
+            if let Some(PacketToSend { packet, address }) = packet_to_send {
+                socket.send_to(packet, address).unwrap();
+            }
+        }
+        ServerResult::None => {}
+    }
+}
+
 fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let mut server: NetcodeServer = NetcodeServer::new(now, 16, PROTOCOL_ID, addr, private_key);
@@ -90,34 +124,13 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     loop {
         server.update(Instant::now() - last_updated);
         received_messages.clear();
-        while let Some(event) = server.get_event() {
-            match event {
-                ServerEvent::ClientConnected(id, user_data) => {
-                    let username = Username::from_user_data(&user_data);
-                    println!("Client {} with id {} connected.", username.0, id);
-                    usernames.insert(id, username.0);
-                }
-                ServerEvent::ClientDisconnected(id) => println!("Client {} disconnected.", id),
-            }
-        }
 
         loop {
             match udp_socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
                     // println!("Received decrypted message {:?} from {}.", &buffer[..len], addr);
-                    match server.process_packet(addr, &mut buffer[..len]) {
-                        ServerResult::Payload(client_id, payload) => {
-                            let text = String::from_utf8(payload.to_vec()).unwrap();
-                            let username = usernames.get(&client_id).unwrap();
-                            println!("Client {} ({}) sent message {:?}.", username, client_id, text);
-                            let text = format!("{}: {}", username, text);
-                            received_messages.push(text);
-                        }
-                        ServerResult::PacketToSend(packet) => {
-                            udp_socket.send_to(packet, addr).unwrap();
-                        }
-                        ServerResult::None => {}
-                    }
+                    let server_result = server.process_packet(addr, &mut buffer[..len]);
+                    handle_server_result(server_result, &udp_socket, &mut received_messages, &mut usernames);
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => panic!("Socket error: {}", e),
@@ -126,15 +139,14 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
 
         for text in received_messages.iter() {
             for client_id in server.clients_id().iter() {
-                let (payload, addr) = server.generate_payload_packet(*client_id, text.as_bytes()).unwrap();
-                udp_socket.send_to(payload, addr).unwrap();
+                let PacketToSend { packet, address } = server.generate_payload_packet(*client_id, text.as_bytes()).unwrap();
+                udp_socket.send_to(packet, address).unwrap();
             }
         }
 
         for client_id in server.clients_id().into_iter() {
-            if let Some((packet, addr)) = server.update_client(client_id) {
-                udp_socket.send_to(packet, addr).unwrap();
-            }
+            let server_result = server.update_client(client_id);
+            handle_server_result(server_result, &udp_socket, &mut received_messages, &mut usernames);
         }
 
         last_updated = Instant::now();
@@ -159,8 +171,8 @@ fn client(connect_token: ConnectToken) {
         match stdin_channel.try_recv() {
             Ok(text) => {
                 if client.connected() {
-                    let (payload, addr) = client.generate_payload_packet(text.as_bytes()).unwrap();
-                    udp_socket.send_to(payload, addr).unwrap();
+                    let PacketToSend { packet, address } = client.generate_payload_packet(text.as_bytes()).unwrap();
+                    udp_socket.send_to(packet, address).unwrap();
                 } else {
                     println!("Client is not yet connected");
                 }

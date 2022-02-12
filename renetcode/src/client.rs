@@ -4,7 +4,7 @@ use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, Packet},
     replay_protection::ReplayProtection,
     token::ConnectToken,
-    NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
+    NetcodeError, PacketToSend, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
 /// The reason why a client is in error state
@@ -28,7 +28,7 @@ enum ClientState {
 }
 
 /// A client that can generate encrypted packets that be sent to the connected server, or consume
-/// encrypted packets from the server. 
+/// encrypted packets from the server.
 /// The client is agnostic from the transport layer, only consuming and generating bytes
 /// that can be transported in any way desired.
 #[derive(Debug)]
@@ -95,7 +95,7 @@ impl NetcodeClient {
 
     /// Disconnect the client from the server.
     /// Returns a disconnect packet that should be sent to the server.
-    pub fn disconnect(&mut self) -> Result<(&mut [u8], SocketAddr), NetcodeError> {
+    pub fn disconnect(&mut self) -> Result<PacketToSend, NetcodeError> {
         self.state = ClientState::Disconnected;
         let packet = Packet::Disconnect;
         let len = packet.encode(
@@ -103,7 +103,8 @@ impl NetcodeClient {
             self.connect_token.protocol_id,
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
-        return Ok((&mut self.out[..len], self.server_addr));
+
+        Ok(PacketToSend::new(self.server_addr, &mut self.out[..len]))
     }
 
     /// Process any packet received from the server. This function might return a payload sent from the
@@ -153,7 +154,7 @@ impl NetcodeClient {
     }
 
     /// Returns the server address and an encrypted payload packet that can be sent to the server.
-    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<(&mut [u8], SocketAddr), NetcodeError> {
+    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<PacketToSend, NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
@@ -169,13 +170,14 @@ impl NetcodeClient {
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
         self.sequence += 1;
-        Ok((&mut self.out[..len], self.server_addr))
+
+        Ok(PacketToSend::new(self.server_addr, &mut self.out[..len]))
     }
 
     /// Update the internal state of the client, receives the duration since last updated.
     /// Might return the serve address and a protocol packet to be sent to the server.
     pub fn update(&mut self, duration: Duration) -> Option<(&mut [u8], SocketAddr)> {
-        if let Err(_) = self.update_internal_state(duration) {
+        if let Err(_e) = self.update_internal_state(duration) {
             // TODO(log): error
             return None;
         }
@@ -344,8 +346,8 @@ mod tests {
         assert_eq!(payload, payload_client);
 
         let to_send_payload = vec![5u8; 1000];
-        let (to_send_packet_payload, _) = client.generate_payload_packet(&to_send_payload).unwrap();
-        let (_, result) = Packet::decode(to_send_packet_payload, protocol_id, Some(&client_key), None).unwrap();
+        let PacketToSend { packet, .. } = client.generate_payload_packet(&to_send_payload).unwrap();
+        let (_, result) = Packet::decode(packet, protocol_id, Some(&client_key), None).unwrap();
         match result {
             Packet::Payload(payload) => assert_eq!(to_send_payload, payload),
             _ => unreachable!(),

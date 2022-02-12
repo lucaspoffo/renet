@@ -13,7 +13,7 @@
 //! - Man in the middle
 //! - DDoS amplification
 //! - Packet replay attacks
-//! 
+//!
 //! [standard]: https://github.com/networkprotocol/netcode/blob/master/STANDARD.md
 //! [netcode]: https://github.com/networkprotocol/netcode
 mod client;
@@ -25,9 +25,9 @@ mod serialize;
 mod server;
 mod token;
 
+pub use client::{ClientError, NetcodeClient};
 pub use error::NetcodeError;
-pub use server::{NetcodeServer, ServerEvent, ServerResult};
-pub use client::{NetcodeClient, ClientError};
+pub use server::{NetcodeServer, ServerResult};
 pub use token::ConnectToken;
 
 use std::time::Duration;
@@ -59,3 +59,15 @@ const NETCODE_ADDITIONAL_DATA_SIZE: usize = 13 + 8 + 8;
 const NETCODE_TIMEOUT_SECONDS: i32 = 15;
 
 const NETCODE_SEND_RATE: Duration = Duration::from_millis(100);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PacketToSend<'s> {
+    pub address: std::net::SocketAddr,
+    pub packet: &'s mut [u8],
+}
+
+impl<'s> PacketToSend<'s> {
+    pub fn new(address: std::net::SocketAddr, packet: &'s mut [u8]) -> Self {
+        Self { address, packet }
+    }
+}
