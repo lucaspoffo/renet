@@ -23,10 +23,10 @@ struct TestMessage {
 #[test]
 fn test_remote_connection_reliable_channel() {
     init_log();
-    let mut server = RechannelServer::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
-    server.add_connection(&client_id).unwrap();
+    server.add_connection(&client_id);
 
     let number_messages = 100;
     let mut current_message_number = 0;
@@ -60,10 +60,10 @@ fn test_remote_connection_reliable_channel() {
 #[test]
 fn test_server_reliable_channel() {
     init_log();
-    let mut server = RechannelServer::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
-    server.add_connection(&client_id).unwrap();
+    server.add_connection(&client_id);
 
     let number_messages = 100;
     let mut current_message_number = 0;
@@ -97,10 +97,10 @@ fn test_server_reliable_channel() {
 #[test]
 fn test_server_disconnect_client() {
     init_log();
-    let mut server = RechannelServer::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
-    server.add_connection(&client_id).unwrap();
+    server.add_connection(&client_id);
 
     server.disconnect(&client_id);
 
@@ -117,10 +117,10 @@ fn test_server_disconnect_client() {
 #[test]
 fn test_client_disconnect() {
     init_log();
-    let mut server = RechannelServer::new(16, ConnectionConfig::default());
+    let mut server = RechannelServer::new(ConnectionConfig::default());
     let mut client = RemoteConnection::new(ConnectionConfig::default());
     let client_id = 0u64;
-    server.add_connection(&client_id).unwrap();
+    server.add_connection(&client_id);
 
     client.disconnect();
     let reason = client.disconnected().unwrap();
@@ -158,20 +158,19 @@ use std::collections::HashMap;
 fn test_usage() {
     // TODO: we can't distinguish the log between the clients
     init_log();
-    let max_clients = 8;
-    let mut server = RechannelServer::new(max_clients, ConnectionConfig::default());
+    let mut server = RechannelServer::new(ConnectionConfig::default());
 
     let mut clients_status: HashMap<usize, ClientStatus> = HashMap::new();
     let mut sent_messages = 0;
 
-    for i in 0..max_clients {
+    for i in 0..8 {
         let connection = RemoteConnection::new(ConnectionConfig::default());
         let status = ClientStatus {
             connection,
             received_messages: 0,
         };
         clients_status.insert(i, status);
-        server.add_connection(&i).unwrap();
+        server.add_connection(&i);
     }
 
     let mut count: u64 = 0;

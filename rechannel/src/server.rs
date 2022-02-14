@@ -6,11 +6,6 @@ use crate::ClientId;
 use std::collections::HashMap;
 use std::time::Duration;
 
-pub enum CanConnect {
-    Yes,
-    No { reason: DisconnectionReason },
-}
-
 #[derive(Debug)]
 pub struct RechannelServer<C: ClientId> {
     connections: HashMap<C, RemoteConnection>,
@@ -42,16 +37,6 @@ impl<C: ClientId> RechannelServer<C> {
 
     pub fn disconnected_client(&mut self) -> Option<(C, DisconnectionReason)> {
         self.disconnections.pop()
-    }
-
-    pub fn can_client_connect(&self, connection_id: &C) -> CanConnect {
-        if self.connections.contains_key(connection_id) {
-            return CanConnect::No {
-                reason: DisconnectionReason::ClientAlreadyConnected,
-            };
-        }
-
-        CanConnect::Yes
     }
 
     pub fn network_info(&self, connection_id: C) -> Option<&NetworkInfo> {
