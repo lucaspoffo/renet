@@ -25,7 +25,7 @@ mod serialize;
 mod server;
 mod token;
 
-pub use client::{ClientError, NetcodeClient};
+pub use client::{DisconnectReason, NetcodeClient};
 pub use error::NetcodeError;
 pub use server::{NetcodeServer, ServerResult};
 pub use token::ConnectToken;

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{fmt, net::SocketAddr, time::Duration};
 
 use crate::{
     packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, Packet},
@@ -10,19 +10,19 @@ use crate::{
 
 /// The reason why a client is in error state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClientError {
+pub enum DisconnectReason {
     ConnectTokenExpired,
-    InvalidConnectToken,
     ConnectionTimedOut,
     ConnectionResponseTimedOut,
     ConnectionRequestTimedOut,
     ConnectionDenied,
+    DisconnectedByClient,
+    DisconnectedByServer,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum ClientState {
-    Error(ClientError),
-    Disconnected,
+    Disconnected(DisconnectReason),
     SendingConnectionRequest,
     SendingConnectionResponse,
     Connected,
@@ -53,10 +53,25 @@ pub struct NetcodeClient {
     out: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
+impl fmt::Display for DisconnectReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use DisconnectReason::*;
+
+        match *self {
+            ConnectTokenExpired => write!(f, "connection token has expired"),
+            ConnectionTimedOut => write!(f, "connection timed out"),
+            ConnectionResponseTimedOut => write!(f, "connection timed out during response step"),
+            ConnectionRequestTimedOut => write!(f, "connection timed out during request step"),
+            ConnectionDenied => write!(f, "server denied connection"),
+            DisconnectedByClient => write!(f, "connection terminated by client"),
+            DisconnectedByServer => write!(f, "connection terminated by server"),
+        }
+    }
+}
+
 impl NetcodeClient {
     pub fn new(current_time: Duration, client_id: ClientID, connect_token: ConnectToken) -> Self {
         // TODO(error): handle when there is no server addr available
-        let server_addr = connect_token.server_addresses[0].unwrap();
 
         Self {
             sequence: 0,
@@ -87,9 +102,9 @@ impl NetcodeClient {
         self.client_id
     }
 
-    /// Returns an error if the client is in an invalid state.
-    pub fn error(&self) -> Option<ClientError> {
-        if let ClientState::Error(reason) = &self.state {
+    /// Returns the reason that the client was disconnected for.
+    pub fn disconnected(&self) -> Option<DisconnectReason> {
+        if let ClientState::Disconnected(reason) = &self.state {
             return Some(*reason);
         }
         None
@@ -103,7 +118,7 @@ impl NetcodeClient {
     /// Disconnect the client from the server.
     /// Returns a disconnect packet that should be sent to the server.
     pub fn disconnect(&mut self) -> Result<PacketToSend, NetcodeError> {
-        self.state = ClientState::Disconnected;
+        self.state = ClientState::Disconnected(DisconnectReason::DisconnectedByClient);
         let packet = Packet::Disconnect;
         let len = packet.encode(
             &mut self.out,
@@ -127,7 +142,7 @@ impl NetcodeClient {
         .ok()?;
         match (packet, &self.state) {
             (Packet::ConnectionDenied, ClientState::SendingConnectionRequest | ClientState::SendingConnectionResponse) => {
-                self.state = ClientState::Error(ClientError::ConnectionDenied);
+                self.state = ClientState::Disconnected(DisconnectReason::ConnectionDenied);
                 self.last_packet_received_time = self.current_time;
             }
             (Packet::Challenge(challenge), ClientState::SendingConnectionRequest) => {
@@ -151,7 +166,7 @@ impl NetcodeClient {
                 return Some(p);
             }
             (Packet::Disconnect, ClientState::Connected) => {
-                self.state = ClientState::Disconnected;
+                self.state = ClientState::Disconnected(DisconnectReason::DisconnectedByServer);
                 self.last_packet_received_time = self.current_time;
             }
             _ => {}
@@ -203,16 +218,16 @@ impl NetcodeClient {
                 let expire_seconds = self.connect_token.expire_timestamp - self.connect_token.create_timestamp;
                 let connection_expired = (self.current_time - self.connect_start_time).as_secs() >= expire_seconds;
                 if connection_expired {
-                    self.state = ClientState::Error(ClientError::ConnectTokenExpired);
+                    self.state = ClientState::Disconnected(DisconnectReason::ConnectTokenExpired);
                     return Err(NetcodeError::Expired);
                 }
                 if connection_timed_out {
                     let reason = if self.state == ClientState::SendingConnectionResponse {
-                        ClientError::ConnectionResponseTimedOut
+                        DisconnectReason::ConnectionResponseTimedOut
                     } else {
-                        ClientError::ConnectionRequestTimedOut
+                        DisconnectReason::ConnectionRequestTimedOut
                     };
-                    self.state = ClientState::Error(reason);
+                    self.state = ClientState::Disconnected(reason);
                     // Try to connect to the next server address
                     self.server_addr_index += 1;
                     if self.server_addr_index >= 32 {
@@ -236,13 +251,13 @@ impl NetcodeClient {
             }
             ClientState::Connected => {
                 if connection_timed_out {
-                    self.state = ClientState::Error(ClientError::ConnectionTimedOut);
+                    self.state = ClientState::Disconnected(DisconnectReason::ConnectionTimedOut);
                     return Err(NetcodeError::TimedOut);
                 }
 
                 Ok(())
             }
-            ClientState::Disconnected | ClientState::Error(_) => Err(NetcodeError::Disconnected),
+            ClientState::Disconnected(_) => Err(NetcodeError::Disconnected),
         }
     }
 
