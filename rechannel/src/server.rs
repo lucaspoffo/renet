@@ -46,6 +46,11 @@ impl<C: ClientId> RechannelServer<C> {
         None
     }
 
+    /// Similar to disconnect but does not emit an event
+    pub fn remove_connection(&mut self, connection_id: &C) {
+        self.connections.remove(connection_id);
+    }
+
     pub fn disconnect(&mut self, connection_id: &C) {
         if self.connections.remove(connection_id).is_some() {
             self.disconnections
