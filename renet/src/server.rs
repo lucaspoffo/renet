@@ -205,6 +205,7 @@ fn handle_server_result(
         }
         ServerResult::ClientDisconnected(client_id, packet_to_send) => {
             events.push_back(ServerEvent::ClientDisconnected(client_id));
+            reliable_server.remove_connection(&client_id);
             if let Some(PacketToSend { packet, address }) = packet_to_send {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
                     socket.send_to(packet, address).unwrap();
