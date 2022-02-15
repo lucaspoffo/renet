@@ -1,4 +1,5 @@
 mod client;
+mod error;
 mod server;
 
 pub use rechannel::channel::ChannelConfig;
@@ -9,48 +10,9 @@ pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_D
 pub use client::RenetClient;
 pub use server::{RenetServer, ServerConfig, ServerEvent};
 
-use std::error::Error;
-use std::fmt;
 use std::time::Duration;
 
 const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
-
-#[derive(Debug)]
-pub enum RenetError {
-    NetcodeError(renetcode::NetcodeError),
-    RechannelError(rechannel::error::RechannelError),
-    IOError(std::io::Error),
-}
-
-impl Error for RenetError {}
-
-impl fmt::Display for RenetError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            RenetError::NetcodeError(ref err) => err.fmt(fmt),
-            RenetError::RechannelError(ref err) => err.fmt(fmt),
-            RenetError::IOError(ref err) => err.fmt(fmt),
-        }
-    }
-}
-
-impl From<renetcode::NetcodeError> for RenetError {
-    fn from(inner: renetcode::NetcodeError) -> Self {
-        RenetError::NetcodeError(inner)
-    }
-}
-
-impl From<rechannel::error::RechannelError> for RenetError {
-    fn from(inner: rechannel::error::RechannelError) -> Self {
-        RenetError::RechannelError(inner)
-    }
-}
-
-impl From<std::io::Error> for RenetError {
-    fn from(inner: std::io::Error) -> Self {
-        RenetError::IOError(inner)
-    }
-}
 
 pub struct RenetConnectionConfig {
     pub max_packet_size: u64,

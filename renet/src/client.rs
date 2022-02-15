@@ -1,7 +1,10 @@
-use crate::{RenetConnectionConfig, RenetError, NUM_DISCONNECT_PACKETS_TO_SEND};
+use crate::{
+    error::{DisconnectionReason, RenetError},
+    RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
+};
 
 use rechannel::{
-    error::{DisconnectionReason, RechannelError},
+    error::RechannelError,
     remote_connection::{NetworkInfo, RemoteConnection},
 };
 use renetcode::{ConnectToken, NetcodeClient, NetcodeError, PacketToSend, NETCODE_MAX_PACKET_BYTES};
@@ -44,11 +47,19 @@ impl RenetClient {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.reliable_connection.is_connected()
+        self.netcode_client.connected()
     }
 
     pub fn disconnected(&self) -> Option<DisconnectionReason> {
-        self.reliable_connection.disconnected()
+        if let Some(reason) = self.reliable_connection.disconnected() {
+            return Some(reason.into());
+        }
+
+        if let Some(reason) = self.netcode_client.disconnected() {
+            return Some(reason.into());
+        }
+
+        None
     }
 
     pub fn disconnect(&mut self) {
@@ -60,9 +71,7 @@ impl RenetClient {
                     }
                 }
             }
-            Err(e) => {
-                log::error!("failed to generate disconnect packet: {}", e);
-            }
+            Err(e) => log::error!("failed to generate disconnect packet: {}", e),
         }
     }
 
@@ -70,8 +79,9 @@ impl RenetClient {
         self.reliable_connection.receive_message(channel_id)
     }
 
-    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
-        self.reliable_connection.send_message(channel_id, message)
+    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
+        self.reliable_connection.send_message(channel_id, message)?;
+        Ok(())
     }
 
     pub fn network_info(&self) -> &NetworkInfo {
@@ -91,7 +101,7 @@ impl RenetClient {
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
         self.reliable_connection.advance_time(duration);
-        if self.netcode_client.error().is_some() {
+        if self.netcode_client.disconnected().is_some() {
             return Err(NetcodeError::Disconnected.into());
         }
 
