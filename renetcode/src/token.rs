@@ -169,7 +169,7 @@ impl PrivateConnectToken {
         if server_addresses.len() > 32 {
             return Err(TokenGenerationError::MaxHostCount);
         }
-        if server_addresses.len() == 0 {
+        if server_addresses.is_empty() {
             return Err(TokenGenerationError::NoServerAddressAvailable);
         }
 
@@ -315,7 +315,7 @@ fn read_server_addresses(src: &mut impl io::Read) -> Result<[Option<SocketAddr>;
         }
     }
 
-    if server_addresses.len() == 0 {
+    if server_addresses.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "ConnectToken does not have a server address",
