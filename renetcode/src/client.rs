@@ -71,7 +71,7 @@ impl fmt::Display for DisconnectReason {
 
 impl NetcodeClient {
     pub fn new(current_time: Duration, client_id: ClientID, connect_token: ConnectToken) -> Self {
-        // TODO(error): handle when there is no server addr available
+        let server_addr = connect_token.server_addresses[0].expect("cannot create or deserialize a ConnectToken without a server address");
 
         Self {
             sequence: 0,

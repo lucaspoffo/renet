@@ -48,6 +48,7 @@ pub enum TokenGenerationError {
     MaxHostCount,
     CryptoError,
     IoError(io::Error),
+    NoServerAddressAvailable,
 }
 
 impl From<io::Error> for TokenGenerationError {
@@ -69,9 +70,10 @@ impl fmt::Display for TokenGenerationError {
         use TokenGenerationError::*;
 
         match *self {
-            MaxHostCount => write!(fmt, "above the max host count 32"),
-            CryptoError => write!(fmt, "error while encoding or decoding"),
+            MaxHostCount => write!(fmt, "connect token can only have 32 server adresses"),
+            CryptoError => write!(fmt, "error while encoding or decoding the connect token"),
             IoError(ref io_err) => write!(fmt, "{}", io_err),
+            NoServerAddressAvailable => write!(fmt, "connect token must have at least one server address"),
         }
     }
 }
@@ -167,6 +169,10 @@ impl PrivateConnectToken {
         if server_addresses.len() > 32 {
             return Err(TokenGenerationError::MaxHostCount);
         }
+        if server_addresses.len() == 0 {
+            return Err(TokenGenerationError::NoServerAddressAvailable);
+        }
+
         let mut server_addresses_arr = [None; 32];
         for (i, addr) in server_addresses.into_iter().enumerate() {
             server_addresses_arr[i] = Some(addr);
@@ -307,6 +313,13 @@ fn read_server_addresses(src: &mut impl io::Read) -> Result<[Option<SocketAddr>;
             NETCODE_ADDRESS_NONE => {} // skip
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown ip address type")),
         }
+    }
+
+    if server_addresses.len() == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "ConnectToken does not have a server address",
+        ));
     }
 
     Ok(server_addresses)
