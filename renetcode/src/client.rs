@@ -1,11 +1,8 @@
 use std::{fmt, net::SocketAddr, time::Duration};
 
 use crate::{
-    packet::{ConnectionKeepAlive, ConnectionRequest, EncryptedChallengeToken, Packet},
-    replay_protection::ReplayProtection,
-    token::ConnectToken,
-    ClientID, NetcodeError, PacketToSend, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES,
-    NETCODE_SEND_RATE,
+    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientID, NetcodeError, PacketToSend,
+    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
 /// The reason why a client is in error state
@@ -145,20 +142,20 @@ impl NetcodeClient {
                 self.state = ClientState::Disconnected(DisconnectReason::ConnectionDenied);
                 self.last_packet_received_time = self.current_time;
             }
-            (Packet::Challenge(challenge), ClientState::SendingConnectionRequest) => {
-                self.challenge_token_sequence = challenge.token_sequence;
+            (Packet::Challenge { token_data, token_sequence }, ClientState::SendingConnectionRequest) => {
+                self.challenge_token_sequence = token_sequence;
                 self.last_packet_received_time = self.current_time;
                 self.last_packet_send_time = None;
-                self.challenge_token_data = challenge.token_data;
+                self.challenge_token_data = token_data;
                 self.state = ClientState::SendingConnectionResponse;
             }
-            (Packet::KeepAlive(_), ClientState::Connected) => {
+            (Packet::KeepAlive { .. }, ClientState::Connected) => {
                 self.last_packet_received_time = self.current_time;
             }
-            (Packet::KeepAlive(keep_alive), ClientState::SendingConnectionResponse) => {
+            (Packet::KeepAlive { client_index, max_clients }, ClientState::SendingConnectionResponse) => {
                 self.last_packet_received_time = self.current_time;
-                self.max_clients = keep_alive.max_clients;
-                self.client_index = keep_alive.client_index;
+                self.max_clients = max_clients;
+                self.client_index = client_index;
                 self.state = ClientState::Connected;
             }
             (Packet::Payload(p), ClientState::Connected) => {
@@ -274,17 +271,12 @@ impl NetcodeClient {
         ) {
             self.last_packet_send_time = Some(self.current_time);
         }
-
         let packet = match self.state {
-            ClientState::SendingConnectionRequest => Packet::ConnectionRequest(ConnectionRequest::from_token(&self.connect_token)),
-            ClientState::SendingConnectionResponse => Packet::Response(EncryptedChallengeToken {
-                token_sequence: self.challenge_token_sequence,
-                token_data: self.challenge_token_data,
-            }),
-            ClientState::Connected => Packet::KeepAlive(ConnectionKeepAlive {
-                client_index: 0,
-                max_clients: 0,
-            }),
+            ClientState::SendingConnectionRequest => Packet::connection_request_from_token(&self.connect_token),
+            ClientState::SendingConnectionResponse => {
+                Packet::Response { token_sequence: self.challenge_token_sequence, token_data: self.challenge_token_data }
+            }
+            ClientState::Connected => Packet::KeepAlive { client_index: 0, max_clients: 0 },
             _ => return None,
         };
 
@@ -305,7 +297,7 @@ impl NetcodeClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_random_bytes, packet::EncryptedChallengeToken, NETCODE_MAX_PACKET_BYTES};
+    use crate::{crypto::generate_random_bytes, NETCODE_MAX_PACKET_BYTES};
 
     use super::*;
 
@@ -337,24 +329,23 @@ mod tests {
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
         assert_eq!(0, r_sequence);
-        assert!(matches!(packet, Packet::ConnectionRequest(_)));
+        assert!(matches!(packet, Packet::ConnectionRequest { .. }));
 
         let challenge_sequence = 7;
         let user_data = generate_random_bytes();
         let challenge_key = generate_random_bytes();
-        let challenge_packet =
-            Packet::Challenge(EncryptedChallengeToken::generate(client_id, &user_data, challenge_sequence, &challenge_key).unwrap());
+        let challenge_packet = Packet::generate_challenge(client_id, &user_data, challenge_sequence, &challenge_key).unwrap();
         let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key))).unwrap();
         client.process_packet(&mut buffer[..len]);
         assert_eq!(ClientState::SendingConnectionResponse, client.state);
 
         let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
         let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None).unwrap();
-        assert!(matches!(packet, Packet::Response(_)));
+        assert!(matches!(packet, Packet::Response { .. }));
 
         let max_clients = 4;
         let client_index = 2;
-        let keep_alive_packet = Packet::KeepAlive(ConnectionKeepAlive { max_clients, client_index });
+        let keep_alive_packet = Packet::KeepAlive { max_clients, client_index };
         let len = keep_alive_packet.encode(&mut buffer, protocol_id, Some((1, &server_key))).unwrap();
         client.process_packet(&mut buffer[..len]);
 

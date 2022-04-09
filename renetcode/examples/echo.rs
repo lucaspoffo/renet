@@ -164,7 +164,7 @@ fn client(client_id: u64, connect_token: ConnectToken) {
 
     let mut last_updated = Instant::now();
     loop {
-        if let Some(err) = client.error() {
+        if let Some(err) = client.disconnected() {
             panic!("Client error: {:?}", err);
         }
 
