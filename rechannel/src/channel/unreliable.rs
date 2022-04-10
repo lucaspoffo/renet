@@ -82,9 +82,6 @@ impl UnreliableChannel {
             return None;
         }
 
-        Some(UnreliableChannelData {
-            channel_id: self.config.channel_id,
-            messages,
-        })
+        Some(UnreliableChannelData { channel_id: self.config.channel_id, messages })
     }
 }

@@ -59,12 +59,7 @@ impl App {
         let logger_app = LoggerApp::new(records);
         let chat_app = ChatApp::default();
 
-        Self {
-            last_updated: Instant::now(),
-            application: AppType::ChatApp,
-            chat_app,
-            logger_app,
-        }
+        Self { last_updated: Instant::now(), application: AppType::ChatApp, chat_app, logger_app }
     }
 }
 
@@ -73,7 +68,7 @@ impl epi::App for App {
         "Renet Chat"
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::Context, frame: &eframe::epi::Frame) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.selectable_label(self.application == AppType::ChatApp, "Chat App").clicked() {

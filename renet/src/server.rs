@@ -26,6 +26,7 @@ pub struct RenetServer {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // TODO: Consider boxing types
 pub enum ServerEvent {
     ClientConnected(u64, [u8; NETCODE_USER_DATA_BYTES]),
     ClientDisconnected(u64),
@@ -40,12 +41,7 @@ pub struct ServerConfig {
 
 impl ServerConfig {
     pub fn new(max_clients: usize, protocol_id: u64, server_addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
-        Self {
-            max_clients,
-            protocol_id,
-            server_addr,
-            private_key,
-        }
+        Self { max_clients, protocol_id, server_addr, private_key }
     }
 }
 
@@ -68,13 +64,7 @@ impl RenetServer {
 
         socket.set_nonblocking(true)?;
 
-        Ok(Self {
-            socket,
-            netcode_server,
-            reliable_server,
-            buffer,
-            events: VecDeque::new(),
-        })
+        Ok(Self { socket, netcode_server, reliable_server, buffer, events: VecDeque::new() })
     }
 
     pub fn addr(&self) -> SocketAddr {

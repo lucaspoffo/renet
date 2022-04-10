@@ -81,6 +81,7 @@ impl fmt::Display for TokenGenerationError {
 impl ConnectToken {
     /// Generate a token to be sent to an client. The user data is available to the server after an
     /// successfull conection. The private key and the protocol id must be the same used in server.
+    #[allow(clippy::too_many_arguments)]
     pub fn generate(
         current_time: Duration,
         protocol_id: u64,
@@ -220,14 +221,7 @@ impl PrivateConnectToken {
         let mut user_data = [0u8; 256];
         src.read_exact(&mut user_data)?;
 
-        Ok(Self {
-            client_id,
-            timeout_seconds,
-            server_addresses,
-            client_to_server_key,
-            server_to_client_key,
-            user_data,
-        })
+        Ok(Self { client_id, timeout_seconds, server_addresses, client_to_server_key, server_to_client_key, user_data })
     }
 
     pub(crate) fn encode(
@@ -397,7 +391,7 @@ mod tests {
             protocol_id,
             result.expire_timestamp,
             &result.xnonce,
-            &private_key,
+            private_key,
         )
         .unwrap();
         assert_eq!(timeout_seconds, private.timeout_seconds);

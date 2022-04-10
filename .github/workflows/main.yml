@@ -1,0 +1,71 @@
+name: Main
+on:
+  push:
+    branches-ignore:
+      - 'releases/**'
+      - 'dependabot/**'
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/dependabot.yml'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/dependabot.yml'
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Cache crates
+        uses: Swatinem/rust-cache@v1
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Cache crates
+        uses: Swatinem/rust-cache@v1
+
+      - name: Clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --no-deps --all-features -- -D warnings
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check

@@ -1,7 +1,7 @@
 use bincode::Options;
 use eframe::{
-    egui::{self, lerp, Color32, Pos2, Shape, Ui, Vec2},
-    epi,
+    egui::{self, lerp, Color32, Pos2, Ui, Vec2},
+    epaint::PathShape,
 };
 use log::error;
 use renet::{ConnectToken, RenetClient, RenetConnectionConfig, NETCODE_KEY_BYTES};
@@ -65,17 +65,8 @@ impl Default for ChatApp {
 }
 
 impl ChatApp {
-    fn draw_chat(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
-        let Self {
-            usernames,
-            messages,
-            text_input,
-            client,
-            chat_server,
-            pending_messages,
-            message_id,
-            ..
-        } = self;
+    fn draw_chat(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
+        let Self { usernames, messages, text_input, client, chat_server, pending_messages, message_id, .. } = self;
 
         let client = client.as_mut().expect("client always exists when drawing chat.");
 
@@ -92,7 +83,7 @@ impl ChatApp {
 
                 ui.separator();
 
-                egui::ScrollArea::auto_sized().show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
                     for username in usernames.values() {
                         ui.label(username);
                     }
@@ -125,7 +116,7 @@ impl ChatApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::auto_sized().show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
                 for (client, message, confirmed) in messages.iter() {
                     let label = if let Some(nick) = usernames.get(client) {
                         format!("{}: {}", nick, message)
@@ -135,24 +126,16 @@ impl ChatApp {
                         format!("unknown: {}", message)
                     };
 
-                    let color = if *confirmed { Color32::WHITE } else { Color32::GRAY };
+                    let color = if *confirmed { ui.visuals().text_color() } else { ui.visuals().widgets.inactive.text_color() };
                     ui.colored_label(color, label);
                 }
             });
         });
     }
 
-    fn draw_start(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+    fn draw_start(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
         let Self {
-            chat_server: server,
-            nick,
-            server_addr,
-            state,
-            client,
-            connection_error,
-            private_key,
-            client_port,
-            ..
+            chat_server: server, nick, server_addr, state, client, connection_error, private_key, client_port, ..
         } = self;
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -230,7 +213,7 @@ impl ChatApp {
         });
     }
 
-    fn draw_connecting(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+    fn draw_connecting(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Taken from egui progress bar widget
             let n_points = 20;
@@ -245,16 +228,16 @@ impl ChatApp {
                     center + circle_radius * Vec2::new(cos as f32, sin as f32) + Vec2::new(circle_radius, 0.0)
                 })
                 .collect();
-            ui.painter().add(Shape::Path {
+            ui.painter().add(PathShape {
                 points,
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: egui::Stroke::new(2.0, Color32::WHITE),
+                stroke: egui::Stroke::new(2.0, ui.visuals().text_color()),
             });
         });
     }
 
-    pub fn draw(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    pub fn draw(&mut self, ctx: &egui::Context, frame: &eframe::epi::Frame) {
         match self.state {
             AppState::Chat => self.draw_chat(ctx, frame),
             AppState::Start => self.draw_start(ctx, frame),
@@ -329,7 +312,7 @@ fn create_renet_client(client_port: u16, username: String, server_addr: SocketAd
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     // Use current time as client_id
     let client_id = current_time.as_millis() as u64;
-    let user_data = Username(username.clone()).to_netcode_user_data();
+    let user_data = Username(username).to_netcode_user_data();
     let connect_token = ConnectToken::generate(
         current_time,
         0,
@@ -362,7 +345,7 @@ fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
 
     ui.separator();
 
-    egui::ScrollArea::auto_sized().show(ui, |ui| {
+    egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
         for client_id in chat_server.server.clients_id().into_iter() {
             ui.label(format!("Client {}", client_id));
             ui.horizontal(|ui| {

@@ -63,7 +63,7 @@ fn main() {
                 15,
                 vec![server_addr],
                 Some(&username.to_netcode_user_data()),
-                &private_key,
+                private_key,
             )
             .unwrap();
             client(client_id, connect_token);

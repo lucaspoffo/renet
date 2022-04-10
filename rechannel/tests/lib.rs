@@ -6,7 +6,6 @@ use rechannel::{
 };
 
 use bincode::{self, Options};
-use env_logger;
 use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
@@ -165,10 +164,7 @@ fn test_usage() {
 
     for i in 0..8 {
         let connection = RemoteConnection::new(ConnectionConfig::default());
-        let status = ClientStatus {
-            connection,
-            received_messages: 0,
-        };
+        let status = ClientStatus { connection, received_messages: 0 };
         clients_status.insert(i, status);
         server.add_connection(&i);
     }
