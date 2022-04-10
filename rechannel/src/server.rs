@@ -15,11 +15,7 @@ pub struct RechannelServer<C: ClientId> {
 
 impl<C: ClientId> RechannelServer<C> {
     pub fn new(connection_config: ConnectionConfig) -> Self {
-        Self {
-            connections: HashMap::new(),
-            connection_config,
-            disconnections: Vec::new(),
-        }
+        Self { connections: HashMap::new(), connection_config, disconnections: Vec::new() }
     }
 
     pub fn add_connection(&mut self, connection_id: &C) {

@@ -34,12 +34,7 @@ impl RenetClient {
         let reliable_connection = RemoteConnection::new(config.to_connection_config());
         let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
 
-        Ok(Self {
-            buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
-            socket,
-            reliable_connection,
-            netcode_client,
-        })
+        Ok(Self { buffer: [0u8; NETCODE_MAX_PACKET_BYTES], socket, reliable_connection, netcode_client })
     }
 
     pub fn client_id(&self) -> u64 {

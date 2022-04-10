@@ -148,12 +148,7 @@ impl ChunkSender {
 
             let data = self.chunk_data[start..end].to_vec();
 
-            let message = SliceMessage {
-                chunk_id: self.chunk_id,
-                slice_id: slice_id as u32,
-                num_slices: self.num_slices as u32,
-                data,
-            };
+            let message = SliceMessage { chunk_id: self.chunk_id, slice_id: slice_id as u32, num_slices: self.num_slices as u32, data };
 
             let message_size = bincode::options().serialized_size(&message)?;
             let message_size = message_size as u64;
@@ -342,10 +337,7 @@ impl BlockChannel {
         let packet_sent = PacketSent::new(slice_ids);
         self.sender.packets_sent.insert(sequence, packet_sent);
 
-        Ok(Some(BlockChannelData {
-            channel_id: self.channel_id,
-            messages,
-        }))
+        Ok(Some(BlockChannelData { channel_id: self.channel_id, messages }))
     }
 
     pub fn process_messages(&mut self, messages: Vec<SliceMessage>) {

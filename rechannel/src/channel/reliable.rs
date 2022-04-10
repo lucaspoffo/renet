@@ -61,10 +61,7 @@ impl ReliableMessageSent {
     pub fn new(reliable_message: ReliableMessage, resend_time: Duration) -> Self {
         let mut resend_timer = Timer::new(resend_time);
         resend_timer.finish();
-        Self {
-            reliable_message,
-            resend_timer,
-        }
+        Self { reliable_message, resend_timer }
     }
 }
 
@@ -162,10 +159,7 @@ impl ReliableChannel {
 
         let packet_sent = PacketSent::new(messages_id);
         self.packets_sent.insert(sequence, packet_sent);
-        Ok(Some(ReliableChannelData {
-            channel_id: self.config.channel_id,
-            messages,
-        }))
+        Ok(Some(ReliableChannelData { channel_id: self.config.channel_id, messages }))
     }
 
     pub fn process_messages(&mut self, messages: Vec<ReliableMessage>) {
@@ -343,10 +337,7 @@ mod tests {
 
     #[test]
     fn out_of_sync() {
-        let config = ReliableChannelConfig {
-            message_send_queue_size: 1,
-            ..Default::default()
-        };
+        let config = ReliableChannelConfig { message_send_queue_size: 1, ..Default::default() };
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
         channel.send_message(TestMessages::Second(0).serialize()).unwrap();

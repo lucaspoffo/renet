@@ -59,12 +59,7 @@ impl App {
         let logger_app = LoggerApp::new(records);
         let chat_app = ChatApp::default();
 
-        Self {
-            last_updated: Instant::now(),
-            application: AppType::ChatApp,
-            chat_app,
-            logger_app,
-        }
+        Self { last_updated: Instant::now(), application: AppType::ChatApp, chat_app, logger_app }
     }
 }
 

@@ -8,10 +8,7 @@ pub struct Timer {
 
 impl Timer {
     pub fn new(duration: Duration) -> Self {
-        Timer {
-            elapsed: Duration::ZERO,
-            duration,
-        }
+        Timer { elapsed: Duration::ZERO, duration }
     }
 
     pub fn reset(&mut self) {
