@@ -1,7 +1,4 @@
-use eframe::{
-    egui::{self, Color32},
-    epi,
-};
+use eframe::egui::{self, Color32};
 use log::{Level, Log};
 
 use std::collections::VecDeque;
@@ -18,11 +15,7 @@ pub struct HistoryLogger {
 
 impl HistoryLogger {
     pub fn new(capacity: usize, level: Level) -> Self {
-        Self {
-            records: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))),
-            level,
-            capacity,
-        }
+        Self { records: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))), level, capacity }
     }
 
     pub fn init(self) {
@@ -66,17 +59,29 @@ impl LoggerApp {
         Self { records }
     }
 
-    pub fn draw(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+    pub fn draw(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::auto_sized().show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
                 let records = self.records.lock().unwrap();
                 for (level, message) in records.iter() {
                     let color = match level {
                         Level::Error => Color32::RED,
-                        Level::Warn => Color32::YELLOW,
-                        Level::Info => Color32::WHITE,
-                        Level::Trace => Color32::WHITE,
-                        Level::Debug => Color32::GREEN,
+                        Level::Warn => {
+                            if ui.visuals().dark_mode {
+                                Color32::from_rgb(255, 211, 124)
+                            } else {
+                                Color32::from_rgb(255, 145, 0)
+                            }
+                        }
+                        Level::Info => ui.visuals().text_color(),
+                        Level::Trace => ui.visuals().text_color(),
+                        Level::Debug => {
+                            if ui.visuals().dark_mode {
+                                Color32::from_rgb(109, 147, 226)
+                            } else {
+                                Color32::from_rgb(37, 203, 105)
+                            }
+                        }
                     };
 
                     ui.colored_label(color, message);
