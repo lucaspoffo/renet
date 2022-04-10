@@ -23,6 +23,11 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v3
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends libxcb-shape0-dev libxcb-xfixes0-dev
+
       - name: Cache crates
         uses: Swatinem/rust-cache@v1
 
@@ -37,6 +42,11 @@ jobs:
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends libxcb-shape0-dev libxcb-xfixes0-dev
 
       - name: Cache crates
         uses: Swatinem/rust-cache@v1
