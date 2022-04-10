@@ -246,7 +246,7 @@ mod tests {
 
     impl Default for TestMessages {
         fn default() -> Self {
-            return TestMessages::Noop;
+            TestMessages::Noop
         }
     }
 

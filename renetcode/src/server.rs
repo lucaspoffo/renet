@@ -62,6 +62,7 @@ pub struct NetcodeServer {
 
 /// Result from processing an packet in the server
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // TODO: Consider boxing types
 pub enum ServerResult<'a, 's> {
     /// Nothing needs to be done.
     None,

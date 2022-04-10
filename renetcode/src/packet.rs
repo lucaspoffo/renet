@@ -21,6 +21,7 @@ pub enum PacketType {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // TODO: Consider boxing types
 pub enum Packet<'a> {
     ConnectionRequest {
         version_info: [u8; 13], // "NETCODE 1.02" ASCII with null terminator.
@@ -371,7 +372,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         connection_challenge.write(&mut buffer).unwrap();
-        let deserialized = Packet::read(PacketType::Challenge, &mut buffer.as_slice()).unwrap();
+        let deserialized = Packet::read(PacketType::Challenge, buffer.as_slice()).unwrap();
 
         assert_eq!(deserialized, connection_challenge);
     }
@@ -382,7 +383,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         connection_keep_alive.write(&mut buffer).unwrap();
-        let deserialized = Packet::read(PacketType::KeepAlive, &mut buffer.as_slice()).unwrap();
+        let deserialized = Packet::read(PacketType::KeepAlive, buffer.as_slice()).unwrap();
 
         assert_eq!(deserialized, connection_keep_alive);
     }
@@ -413,7 +414,7 @@ mod tests {
         let protocol_id = 12;
         let sequence = 1;
         let len = packet.encode(&mut buffer, protocol_id, Some((sequence, key))).unwrap();
-        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), None).unwrap();
+        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(key), None).unwrap();
         assert_eq!(sequence, d_sequence);
         assert_eq!(packet, d_packet);
     }
@@ -426,7 +427,7 @@ mod tests {
         let protocol_id = 12;
         let sequence = 2;
         let len = packet.encode(&mut buffer, protocol_id, Some((sequence, key))).unwrap();
-        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), None).unwrap();
+        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(key), None).unwrap();
         assert_eq!(sequence, d_sequence);
         assert_eq!(packet, d_packet);
     }
@@ -440,7 +441,7 @@ mod tests {
         let protocol_id = 12;
         let sequence = 2;
         let len = packet.encode(&mut buffer, protocol_id, Some((sequence, key))).unwrap();
-        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(&key), None).unwrap();
+        let (d_sequence, d_packet) = Packet::decode(&mut buffer[..len], protocol_id, Some(key), None).unwrap();
         assert_eq!(sequence, d_sequence);
         match d_packet {
             Packet::Payload(ref p) => assert_eq!(&payload, p),

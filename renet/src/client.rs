@@ -121,7 +121,7 @@ impl RenetClient {
                     &mut self.buffer[..len]
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetError::IOError(e)),
+                Err(e) => return Err(RenetError::IO(e)),
             };
 
             if let Some(payload) = self.netcode_client.process_packet(packet) {

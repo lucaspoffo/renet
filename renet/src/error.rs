@@ -6,9 +6,9 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum RenetError {
-    NetcodeError(renetcode::NetcodeError),
-    RechannelError(rechannel::error::RechannelError),
-    IOError(std::io::Error),
+    Netcode(renetcode::NetcodeError),
+    Rechannel(rechannel::error::RechannelError),
+    IO(std::io::Error),
 }
 
 impl Error for RenetError {}
@@ -16,28 +16,28 @@ impl Error for RenetError {}
 impl fmt::Display for RenetError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            RenetError::NetcodeError(ref err) => err.fmt(fmt),
-            RenetError::RechannelError(ref err) => err.fmt(fmt),
-            RenetError::IOError(ref err) => err.fmt(fmt),
+            RenetError::Netcode(ref err) => err.fmt(fmt),
+            RenetError::Rechannel(ref err) => err.fmt(fmt),
+            RenetError::IO(ref err) => err.fmt(fmt),
         }
     }
 }
 
 impl From<renetcode::NetcodeError> for RenetError {
     fn from(inner: renetcode::NetcodeError) -> Self {
-        RenetError::NetcodeError(inner)
+        RenetError::Netcode(inner)
     }
 }
 
 impl From<rechannel::error::RechannelError> for RenetError {
     fn from(inner: rechannel::error::RechannelError) -> Self {
-        RenetError::RechannelError(inner)
+        RenetError::Rechannel(inner)
     }
 }
 
 impl From<std::io::Error> for RenetError {
     fn from(inner: std::io::Error) -> Self {
-        RenetError::IOError(inner)
+        RenetError::IO(inner)
     }
 }
 

@@ -76,8 +76,8 @@ mod tests {
         let data_len = data.len();
         data.extend_from_slice(&[0u8; NETCODE_MAC_BYTES]);
 
-        encrypt_in_place(&mut data, sequence, &key, aad).unwrap();
-        dencrypted_in_place(&mut data, sequence, &key, aad).unwrap();
+        encrypt_in_place(&mut data, sequence, key, aad).unwrap();
+        dencrypted_in_place(&mut data, sequence, key, aad).unwrap();
         assert_eq!(&data[..data_len], b"some packet data");
     }
 }

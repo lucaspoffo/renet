@@ -329,7 +329,7 @@ fn create_renet_client(client_port: u16, username: String, server_addr: SocketAd
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     // Use current time as client_id
     let client_id = current_time.as_millis() as u64;
-    let user_data = Username(username.clone()).to_netcode_user_data();
+    let user_data = Username(username).to_netcode_user_data();
     let connect_token = ConnectToken::generate(
         current_time,
         0,

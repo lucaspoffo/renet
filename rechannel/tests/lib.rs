@@ -6,7 +6,6 @@ use rechannel::{
 };
 
 use bincode::{self, Options};
-use env_logger;
 use serde::{Deserialize, Serialize};
 
 use std::time::Duration;

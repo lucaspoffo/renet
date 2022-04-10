@@ -26,6 +26,7 @@ pub struct RenetServer {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // TODO: Consider boxing types
 pub enum ServerEvent {
     ClientConnected(u64, [u8; NETCODE_USER_DATA_BYTES]),
     ClientDisconnected(u64),
