@@ -15,7 +15,11 @@ pub struct HistoryLogger {
 
 impl HistoryLogger {
     pub fn new(capacity: usize, level: Level) -> Self {
-        Self { records: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))), level, capacity }
+        Self {
+            records: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))),
+            level,
+            capacity,
+        }
     }
 
     pub fn init(self) {

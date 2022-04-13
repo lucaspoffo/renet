@@ -203,7 +203,11 @@ impl NetcodeServer {
 
         let mut mac = [0u8; NETCODE_MAC_BYTES];
         mac.copy_from_slice(&data[NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES..]);
-        let connect_token_entry = ConnectTokenEntry { address: addr, time: self.current_time, mac };
+        let connect_token_entry = ConnectTokenEntry {
+            address: addr,
+            time: self.current_time,
+            mac,
+        };
 
         if !self.find_or_add_connect_token_entry(connect_token_entry) {
             // TODO(log): debug
@@ -339,10 +343,19 @@ impl NetcodeServer {
             )?;
             pending.last_packet_received_time = self.current_time;
             match packet {
-                Packet::ConnectionRequest { protocol_id, expire_timestamp, data, xnonce, version_info } => {
+                Packet::ConnectionRequest {
+                    protocol_id,
+                    expire_timestamp,
+                    data,
+                    xnonce,
+                    version_info,
+                } => {
                     return self.handle_connection_request(addr, version_info, protocol_id, expire_timestamp, xnonce, data);
                 }
-                Packet::Response { token_data, token_sequence } => {
+                Packet::Response {
+                    token_data,
+                    token_sequence,
+                } => {
                     let challenge_token = ChallengeToken::decode(token_data, token_sequence, &self.challenge_key)?;
                     let mut pending = self.pending_clients.remove(&addr).unwrap();
                     if find_client_slot_by_id(&self.clients, challenge_token.client_id).is_some() {
@@ -368,7 +381,10 @@ impl NetcodeServer {
                             let user_data: [u8; NETCODE_USER_DATA_BYTES] = pending.user_data;
                             self.clients[client_index] = Some(pending);
 
-                            let packet = Packet::KeepAlive { max_clients: self.max_clients as u32, client_index: client_index as u32 };
+                            let packet = Packet::KeepAlive {
+                                max_clients: self.max_clients as u32,
+                                client_index: client_index as u32,
+                            };
                             let len = packet.encode(&mut self.out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
                             self.global_sequence += 1;
                             let packet_to_send = PacketToSend::new(addr, &mut self.out[..len]);
@@ -383,9 +399,13 @@ impl NetcodeServer {
         // Handle new client
         let (_, packet) = Packet::decode(buffer, self.protocol_id, None, None)?;
         match packet {
-            Packet::ConnectionRequest { data, protocol_id, expire_timestamp, xnonce, version_info } => {
-                self.handle_connection_request(addr, version_info, protocol_id, expire_timestamp, xnonce, data)
-            }
+            Packet::ConnectionRequest {
+                data,
+                protocol_id,
+                expire_timestamp,
+                xnonce,
+                version_info,
+            } => self.handle_connection_request(addr, version_info, protocol_id, expire_timestamp, xnonce, data),
             _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
         }
     }
@@ -471,7 +491,10 @@ impl NetcodeServer {
             }
 
             if client.last_packet_send_time + NETCODE_SEND_RATE <= self.current_time {
-                let packet = Packet::KeepAlive { client_index: slot as u32, max_clients: self.max_clients as u32 };
+                let packet = Packet::KeepAlive {
+                    client_index: slot as u32,
+                    max_clients: self.max_clients as u32,
+                };
 
                 // TODO(log): error
                 let len = match packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key))) {
@@ -641,7 +664,11 @@ mod tests {
         let mut server = NetcodeServer::new(Duration::ZERO, 16, 0, server_addr, *private_key);
 
         let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
-        let mut connect_token = ConnectTokenEntry { time: Duration::ZERO, address: client_addr, mac: generate_random_bytes() };
+        let mut connect_token = ConnectTokenEntry {
+            time: Duration::ZERO,
+            address: client_addr,
+            mac: generate_random_bytes(),
+        };
         // Allow first entry
         assert!(server.find_or_add_connect_token_entry(connect_token));
         // Allow same token with the same address

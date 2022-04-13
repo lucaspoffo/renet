@@ -142,7 +142,13 @@ impl NetcodeClient {
                 self.state = ClientState::Disconnected(DisconnectReason::ConnectionDenied);
                 self.last_packet_received_time = self.current_time;
             }
-            (Packet::Challenge { token_data, token_sequence }, ClientState::SendingConnectionRequest) => {
+            (
+                Packet::Challenge {
+                    token_data,
+                    token_sequence,
+                },
+                ClientState::SendingConnectionRequest,
+            ) => {
                 self.challenge_token_sequence = token_sequence;
                 self.last_packet_received_time = self.current_time;
                 self.last_packet_send_time = None;
@@ -273,10 +279,14 @@ impl NetcodeClient {
         }
         let packet = match self.state {
             ClientState::SendingConnectionRequest => Packet::connection_request_from_token(&self.connect_token),
-            ClientState::SendingConnectionResponse => {
-                Packet::Response { token_sequence: self.challenge_token_sequence, token_data: self.challenge_token_data }
-            }
-            ClientState::Connected => Packet::KeepAlive { client_index: 0, max_clients: 0 },
+            ClientState::SendingConnectionResponse => Packet::Response {
+                token_sequence: self.challenge_token_sequence,
+                token_data: self.challenge_token_data,
+            },
+            ClientState::Connected => Packet::KeepAlive {
+                client_index: 0,
+                max_clients: 0,
+            },
             _ => return None,
         };
 

@@ -77,7 +77,11 @@ impl From<bincode::Error> for FragmentError {
 
 impl Default for FragmentConfig {
     fn default() -> Self {
-        Self { fragment_above: 1024, fragment_size: 1024, reassembly_buffer_size: 256 }
+        Self {
+            fragment_above: 1024,
+            fragment_size: 1024,
+            reassembly_buffer_size: 256,
+        }
     }
 }
 
@@ -103,7 +107,13 @@ impl SequenceBuffer<ReassemblyFragment> {
         max_packet_size: u64,
         config: &FragmentConfig,
     ) -> Result<Option<ChannelMessages>, FragmentError> {
-        let Fragment { sequence, num_fragments, payload, fragment_id, .. } = fragment;
+        let Fragment {
+            sequence,
+            num_fragments,
+            payload,
+            fragment_id,
+            ..
+        } = fragment;
 
         let reassembly_fragment = self
             .get_or_insert_with(sequence, || ReassemblyFragment::new(sequence, num_fragments, config.fragment_size))
@@ -117,7 +127,11 @@ impl SequenceBuffer<ReassemblyFragment> {
         );
 
         if reassembly_fragment.num_fragments_total as u64 > max_fragments {
-            return Err(FragmentError::ExceededMaxFragmentCount { sequence, expected: max_fragments as u8, got: num_fragments });
+            return Err(FragmentError::ExceededMaxFragmentCount {
+                sequence,
+                expected: max_fragments as u8,
+                got: num_fragments,
+            });
         }
 
         if reassembly_fragment.num_fragments_total != num_fragments {
@@ -129,7 +143,11 @@ impl SequenceBuffer<ReassemblyFragment> {
         }
 
         if fragment_id >= reassembly_fragment.num_fragments_total {
-            return Err(FragmentError::InvalidFragmentId { sequence, id: fragment_id, total: reassembly_fragment.num_fragments_total });
+            return Err(FragmentError::InvalidFragmentId {
+                sequence,
+                id: fragment_id,
+                total: reassembly_fragment.num_fragments_total,
+            });
         }
 
         if reassembly_fragment.fragments_received[fragment_id as usize] {

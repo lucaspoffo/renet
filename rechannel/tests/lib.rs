@@ -164,7 +164,10 @@ fn test_usage() {
 
     for i in 0..8 {
         let connection = RemoteConnection::new(ConnectionConfig::default());
-        let status = ClientStatus { connection, received_messages: 0 };
+        let status = ClientStatus {
+            connection,
+            received_messages: 0,
+        };
         clients_status.insert(i, status);
         server.add_connection(&i);
     }

@@ -24,7 +24,10 @@ impl ChatServer {
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
 
-        Self { server, usernames: HashMap::new() }
+        Self {
+            server,
+            usernames: HashMap::new(),
+        }
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
@@ -39,7 +42,9 @@ impl ChatServer {
                         .serialize(&ServerMessages::ClientConnected(id, username.0))
                         .unwrap();
                     self.server.broadcast_message(0, message);
-                    let init_message = ServerMessages::InitClient { usernames: self.usernames.clone() };
+                    let init_message = ServerMessages::InitClient {
+                        usernames: self.usernames.clone(),
+                    };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
                     self.server.send_message(id, 0, init_message).unwrap();
                 }

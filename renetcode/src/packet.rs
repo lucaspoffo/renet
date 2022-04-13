@@ -115,19 +115,35 @@ impl<'a> Packet<'a> {
         token.write(&mut Cursor::new(&mut buffer[..]))?;
         encrypt_in_place(&mut buffer, challenge_sequence, challenge_key, b"")?;
 
-        Ok(Packet::Challenge { token_sequence: challenge_sequence, token_data: buffer })
+        Ok(Packet::Challenge {
+            token_sequence: challenge_sequence,
+            token_data: buffer,
+        })
     }
 
     fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
         match self {
-            Packet::ConnectionRequest { version_info, protocol_id, expire_timestamp, xnonce, data } => {
+            Packet::ConnectionRequest {
+                version_info,
+                protocol_id,
+                expire_timestamp,
+                xnonce,
+                data,
+            } => {
                 writer.write_all(version_info)?;
                 writer.write_all(&protocol_id.to_le_bytes())?;
                 writer.write_all(&expire_timestamp.to_le_bytes())?;
                 writer.write_all(xnonce)?;
                 writer.write_all(data)?;
             }
-            Packet::Challenge { token_data, token_sequence } | Packet::Response { token_data, token_sequence } => {
+            Packet::Challenge {
+                token_data,
+                token_sequence,
+            }
+            | Packet::Response {
+                token_data,
+                token_sequence,
+            } => {
                 writer.write_all(&token_sequence.to_le_bytes())?;
                 writer.write_all(token_data)?;
             }
@@ -159,19 +175,31 @@ impl<'a> Packet<'a> {
                 let xnonce = read_bytes(src)?;
                 let token_data = read_bytes(src)?;
 
-                Ok(Packet::ConnectionRequest { version_info, protocol_id, expire_timestamp, xnonce, data: token_data })
+                Ok(Packet::ConnectionRequest {
+                    version_info,
+                    protocol_id,
+                    expire_timestamp,
+                    xnonce,
+                    data: token_data,
+                })
             }
             PacketType::Challenge => {
                 let token_sequence = read_u64(src)?;
                 let token_data = read_bytes(src)?;
 
-                Ok(Packet::Challenge { token_data, token_sequence })
+                Ok(Packet::Challenge {
+                    token_data,
+                    token_sequence,
+                })
             }
             PacketType::Response => {
                 let token_sequence = read_u64(src)?;
                 let token_data = read_bytes(src)?;
 
-                Ok(Packet::Response { token_data, token_sequence })
+                Ok(Packet::Response {
+                    token_data,
+                    token_sequence,
+                })
             }
             PacketType::KeepAlive => {
                 let client_index = read_u32(src)?;
@@ -272,7 +300,10 @@ impl<'a> Packet<'a> {
 
 impl ChallengeToken {
     pub fn new(client_id: u64, user_data: &[u8; NETCODE_USER_DATA_BYTES]) -> Self {
-        Self { client_id, user_data: *user_data }
+        Self {
+            client_id,
+            user_data: *user_data,
+        }
     }
 
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
@@ -368,7 +399,10 @@ mod tests {
 
     #[test]
     fn connection_challenge_serialization() {
-        let connection_challenge = Packet::Challenge { token_sequence: 0, token_data: [1u8; 300] };
+        let connection_challenge = Packet::Challenge {
+            token_sequence: 0,
+            token_data: [1u8; 300],
+        };
 
         let mut buffer = Vec::new();
         connection_challenge.write(&mut buffer).unwrap();
@@ -379,7 +413,10 @@ mod tests {
 
     #[test]
     fn connection_keep_alive_serialization() {
-        let connection_keep_alive = Packet::KeepAlive { max_clients: 2, client_index: 1 };
+        let connection_keep_alive = Packet::KeepAlive {
+            max_clients: 2,
+            client_index: 1,
+        };
 
         let mut buffer = Vec::new();
         connection_keep_alive.write(&mut buffer).unwrap();
@@ -460,7 +497,10 @@ mod tests {
         let packet = Packet::generate_challenge(client_id, &user_data, challenge_sequence, &challenge_key).unwrap();
 
         match packet {
-            Packet::Challenge { token_data, token_sequence } => {
+            Packet::Challenge {
+                token_data,
+                token_sequence,
+            } => {
                 let decoded = ChallengeToken::decode(token_data, token_sequence, &challenge_key).unwrap();
                 assert_eq!(decoded, token);
             }

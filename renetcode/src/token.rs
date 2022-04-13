@@ -221,7 +221,14 @@ impl PrivateConnectToken {
         let mut user_data = [0u8; 256];
         src.read_exact(&mut user_data)?;
 
-        Ok(Self { client_id, timeout_seconds, server_addresses, client_to_server_key, server_to_client_key, user_data })
+        Ok(Self {
+            client_id,
+            timeout_seconds,
+            server_addresses,
+            client_to_server_key,
+            server_to_client_key,
+            user_data,
+        })
     }
 
     pub(crate) fn encode(

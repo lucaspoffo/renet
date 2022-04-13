@@ -15,7 +15,10 @@ impl Default for ReplayProtection {
 
 impl ReplayProtection {
     pub fn new() -> Self {
-        Self { most_recent_sequence: 0, received_packet: [EMPTY; NETCODE_REPLAY_BUFFER_SIZE] }
+        Self {
+            most_recent_sequence: 0,
+            received_packet: [EMPTY; NETCODE_REPLAY_BUFFER_SIZE],
+        }
     }
 
     pub fn already_received(&self, sequence: u64) -> bool {

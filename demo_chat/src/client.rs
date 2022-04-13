@@ -66,7 +66,16 @@ impl Default for ChatApp {
 
 impl ChatApp {
     fn draw_chat(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
-        let Self { usernames, messages, text_input, client, chat_server, pending_messages, message_id, .. } = self;
+        let Self {
+            usernames,
+            messages,
+            text_input,
+            client,
+            chat_server,
+            pending_messages,
+            message_id,
+            ..
+        } = self;
 
         let client = client.as_mut().expect("client always exists when drawing chat.");
 
@@ -135,7 +144,15 @@ impl ChatApp {
 
     fn draw_start(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
         let Self {
-            chat_server: server, nick, server_addr, state, client, connection_error, private_key, client_port, ..
+            chat_server: server,
+            nick,
+            server_addr,
+            state,
+            client,
+            connection_error,
+            private_key,
+            client_port,
+            ..
         } = self;
 
         egui::CentralPanel::default().show(ctx, |ui| {

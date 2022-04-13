@@ -67,7 +67,11 @@ pub struct RemoteConnection {
 
 impl SentPacket {
     fn new(time: Instant, size_bytes: usize) -> Self {
-        Self { time, size_bytes, ack: false }
+        Self {
+            time,
+            size_bytes,
+            ack: false,
+        }
     }
 }
 
@@ -145,7 +149,9 @@ impl RemoteConnection {
             return;
         }
 
-        self.state = ConnectionState::Disconnected { reason: DisconnectionReason::DisconnectedByClient };
+        self.state = ConnectionState::Disconnected {
+            reason: DisconnectionReason::DisconnectedByClient,
+        };
     }
 
     pub fn send_message(&mut self, channel_id: u8, message: Payload) -> Result<(), RechannelError> {
@@ -209,7 +215,11 @@ impl RemoteConnection {
         let packet: Packet = bincode::options().deserialize(packet)?;
 
         let channels_messages = match packet {
-            Packet::Normal(Normal { sequence, ack_data, channel_messages }) => {
+            Packet::Normal(Normal {
+                sequence,
+                ack_data,
+                channel_messages,
+            }) => {
                 let received_packet = ReceivedPacket::new(Instant::now(), received_bytes);
                 self.received_buffer.insert(sequence, received_packet);
                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
@@ -315,7 +325,11 @@ impl RemoteConnection {
             }
         }
 
-        let channel_messages = ChannelMessages { reliable_channels_data, unreliable_channels_data, block_channels_data };
+        let channel_messages = ChannelMessages {
+            reliable_channels_data,
+            unreliable_channels_data,
+            block_channels_data,
+        };
 
         if !channel_messages.is_empty() {
             self.sequence = self.sequence.wrapping_add(1);
@@ -328,7 +342,11 @@ impl RemoteConnection {
             let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above as u64 {
                 build_fragments(channel_messages, sequence, ack_data, &self.config.fragment_config)?
             } else {
-                let packet = Packet::Normal(Normal { sequence, ack_data, channel_messages });
+                let packet = Packet::Normal(Normal {
+                    sequence,
+                    ack_data,
+                    channel_messages,
+                });
                 let packet = bincode::options().serialize(&packet)?;
                 vec![packet]
             };
