@@ -60,7 +60,7 @@ fn new_renet_server() -> RenetServer {
 }
 
 fn main() {
-    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
+    println!("Usage: run with \"server\" or \"client\" argument");
     let args: Vec<String> = std::env::args().collect();
 
     let exec_type = &args[1];
