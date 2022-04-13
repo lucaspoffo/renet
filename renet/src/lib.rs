@@ -8,6 +8,7 @@ pub use renetcode::ConnectToken;
 pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES};
 
 pub use client::RenetClient;
+pub use error::RenetError;
 pub use server::{RenetServer, ServerConfig, ServerEvent};
 
 use std::time::Duration;

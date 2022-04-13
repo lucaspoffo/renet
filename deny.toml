@@ -3,6 +3,7 @@ unmaintained = "deny"
 yanked = "deny"
 notice = "deny"
 ignore = [
+    "RUSTSEC-2020-0056", # from gilrs v0.8.1 - unmaintained - https://github.com/koute/stdweb/issues/403
     # From xcb dependency in demo, should be resolved with https://github.com/emilk/egui/issues/1474
     "RUSTSEC-2021-0019",
     "RUSTSEC-2020-0097",
