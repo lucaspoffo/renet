@@ -19,11 +19,11 @@ impl Plugin for RenetServerPlugin {
         app.add_event::<ServerEvent>()
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                renet_server_update.system().with_run_criteria(has_resource::<RenetServer>),
+                renet_server_update.with_run_criteria(has_resource::<RenetServer>),
             )
             .add_system_to_stage(
                 CoreStage::PostUpdate,
-                renet_server_send_packets.system().with_run_criteria(has_resource::<RenetServer>),
+                renet_server_send_packets.with_run_criteria(has_resource::<RenetServer>),
             );
     }
 }
@@ -32,11 +32,11 @@ impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_system_to_stage(
             CoreStage::PreUpdate,
-            renet_client_update.system().with_run_criteria(has_resource::<RenetClient>),
+            renet_client_update.with_run_criteria(has_resource::<RenetClient>),
         )
         .add_system_to_stage(
             CoreStage::PostUpdate,
-            renet_client_send_packets.system().with_run_criteria(has_resource::<RenetClient>),
+            renet_client_send_packets.with_run_criteria(has_resource::<RenetClient>),
         );
     }
 }
