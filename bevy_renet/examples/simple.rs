@@ -4,7 +4,6 @@ use bevy_renet::{
     run_if_client_conected, RenetClientPlugin, RenetServerPlugin,
 };
 
-use bincode;
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
 
@@ -198,8 +197,10 @@ fn client_sync_players(
         let players: HashMap<u64, [f32; 3]> = bincode::deserialize(&message).unwrap();
         for (player_id, translation) in players.iter() {
             if let Some(player_entity) = lobby.players.get(player_id) {
-                let mut transform = Transform::default();
-                transform.translation = (*translation).into();
+                let transform = Transform {
+                    translation: (*translation).into(),
+                    ..Default::default()
+                };
                 commands.entity(*player_entity).insert(transform);
             }
         }
