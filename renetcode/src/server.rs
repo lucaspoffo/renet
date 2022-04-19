@@ -285,14 +285,17 @@ impl NetcodeServer {
     /// [ServerResult].
     pub fn process_packet<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> ServerResult<'a, 's> {
         match self.process_packet_internal(addr, buffer) {
-            Err(_) => ServerResult::None,
+            Err(_) => {
+                // TODO(log): error
+                ServerResult::None
+            }
             Ok(r) => r,
         }
     }
 
     fn process_packet_internal<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> Result<ServerResult<'a, 's>, NetcodeError> {
-        if buffer.len() <= 2 + NETCODE_MAC_BYTES {
-            return Ok(ServerResult::None);
+        if buffer.len() < 2 + NETCODE_MAC_BYTES {
+            return Err(NetcodeError::PacketTooSmall);
         }
 
         // Handle connected client
@@ -406,7 +409,7 @@ impl NetcodeServer {
                 xnonce,
                 version_info,
             } => self.handle_connection_request(addr, version_info, protocol_id, expire_timestamp, xnonce, data),
-            _ => Ok(ServerResult::None), // Decoding packet without key can only return ConnectionRequest
+            _ => unreachable!("Decoding packet without key can only return ConnectionRequest packets"),
         }
     }
 
