@@ -87,11 +87,16 @@ impl RenetServer {
     }
 
     pub fn disconnect(&mut self, client_id: u64) {
-        self.reliable_server.disconnect(&client_id);
+        let server_result = self.netcode_server.disconnect(client_id);
+        if let Err(e) = handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events) {
+            error!("Failed to send disconnect packet to client {}: {}", client_id, e);
+        }
     }
 
     pub fn disconnect_clients(&mut self) {
-        self.reliable_server.disconnect_all();
+        for client_id in self.netcode_server.clients_id() {
+            self.disconnect(client_id);
+        }
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {

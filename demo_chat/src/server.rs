@@ -7,26 +7,30 @@ use std::{
 
 use renet::{RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_KEY_BYTES};
 
-use crate::{ClientMessages, ServerMessages, Username};
+use crate::{ClientMessages, Message, ServerMessages, Username};
 use bincode::Options;
 use log::info;
 
 pub struct ChatServer {
     pub server: RenetServer,
-    usernames: HashMap<u64, String>,
+    pub usernames: HashMap<u64, String>,
+    pub messages: Vec<Message>,
 }
 
 impl ChatServer {
-    pub fn new(addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES]) -> Self {
+    pub fn new(addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES], host_username: String) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
         let connection_config = RenetConnectionConfig::default();
         let server_config = ServerConfig::new(64, 0, addr, *private_key);
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
+        let mut usernames = HashMap::new();
+        usernames.insert(1, host_username);
 
         Self {
             server,
-            usernames: HashMap::new(),
+            usernames,
+            messages: vec![],
         }
     }
 
@@ -35,22 +39,24 @@ impl ChatServer {
 
         while let Some(event) = self.server.get_event() {
             match event {
-                ServerEvent::ClientConnected(id, user_data) => {
-                    let username = Username::from_user_data(&user_data);
-                    self.usernames.insert(id, username.0.clone());
+                ServerEvent::ClientConnected(client_id, user_data) => {
+                    let username = Username::from_user_data(&user_data).0;
+                    self.usernames.insert(client_id, username.clone());
                     let message = bincode::options()
-                        .serialize(&ServerMessages::ClientConnected(id, username.0))
+                        .serialize(&ServerMessages::ClientConnected { client_id, username })
                         .unwrap();
                     self.server.broadcast_message(0, message);
                     let init_message = ServerMessages::InitClient {
                         usernames: self.usernames.clone(),
                     };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
-                    self.server.send_message(id, 0, init_message).unwrap();
+                    self.server.send_message(client_id, 0, init_message).unwrap();
                 }
-                ServerEvent::ClientDisconnected(id) => {
-                    self.usernames.remove(&id);
-                    let message = bincode::options().serialize(&ServerMessages::ClientDisconnected(id)).unwrap();
+                ServerEvent::ClientDisconnected(client_id) => {
+                    self.usernames.remove(&client_id);
+                    let message = bincode::options()
+                        .serialize(&ServerMessages::ClientDisconnected { client_id })
+                        .unwrap();
                     self.server.broadcast_message(0, message);
                 }
             }
@@ -61,19 +67,7 @@ impl ChatServer {
                 if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
-                        ClientMessages::Text(message_id, text) => {
-                            if self.usernames.contains_key(&client_id) {
-                                let client_message = bincode::options()
-                                    .serialize(&ServerMessages::ClientMessage(client_id, text))
-                                    .unwrap();
-                                self.server.broadcast_message_except(client_id, 0, client_message);
-                                let received_message = bincode::options().serialize(&ServerMessages::MessageReceived(message_id)).unwrap();
-                                if let Err(e) = self.server.send_message(client_id, 0, received_message) {
-                                    log::error!("Error sending confirmation message: {}", e);
-                                    self.server.disconnect(client_id);
-                                }
-                            }
-                        }
+                        ClientMessages::Text(text) => self.receive_message(client_id, text),
                     }
                 }
             }
@@ -81,5 +75,12 @@ impl ChatServer {
 
         self.server.send_packets().unwrap();
         Ok(())
+    }
+
+    pub fn receive_message(&mut self, client_id: u64, text: String) {
+        let message = Message::new(client_id, text);
+        self.messages.push(message.clone());
+        let message = bincode::options().serialize(&ServerMessages::ClientMessage(message)).unwrap();
+        self.server.broadcast_message(0, message);
     }
 }
