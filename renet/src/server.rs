@@ -214,7 +214,7 @@ fn handle_server_result(
             reliable_server.remove_connection(&client_id);
             if let Some(PacketToSend { packet, address }) = packet_to_send {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    socket.send_to(packet, address).unwrap();
+                    socket.send_to(packet, address)?;
                 }
             }
         }
