@@ -3,6 +3,7 @@ use bevy_renet::{
     renet::{ConnectToken, RenetClient, RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_KEY_BYTES},
     run_if_client_conected, RenetClientPlugin, RenetServerPlugin,
 };
+use renet::RenetError;
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -91,6 +92,7 @@ fn main() {
     }
 
     app.add_startup_system(setup);
+    app.add_system(panic_on_error_system);
 
     app.run();
 }
@@ -253,5 +255,12 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
         let y = (input.down as i8 - input.up as i8) as f32;
         transform.translation.x += x * PLAYER_MOVE_SPEED * time.delta().as_secs_f32();
         transform.translation.z += y * PLAYER_MOVE_SPEED * time.delta().as_secs_f32();
+    }
+}
+
+// If any error is found we just panic
+fn panic_on_error_system(mut renet_error: EventReader<RenetError>) {
+    for e in renet_error.iter() {
+        panic!("{}", e);
     }
 }
