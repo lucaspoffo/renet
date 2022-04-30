@@ -1,14 +1,18 @@
 [package]
 name = "bevy_renet"
 version = "0.0.1"
-edition = "2021"
+keywords = ["gamedev", "networking"]
+description = "Bevy plugin for the renet crate: Server/Client network library for multiplayer games"
+repository = "https://github.com/lucaspoffo/renet"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bevy = { version = "0.7.0", default-features = false }
-renet = { path = "../renet" }
+renet = { path = "../renet", version = "0.0.6" }
 
 [dev-dependencies]
 serde = { version = "1.0.117", features = [ "derive" ] } 
