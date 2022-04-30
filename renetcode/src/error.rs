@@ -1,6 +1,6 @@
 use std::{error, fmt, io};
 
-use crate::{token::TokenGenerationError, NETCODE_MAX_PAYLOAD_BYTES};
+use crate::{token::TokenGenerationError, DisconnectReason, NETCODE_MAX_PAYLOAD_BYTES};
 use aead::Error as CryptoError;
 
 /// All possible netcode errors that can occur.
@@ -24,10 +24,8 @@ pub enum NetcodeError {
     NoMoreServers,
     /// The connect token has expired.
     Expired,
-    /// The connection has timed out.
-    TimedOut,
     /// The client is disconnected.
-    Disconnected,
+    Disconnected(DisconnectReason),
     /// An error ocurred while encrypting or decrypting.
     CryptoError,
     /// The server address is not in the connect token.
@@ -54,9 +52,8 @@ impl fmt::Display for NetcodeError {
             PacketTooSmall => write!(fmt, "packet is too small"),
             PayloadAboveLimit => write!(fmt, "payload is above the {} bytes limit", NETCODE_MAX_PAYLOAD_BYTES),
             Expired => write!(fmt, "connection expired"),
-            TimedOut => write!(fmt, "connection timed out"),
             DuplicatedSequence => write!(fmt, "sequence already received"),
-            Disconnected => write!(fmt, "disconnected"),
+            Disconnected(reason) => write!(fmt, "disconnected: {}", reason),
             NoMoreServers => write!(fmt, "client has no more servers to connect"),
             CryptoError => write!(fmt, "error while encoding or decoding"),
             NotInHostList => write!(fmt, "token does not contain the server address"),

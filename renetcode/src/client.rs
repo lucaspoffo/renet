@@ -255,12 +255,12 @@ impl NetcodeClient {
             ClientState::Connected => {
                 if connection_timed_out {
                     self.state = ClientState::Disconnected(DisconnectReason::ConnectionTimedOut);
-                    return Err(NetcodeError::TimedOut);
+                    return Err(NetcodeError::Disconnected(DisconnectReason::ConnectionTimedOut));
                 }
 
                 Ok(())
             }
-            ClientState::Disconnected(_) => Err(NetcodeError::Disconnected),
+            ClientState::Disconnected(reason) => Err(NetcodeError::Disconnected(reason)),
         }
     }
 

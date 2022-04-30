@@ -101,8 +101,8 @@ impl RenetClient {
 
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
         self.reliable_connection.advance_time(duration);
-        if self.netcode_client.disconnected().is_some() {
-            return Err(NetcodeError::Disconnected.into());
+        if let Some(reason) = self.netcode_client.disconnected() {
+            return Err(NetcodeError::Disconnected(reason).into());
         }
 
         if let Some(reason) = self.reliable_connection.disconnected() {
