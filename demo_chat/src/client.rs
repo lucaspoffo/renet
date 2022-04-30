@@ -196,6 +196,7 @@ impl ChatApp {
                 {
                     draw_host_commands(server, ui);
                 }
+
                 ui.vertical_centered(|ui| {
                     ui.heading("Clients");
                 });
@@ -209,11 +210,7 @@ impl ChatApp {
                 });
 
                 let exit = ui.with_layout(Layout::bottom_up(eframe::emath::Align::Center).with_cross_justify(true), |ui| {
-                    if ui.button("Exit").clicked() {
-                        return true;
-                    }
-
-                    false
+                    ui.button("Exit").clicked()
                 });
 
                 exit.inner
