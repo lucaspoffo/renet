@@ -1,9 +1,11 @@
-# Renet
-Renet is a network Server/Client library in rust to generate packets from aggregated messages from multiple channels types. These messages can be:
+# Rechannel
+[![Latest version](https://img.shields.io/crates/v/rechannel.svg)](https://crates.io/crates/rechannel)
+[![Documentation](https://docs.rs/rechannel/badge.svg)](https://docs.rs/rechannel)
+![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-- Reliable Ordered: garantee ordering and delivery of all packets, with configurable resend time;
-- Unreliable Unordered: messages that don't require any garantee of delivery or ordering;
-- Block Reliable: for bigger messages, but only one can be sent at a time per channel.
+Rechannel is a network Server/Client library in rust to send/receive messages with different channels configurations. These channels can be:
 
-This crate does not dependend on any transport layer, it's supposed to be used to create an reliable and fast Server/Client network. 
-To see an implementation using UDP checkout [renet_udp](https://github.com/lucaspoffo/renet).
+- Reliable Ordered: garantee ordering and delivery of all messages
+- Unreliable Unordered: messages that don't require any garantee of delivery or ordering
+- Block Reliable: for bigger messages, such as level initialization
