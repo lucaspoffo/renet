@@ -5,10 +5,7 @@
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
 
-Renetcode is a simple connection based client/server protocol agnostic to the transport layer,
-was developed be used in games with UDP in mind. Implements the Netcode 1.02 standard, available
-[here][standard] and the original implementation in C++ is available in the [netcode][netcode]
-repository.
+Renetcode is a simple connection based client/server protocol, was developed be used in games with UDP in mind, but can be used with other transports methods. Implements the Netcode 1.02 standard, available [here][standard] and the original implementation in C is available in the [netcode][netcode] repository.
 
 Has the following feature:
 - Encrypted and signed packets
