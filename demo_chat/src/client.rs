@@ -12,7 +12,7 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use crate::{server::ChatServer, Message, Username};
+use crate::{channels_config, server::ChatServer, Channels, Message, Username};
 use crate::{ClientMessages, ServerMessages};
 
 enum AppState {
@@ -253,7 +253,7 @@ impl ChatApp {
                     }
                     AppState::ClientChat { client, .. } => {
                         let message = bincode::options().serialize(&ClientMessages::Text(text_input.clone())).unwrap();
-                        if let Err(e) = client.send_message(0, message) {
+                        if let Err(e) = client.send_message(Channels::Reliable.id(), message) {
                             error!("Error sending text message: {}", e);
                             *state = AppState::MainScreen;
                             *connection_error = Some(e.to_string());
@@ -305,7 +305,7 @@ impl ChatApp {
                     self.state = AppState::MainScreen;
                     self.connection_error = Some(e.to_string());
                 } else {
-                    while let Some(message) = client.receive_message(0) {
+                    while let Some(message) = client.receive_message(Channels::Reliable.id()) {
                         let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                         match message {
                             ServerMessages::ClientConnected { client_id, username } => {
@@ -347,7 +347,10 @@ impl ChatApp {
 fn create_renet_client(username: String, server_addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES]) -> RenetClient {
     let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let socket = UdpSocket::bind(client_addr).unwrap();
-    let connection_config = RenetConnectionConfig::default();
+    let connection_config = RenetConnectionConfig {
+        channels_config: channels_config(),
+        ..Default::default()
+    };
 
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     // Use current time as client_id

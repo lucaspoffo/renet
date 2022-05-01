@@ -7,7 +7,7 @@ use std::{
 
 use renet::{RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_KEY_BYTES};
 
-use crate::{ClientMessages, Message, ServerMessages, Username};
+use crate::{channels_config, Channels, ClientMessages, Message, ServerMessages, Username};
 use bincode::Options;
 use log::info;
 
@@ -20,7 +20,10 @@ pub struct ChatServer {
 impl ChatServer {
     pub fn new(addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES], host_username: String) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
-        let connection_config = RenetConnectionConfig::default();
+        let connection_config = RenetConnectionConfig {
+            channels_config: channels_config(),
+            ..Default::default()
+        };
         let server_config = ServerConfig::new(64, 0, addr, *private_key);
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
@@ -45,25 +48,25 @@ impl ChatServer {
                     let message = bincode::options()
                         .serialize(&ServerMessages::ClientConnected { client_id, username })
                         .unwrap();
-                    self.server.broadcast_message(0, message);
+                    self.server.broadcast_message(Channels::Reliable.id(), message);
                     let init_message = ServerMessages::InitClient {
                         usernames: self.usernames.clone(),
                     };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
-                    self.server.send_message(client_id, 0, init_message).unwrap();
+                    self.server.send_message(client_id, Channels::Reliable.id(), init_message).unwrap();
                 }
                 ServerEvent::ClientDisconnected(client_id) => {
                     self.usernames.remove(&client_id);
                     let message = bincode::options()
                         .serialize(&ServerMessages::ClientDisconnected { client_id })
                         .unwrap();
-                    self.server.broadcast_message(0, message);
+                    self.server.broadcast_message(Channels::Reliable.id(), message);
                 }
             }
         }
 
         for client_id in self.server.clients_id().into_iter() {
-            while let Some(message) = self.server.receive_message(client_id, 0) {
+            while let Some(message) = self.server.receive_message(client_id, Channels::Reliable.id()) {
                 if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
@@ -81,6 +84,6 @@ impl ChatServer {
         let message = Message::new(client_id, text);
         self.messages.push(message.clone());
         let message = bincode::options().serialize(&ServerMessages::ClientMessage(message)).unwrap();
-        self.server.broadcast_message(0, message);
+        self.server.broadcast_message(Channels::Reliable.id(), message);
     }
 }
