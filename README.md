@@ -1,4 +1,9 @@
 # Renet
+[![Latest version](https://img.shields.io/crates/v/renet.svg)](https://crates.io/crates/renet)
+[![Documentation](https://docs.rs/renet/badge.svg)](https://docs.rs/renet)
+![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
+
 Renet is a network Server/Client library in rust to generate packets from aggregated messages from multiple channels types. These messages can be:
 
 - Reliable Ordered: garantee ordering and delivery of all packets, with configurable resend time;
