@@ -15,6 +15,8 @@ use std::io;
 use std::net::UdpSocket;
 use std::time::Duration;
 
+/// A client that establishes an authenticated connection with a server.
+/// Can send/receive encrypted messages from/to the server.
 pub struct RenetClient {
     netcode_client: NetcodeClient,
     socket: UdpSocket,
@@ -50,6 +52,7 @@ impl RenetClient {
         self.netcode_client.connected()
     }
 
+    /// If the client is disconnected, returns the reason.
     pub fn disconnected(&self) -> Option<DisconnectionReason> {
         if let Some(reason) = self.reliable_connection.disconnected() {
             return Some(reason.into());
@@ -62,6 +65,7 @@ impl RenetClient {
         None
     }
 
+    /// Disconnect the client from the server.
     pub fn disconnect(&mut self) {
         match self.netcode_client.disconnect() {
             Ok(PacketToSend { packet, address }) => {
@@ -75,10 +79,12 @@ impl RenetClient {
         }
     }
 
+    /// Receive a message from a channel.
     pub fn receive_message(&mut self, channel_id: u8) -> Option<Vec<u8>> {
         self.reliable_connection.receive_message(channel_id)
     }
 
+    /// Send a message to a channel.
     pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
         self.reliable_connection.send_message(channel_id, message)?;
         Ok(())
@@ -88,6 +94,7 @@ impl RenetClient {
         self.reliable_connection.network_info()
     }
 
+    /// Send packets to the server.
     pub fn send_packets(&mut self) -> Result<(), RenetError> {
         if self.netcode_client.connected() {
             let packets = self.reliable_connection.get_packets_to_send()?;
@@ -99,6 +106,7 @@ impl RenetClient {
         Ok(())
     }
 
+    /// Advances the client by duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
         self.reliable_connection.advance_time(duration);
         if let Some(reason) = self.netcode_client.disconnected() {

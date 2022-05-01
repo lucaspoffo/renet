@@ -15,13 +15,22 @@ use std::time::Duration;
 
 const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
 
+/// Configuration for a renet connection and its channels.
 pub struct RenetConnectionConfig {
+    /// The maximum size (bytes) that generated packets can have.
     pub max_packet_size: u64,
+    /// Number of sent packets to keep track while calculating metrics.
     pub sent_packets_buffer_size: usize,
+    /// Number of received packets to keep track while calculating metrics.
     pub received_packets_buffer_size: usize,
+    /// Size of the buffer that queues up fragments ready to be reassembled once all fragments have arrived.
     pub reassembly_buffer_size: usize,
+    /// Smoothing factor for metrics: rtt, sent kbps, received kbps.
+    /// Values between 0.0 and 1.0.
     pub measure_smoothing_factor: f64,
+    /// Value which specifies at which interval a heartbeat should be sent, if no other packet was sent in the meantime.
     pub heartbeat_time: Duration,
+    /// Per-channel configuration.
     pub channels_config: Vec<ChannelConfig>,
 }
 

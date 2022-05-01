@@ -26,7 +26,7 @@ struct PacketSent {
 }
 
 /// Configuration for a block channel, used for sending big and reliable messages,
-/// that are not so frequent. level initialization as an example.
+/// that are not so frequent. Level initialization as an example.
 #[derive(Debug, Clone)]
 pub struct BlockChannelConfig {
     /// Channel identifier, unique between all channels

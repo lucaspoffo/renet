@@ -1,7 +1,4 @@
-# Rust Easy Networking
-Collection of crates to create Server/Client networked games.
-
-## Renet
+# Renet
 Renet is a network Server/Client library in rust to generate packets from aggregated messages from multiple channels types. These messages can be:
 
 - Reliable Ordered: garantee ordering and delivery of all packets, with configurable resend time;
@@ -11,8 +8,6 @@ Renet is a network Server/Client library in rust to generate packets from aggreg
 This crate does not dependend on any transport layer, it's supposed to be used to create an reliable and fast Server/Client network.
 It does not have authentication.
 
-## Renet Udp
-Implementation of an Server/Client using UDP and Renet (does not have authentication yet).
 #### Echo example
 ##### Server
 

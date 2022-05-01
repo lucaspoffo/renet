@@ -4,7 +4,7 @@ version = "0.0.6"
 description = "Server/Client network library for multiplayer games using Renet and UDP"
 keywords = ["gamedev", "networking"]
 repository = "https://github.com/lucaspoffo/renet"
-readme = "README.md"
+readme = "../README.md"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 

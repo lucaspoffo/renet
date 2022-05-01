@@ -4,6 +4,7 @@ use renetcode::DisconnectReason as NetcodeDisconnectReason;
 use std::error::Error;
 use std::fmt;
 
+/// Enum with possibles errors that can occur.
 #[derive(Debug)]
 pub enum RenetError {
     Netcode(renetcode::NetcodeError),

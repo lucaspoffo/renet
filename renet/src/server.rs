@@ -16,6 +16,8 @@ use std::{
 
 use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
 
+/// A server that can establish authenticated connections with multiple clients.
+/// Can send/receive encrypted messages from/to them.
 #[derive(Debug)]
 pub struct RenetServer {
     socket: UdpSocket,
@@ -25,6 +27,7 @@ pub struct RenetServer {
     events: VecDeque<ServerEvent>,
 }
 
+/// Events that can occur in the server.
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)] // TODO: Consider boxing types
 pub enum ServerEvent {
@@ -32,10 +35,15 @@ pub enum ServerEvent {
     ClientDisconnected(u64),
 }
 
+/// Configuration options for the renet server.
 pub struct ServerConfig {
+    /// Maximum numbers of clients that can be connected at a time
     pub max_clients: usize,
+    /// Unique id to this game/application
     pub protocol_id: u64,
+    /// The server address
     pub server_addr: SocketAddr,
+    /// Private key used for encryption in the server
     pub private_key: [u8; NETCODE_KEY_BYTES],
 }
 
@@ -86,6 +94,7 @@ impl RenetServer {
         self.events.pop_front()
     }
 
+    /// Disconnects a client.
     pub fn disconnect(&mut self, client_id: u64) {
         let server_result = self.netcode_server.disconnect(client_id);
         if let Err(e) = handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events) {
@@ -93,12 +102,14 @@ impl RenetServer {
         }
     }
 
+    /// Disconnects all connected clients.
     pub fn disconnect_clients(&mut self) {
         for client_id in self.netcode_server.clients_id() {
             self.disconnect(client_id);
         }
     }
 
+    /// Advances the server by duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
         loop {
             match self.socket.recv_from(&mut self.buffer) {
@@ -141,22 +152,27 @@ impl RenetServer {
         Ok(())
     }
 
+    /// Receive a message from a client over a channel.
     pub fn receive_message(&mut self, client_id: u64, channel_id: u8) -> Option<Vec<u8>> {
         self.reliable_server.receive_message(&client_id, channel_id)
     }
 
+    /// Send a message from a clients over a channel.
     pub fn send_message(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
         self.reliable_server.send_message(&client_id, channel_id, message)
     }
 
+    /// Send a message to all client, except the specified one, over a channel.
     pub fn broadcast_message_except(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) {
         self.reliable_server.broadcast_message_except(&client_id, channel_id, message)
     }
 
+    /// Send a message to all client over a channel.
     pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
         self.reliable_server.broadcast_message(channel_id, message);
     }
 
+    /// Send packets to connected clients.
     pub fn send_packets(&mut self) -> Result<(), io::Error> {
         for client_id in self.reliable_server.connections_id().into_iter() {
             let packets = match self.reliable_server.get_packets_to_send(&client_id) {
@@ -180,6 +196,7 @@ impl RenetServer {
         Ok(())
     }
 
+    /// Returns all the connected clients id.
     pub fn clients_id(&self) -> Vec<u64> {
         self.netcode_server.clients_id()
     }
