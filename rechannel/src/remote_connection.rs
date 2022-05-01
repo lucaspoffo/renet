@@ -57,7 +57,7 @@ pub struct RemoteConnection {
     sequence: u16,
     channels: HashMap<u8, Channel>,
     heartbeat_timer: Timer,
-    pub config: ConnectionConfig,
+    config: ConnectionConfig,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
     received_buffer: SequenceBuffer<ReceivedPacket>,
@@ -366,7 +366,7 @@ impl RemoteConnection {
         Ok(vec![])
     }
 
-    pub fn set_disconnected<T>(&mut self, reason: DisconnectionReason) -> Result<T, RechannelError> {
+    fn set_disconnected(&mut self, reason: DisconnectionReason) -> Result<(), RechannelError> {
         self.state = ConnectionState::Disconnected { reason };
         Err(RechannelError::ClientDisconnected(reason))
     }

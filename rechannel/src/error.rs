@@ -6,10 +6,15 @@ use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisconnectionReason {
+    /// Connection terminated by server
     DisconnectedByServer,
+    /// Connection terminated by client
     DisconnectedByClient,
+    /// Channel with given Id was not found
     InvalidChannelId(u8),
+    /// Channel with given Id has received an message with different channel type
     MismatchingChannelType(u8),
+    /// The reliable channel with given Id is out of sync
     ReliableChannelOutOfSync(u8),
 }
 
@@ -30,10 +35,13 @@ impl fmt::Display for DisconnectionReason {
 // Error message not sent
 #[derive(Debug)]
 pub enum RechannelError {
+    /// Message size is above the limit defined in the channel configuration
     MessageSizeAboveLimit,
+    /// The channel has reached the maximum messages capacity defined in the channel configuration
     ChannelMaxMessagesLimit,
     ClientDisconnected(DisconnectionReason),
     ClientNotFound,
+    /// An error occurred when processing a fragmented packet
     FragmentError(FragmentError),
     BincodeError(bincode::Error),
 }
@@ -46,7 +54,7 @@ impl fmt::Display for RechannelError {
 
         match *self {
             MessageSizeAboveLimit => write!(fmt, "the message is above the limit size"),
-            ChannelMaxMessagesLimit => write!(fmt, "the channel has reached the maximum messages"),
+            ChannelMaxMessagesLimit => write!(fmt, "the channel has reached the maximum messages capacity"),
             ClientNotFound => write!(fmt, "client with given id was not found"),
             ClientDisconnected(reason) => write!(fmt, "client is disconnected: {}", reason),
             BincodeError(ref bincode_err) => write!(fmt, "{}", bincode_err),

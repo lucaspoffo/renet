@@ -22,6 +22,7 @@ impl<C: ClientId> RechannelServer<C> {
         }
     }
 
+    /// Adds a new connection to the server. If a connection already exits it does nothing.
     pub fn add_connection(&mut self, connection_id: &C) {
         if self.connections.contains_key(connection_id) {
             return;
@@ -31,6 +32,7 @@ impl<C: ClientId> RechannelServer<C> {
         self.connections.insert(*connection_id, connection);
     }
 
+    /// Returns whether or not the server has connections
     pub fn has_connections(&self) -> bool {
         !self.connections.is_empty()
     }

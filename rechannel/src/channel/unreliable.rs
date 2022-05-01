@@ -4,12 +4,20 @@ use crate::{
 };
 use std::collections::VecDeque;
 
+/// Configuration for a unreliable and unordered channel.
+/// Messages sent in this channel will behave like a udp packet,
+/// can be lost and arrive in an different order that they were sent.
 #[derive(Debug, Clone)]
 pub struct UnreliableChannelConfig {
+    /// Channel identifier, unique between all channels
     pub channel_id: u8,
+    /// Maximum nuber of bytes that this channel is allowed to write per packet
     pub packet_budget: u64,
+    /// Maximum size that a message can have in this channel
     pub max_message_size: u64,
+    /// Allowed numbers of messages in the send queue for this channel
     pub message_send_queue_size: usize,
+    /// Allowed numbers of messages in the receive queue for this channel
     pub message_receive_queue_size: usize,
 }
 

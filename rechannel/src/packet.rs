@@ -106,6 +106,7 @@ impl std::fmt::Debug for AckData {
     }
 }
 
+/// Given a disconnect reason, serialize a disconnect packet to be sent.
 pub fn disconnect_packet(reason: DisconnectionReason) -> Result<Payload, bincode::Error> {
     let packet = Packet::Disconnect(reason);
     let packet = bincode::options().serialize(&packet)?;

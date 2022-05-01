@@ -6,10 +6,14 @@ use bincode::Options;
 use std::error::Error;
 use std::fmt;
 
+/// Configuration for how the packet fragmentation will occur.
 #[derive(Debug, Clone)]
 pub struct FragmentConfig {
+    /// Packets are fragmented when size (bytes) is above.
     pub fragment_above: u64,
+    /// Packet is split up into fragments of this size (bytes).
     pub fragment_size: usize,
+    /// Number of packet entries in the fragmentation reassembly sequence buffer.
     pub reassembly_buffer_size: usize,
 }
 
@@ -24,11 +28,17 @@ pub struct ReassemblyFragment {
 
 #[derive(Debug)]
 pub enum FragmentError {
+    /// Fragment has invalid total fragment number
     InvalidTotalFragment { sequence: u16, expected: u8, got: u8 },
+    /// Fragment contained an invalid id.
     InvalidFragmentId { sequence: u16, id: u8, total: u8 },
+    /// Tried to process duplicated fragment
     AlreadyProcessed { sequence: u16, id: u8 },
+    /// Fragment contained fragment count above the limit set by the configuration
     ExceededMaxFragmentCount { sequence: u16, expected: u8, got: u8 },
+    /// Fragment too old to be processed
     OldSequence { sequence: u16 },
+    /// (De)serialization error
     BincodeError(bincode::Error),
 }
 

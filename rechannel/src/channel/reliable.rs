@@ -26,14 +26,25 @@ struct PacketSent {
     messages_id: Vec<u16>,
 }
 
+/// Configuration for a reliable and ordered channel.
+/// Messages will be received in the order they were sent.
+/// If a message is lost it'll be resent.
 #[derive(Debug, Clone)]
 pub struct ReliableChannelConfig {
+    /// Channel identifier, unique between all channels
     pub channel_id: u8,
+    /// Number of packet entries in the sent packet sequence buffer.
+    /// Consider a few seconds of worth of entries in this buffer, based on your packet send rate
     pub sent_packet_buffer_size: usize,
+    /// Allowed numbers of messages in the send queue for this channel
     pub message_send_queue_size: usize,
+    /// Allowed numbers of messages in the receive queue for this channel
     pub message_receive_queue_size: usize,
+    /// Maximum size that a message can have in this channel
     pub max_message_size: u64,
+    /// Maximum nuber of bytes that this channel is allowed to write per packet
     pub packet_budget: u64,
+    /// Delay to wait before resending messages
     pub message_resend_time: Duration,
 }
 
@@ -193,6 +204,11 @@ impl ReliableChannel {
     }
 
     pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RechannelError> {
+        if self.out_of_sync {
+            let reason = DisconnectionReason::ReliableChannelOutOfSync(self.config.channel_id);
+            return Err(RechannelError::ClientDisconnected(reason));
+        }
+
         let message_id = self.send_message_id;
         if !self.messages_send.available(message_id) {
             self.out_of_sync = true;

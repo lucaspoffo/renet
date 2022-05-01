@@ -14,6 +14,7 @@ use unreliable::UnreliableChannel;
 
 use crate::error::RechannelError;
 
+/// Configuration for the different types of channels.
 #[derive(Debug, Clone)]
 pub enum ChannelConfig {
     Reliable(ReliableChannelConfig),
