@@ -4,16 +4,23 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Renet is a network Server/Client library in rust to generate packets from aggregated messages from multiple channels types. These messages can be:
+Renet is a network library for Server/Client games written in rust. Built on top of UDP,
+it is focused on fast-paced games such as FPS, and competitive games that need authentication.
+Provides the following features:
 
-- Reliable Ordered: garantee ordering and delivery of all packets, with configurable resend time;
-- Unreliable Unordered: messages that don't require any garantee of delivery or ordering;
-- Block Reliable: for bigger messages, but only one can be sent at a time per channel.
+- Client/Server connection management
+- Authentication and encryption, checkout [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
+- Multiple types of channels:
+    - Reliable Ordered: garantee ordering and delivery of all messages
+    - Unreliable Unordered: messages that don't require any garantee of delivery or ordering
+    - Block Reliable: for bigger messages, such as level initialization
+- Packet fragmention and reassembly
 
-This crate does not dependend on any transport layer, it's supposed to be used to create an reliable and fast Server/Client network.
-It does not have authentication.
+## Plugins
 
-#### Echo example
+Checkout [bevy_renet](https://github.com/lucaspoffo/renet/tree/master/bevy_renet) if you want to use renet as a plugin with the [Bevy engine](https://bevyengine.org/).
+
+## Echo Example
 ##### Server
 
 ```rust
@@ -29,7 +36,7 @@ loop {
   while let Some(event) = server.get_event() {
     match event {
       ServerEvent::ClientConnected(id) => println!("Client {} connected.", id),
-      ServerEvent::ClientDisconnected(id, reason) => println!("Client {} disconnected: {}", id, reason)
+      ServerEvent::ClientDisconnected(id) => println!("Client {} disconnected: {}", id)
     }
   }
 
