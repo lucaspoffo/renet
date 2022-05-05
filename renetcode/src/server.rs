@@ -48,7 +48,7 @@ struct ConnectTokenEntry {
 pub struct NetcodeServer {
     clients: Box<[Option<Connection>]>,
     pending_clients: HashMap<SocketAddr, Connection>,
-    connect_token_entries: [Option<ConnectTokenEntry>; NETCODE_MAX_CLIENTS * 4],
+    connect_token_entries: Box<[Option<ConnectTokenEntry>; NETCODE_MAX_CLIENTS * 2]>,
     protocol_id: u64,
     connect_key: [u8; NETCODE_KEY_BYTES],
     max_clients: usize,
@@ -95,7 +95,7 @@ impl NetcodeServer {
 
         Self {
             clients,
-            connect_token_entries: [None; NETCODE_MAX_CLIENTS * 4],
+            connect_token_entries: Box::new([None; NETCODE_MAX_CLIENTS * 2]),
             pending_clients: HashMap::new(),
             protocol_id,
             connect_key: private_key,
@@ -568,15 +568,19 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn server_connection() {
-        let protocol_id = 7;
+    const TEST_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
+    const TEST_PROTOCOL_ID: u64 = 7;
+
+    fn new_server() -> NetcodeServer {
         let max_clients = 16;
         let server_addr = "127.0.0.1:5000".parse().unwrap();
-        let private_key = b"an example very very secret key."; // 32-bytes
-        let mut server = NetcodeServer::new(Duration::ZERO, max_clients, protocol_id, server_addr, *private_key);
+        NetcodeServer::new(Duration::ZERO, max_clients, TEST_PROTOCOL_ID, server_addr, *TEST_KEY)
+    }
 
-        let server_addresses: Vec<SocketAddr> = vec![server_addr];
+    #[test]
+    fn server_connection() {
+        let mut server = new_server();
+        let server_addresses: Vec<SocketAddr> = vec![server.address()];
         let user_data = generate_random_bytes();
         let expire_seconds = 3;
         let client_id = 4;
@@ -584,13 +588,13 @@ mod tests {
         let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
         let connect_token = ConnectToken::generate(
             Duration::ZERO,
-            protocol_id,
+            TEST_PROTOCOL_ID,
             expire_seconds,
             client_id,
             timeout_seconds,
             server_addresses,
             Some(&user_data),
-            private_key,
+            TEST_KEY,
         )
         .unwrap();
         let mut client = NetcodeClient::new(Duration::ZERO, client_id, connect_token);
@@ -662,9 +666,7 @@ mod tests {
 
     #[test]
     fn connect_token_already_used() {
-        let server_addr = "127.0.0.1:5000".parse().unwrap();
-        let private_key = b"an example very very secret key."; // 32-bytes
-        let mut server = NetcodeServer::new(Duration::ZERO, 16, 0, server_addr, *private_key);
+        let mut server = new_server();
 
         let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
         let mut connect_token = ConnectTokenEntry {
