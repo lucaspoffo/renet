@@ -266,24 +266,27 @@ impl ChatApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-                let messages = match state {
-                    AppState::HostChat { chat_server: server } => &server.messages,
-                    AppState::ClientChat { messages, .. } => messages,
-                    _ => unreachable!(),
-                };
-                for message in messages.iter() {
-                    let text = if let Some(username) = usernames.get(&message.client_id) {
-                        format!("{}: {}", username, message.text)
-                    } else if message.client_id == 0 {
-                        format!("Server: {}", message.text)
-                    } else {
-                        format!("unknown: {}", message.text)
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .id_source("client_list_scroll")
+                .show(ui, |ui| {
+                    let messages = match state {
+                        AppState::HostChat { chat_server: server } => &server.messages,
+                        AppState::ClientChat { messages, .. } => messages,
+                        _ => unreachable!(),
                     };
+                    for message in messages.iter() {
+                        let text = if let Some(username) = usernames.get(&message.client_id) {
+                            format!("{}: {}", username, message.text)
+                        } else if message.client_id == 0 {
+                            format!("Server: {}", message.text)
+                        } else {
+                            format!("unknown: {}", message.text)
+                        };
 
-                    ui.label(text);
-                }
-            });
+                        ui.label(text);
+                    }
+                });
         });
     }
 
@@ -388,7 +391,7 @@ fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
 
     ui.separator();
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
+    egui::ScrollArea::vertical().id_source("host_commands_scroll").show(ui, |ui| {
         for client_id in chat_server.server.clients_id().into_iter() {
             ui.horizontal(|ui| {
                 ui.label(format!("Client {}", client_id));

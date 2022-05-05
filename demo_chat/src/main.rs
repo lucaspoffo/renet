@@ -1,5 +1,5 @@
 use client::ChatApp;
-use eframe::{egui, epi};
+use eframe::{egui, App};
 use renet::{ChannelConfig, ReliableChannelConfig, NETCODE_USER_DATA_BYTES};
 use serde::{Deserialize, Serialize};
 
@@ -81,25 +81,23 @@ impl Message {
     }
 }
 
-impl epi::App for ChatApp {
-    fn name(&self) -> &str {
-        "Renet Chat"
-    }
-
-    fn update(&mut self, ctx: &egui::Context, _frame: &eframe::epi::Frame) {
+impl App for ChatApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.draw(ctx);
         self.update_chat();
         ctx.request_repaint();
-    }
-
-    fn setup(&mut self, ctx: &egui::Context, _frame: &epi::Frame, _storage: Option<&dyn epi::Storage>) {
-        ctx.set_visuals(egui::Visuals::dark());
     }
 }
 
 fn main() {
     env_logger::init();
-    let app = ChatApp::default();
-    let native_options = eframe::NativeOptions::default();
-    eframe::run_native(Box::new(app), native_options);
+    let options = eframe::NativeOptions::default();
+    eframe::run_native(
+        "Renet Demo Chat",
+        options,
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Box::new(ChatApp::default())
+        }),
+    );
 }
