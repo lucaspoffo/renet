@@ -153,7 +153,12 @@ impl RenetServer {
         self.reliable_server.receive_message(&client_id, channel_id)
     }
 
-    /// Send a message from a clients over a channel.
+    /// Verifies if a message can be sent to a client over a channel.
+    pub fn can_send_message(&self, client_id: u64, channel_id: u8) -> bool {
+        self.reliable_server.can_send_message(&client_id, channel_id)
+    }
+
+    /// Send a message to a client over a channel.
     pub fn send_message(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) {
         self.reliable_server.send_message(&client_id, channel_id, message);
     }

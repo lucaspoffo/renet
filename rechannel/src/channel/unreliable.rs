@@ -111,7 +111,7 @@ impl Channel for UnreliableChannel {
             return;
         }
 
-        if self.messages_to_send.len() > self.config.message_send_queue_size {
+        if self.messages_to_send.len() >= self.config.message_send_queue_size {
             self.error = Some(ChannelError::SendQueueFull);
             log::warn!("Unreliable channel {} has reached the maximum queue size", self.config.channel_id);
             return;
@@ -122,6 +122,10 @@ impl Channel for UnreliableChannel {
 
     fn receive_message(&mut self) -> Option<Payload> {
         self.messages_received.pop_front()
+    }
+
+    fn can_send_message(&self) -> bool {
+        self.messages_to_send.len() < self.config.message_send_queue_size
     }
 
     fn error(&self) -> Option<ChannelError> {

@@ -268,6 +268,10 @@ impl Channel for ReliableChannel {
         self.messages_received.remove(received_message_id).map(|m| m.payload)
     }
 
+    fn can_send_message(&self) -> bool {
+        self.messages_send.available(self.send_message_id)
+    }
+
     fn error(&self) -> Option<ChannelError> {
         self.error
     }

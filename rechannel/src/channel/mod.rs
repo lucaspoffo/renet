@@ -49,6 +49,6 @@ pub trait Channel: std::fmt::Debug {
     fn process_ack(&mut self, ack: u16);
     fn send_message(&mut self, payload: Payload);
     fn receive_message(&mut self) -> Option<Payload>;
+    fn can_send_message(&self) -> bool;
     fn error(&self) -> Option<ChannelError>;
-    // TODO: add fn can_send_message(&self) -> bool;
 }

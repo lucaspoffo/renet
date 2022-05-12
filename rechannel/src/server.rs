@@ -82,6 +82,13 @@ impl<C: ClientId> RechannelServer<C> {
         }
     }
 
+    pub fn can_send_message(&self, connection_id: &C, channel_id: u8) -> bool {
+        match self.connections.get(connection_id) {
+            Some(connection) => connection.can_send_message(channel_id),
+            None => false,
+        }
+    }
+
     pub fn send_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) {
         match self.connections.get_mut(connection_id) {
             Some(connection) => connection.send_message(channel_id, message),

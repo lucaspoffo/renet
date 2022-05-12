@@ -79,14 +79,19 @@ impl RenetClient {
         }
     }
 
-    /// Receive a message from a channel.
+    /// Receive a message from the server over a channel.
     pub fn receive_message(&mut self, channel_id: u8) -> Option<Vec<u8>> {
         self.reliable_connection.receive_message(channel_id)
     }
 
-    /// Send a message to a channel.
+    /// Send a message to the server over a channel.
     pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) {
         self.reliable_connection.send_message(channel_id, message);
+    }
+
+    /// Verifies if a message can be sent to the server over a channel.
+    pub fn can_send_message(&self, channel_id: u8) -> bool {
+        self.reliable_connection.can_send_message(channel_id)
     }
 
     pub fn network_info(&self) -> &NetworkInfo {

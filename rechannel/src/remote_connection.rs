@@ -154,13 +154,18 @@ impl RemoteConnection {
         };
     }
 
+    pub fn can_send_message(&self, channel_id: u8) -> bool {
+        let channel = self.channels.get(&channel_id).expect("invalid channel id");
+        channel.can_send_message()
+    }
+
     pub fn send_message(&mut self, channel_id: u8, message: Payload) {
-        let channel = self.channels.get_mut(&channel_id).expect("invalid channel");
+        let channel = self.channels.get_mut(&channel_id).expect("invalid channel id");
         channel.send_message(message);
     }
 
     pub fn receive_message(&mut self, channel_id: u8) -> Option<Payload> {
-        let channel = self.channels.get_mut(&channel_id).expect("invalid channel");
+        let channel = self.channels.get_mut(&channel_id).expect("invalid channel id");
         channel.receive_message()
     }
 

@@ -417,7 +417,7 @@ impl Channel for BlockChannel {
         }
 
         if self.sender.sending {
-            if self.messages_to_send.len() > self.message_send_queue_size {
+            if self.messages_to_send.len() >= self.message_send_queue_size {
                 self.error = Some(ChannelError::SendQueueFull);
                 return;
             }
@@ -430,6 +430,10 @@ impl Channel for BlockChannel {
 
     fn receive_message(&mut self) -> Option<Payload> {
         self.messages_received.pop_front()
+    }
+
+    fn can_send_message(&self) -> bool {
+        self.messages_to_send.len() < self.message_send_queue_size
     }
 
     fn error(&self) -> Option<ChannelError> {
