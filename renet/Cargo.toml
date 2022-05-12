@@ -11,7 +11,7 @@ version = "0.0.6"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-link-conditioner = {path = "../../link-conditioner"}
+link-conditioner = {git = "https://github.com/Aceeri/link-conditioner"}
 log = "0.4.11"
 rechannel = {path = "../rechannel", version = "0.0.2"}
 renetcode = {path = "../renetcode", version = "0.0.2"}
