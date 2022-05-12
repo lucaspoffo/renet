@@ -85,9 +85,8 @@ impl RenetClient {
     }
 
     /// Send a message to a channel.
-    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) -> Result<(), RenetError> {
-        self.reliable_connection.send_message(channel_id, message)?;
-        Ok(())
+    pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) {
+        self.reliable_connection.send_message(channel_id, message);
     }
 
     pub fn network_info(&self) -> &NetworkInfo {

@@ -33,7 +33,7 @@ fn test_remote_connection_reliable_channel() {
     for i in 0..number_messages {
         let message = TestMessage { value: i };
         let message = bincode::options().serialize(&message).unwrap();
-        server.send_message(&client_id, 0, message).unwrap();
+        server.send_message(&client_id, 0, message);
     }
 
     loop {
@@ -70,7 +70,7 @@ fn test_server_reliable_channel() {
     for i in 0..number_messages {
         let message = TestMessage { value: i };
         let message = bincode::options().serialize(&message).unwrap();
-        client.send_message(0, message).unwrap();
+        client.send_message(0, message);
     }
 
     loop {

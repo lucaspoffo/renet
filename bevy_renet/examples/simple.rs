@@ -125,7 +125,7 @@ fn server_update_system(
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
                     let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(*id, 0, message).unwrap();
+                    server.send_message(*id, 0, message);
                 }
 
                 lobby.players.insert(*id, player_entity);
@@ -246,7 +246,7 @@ fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_input: ResMut<Pl
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(0, input_message).unwrap();
+    client.send_message(0, input_message);
 }
 
 fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: Res<Time>) {

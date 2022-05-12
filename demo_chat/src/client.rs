@@ -173,12 +173,7 @@ impl ChatApp {
     }
 
     fn draw_chat(&mut self, ctx: &egui::Context) {
-        let Self {
-            text_input,
-            state,
-            connection_error,
-            ..
-        } = self;
+        let Self { text_input, state, .. } = self;
 
         let usernames = match state {
             AppState::HostChat { chat_server: server } => server.usernames.clone(),
@@ -253,11 +248,7 @@ impl ChatApp {
                     }
                     AppState::ClientChat { client, .. } => {
                         let message = bincode::options().serialize(&ClientMessages::Text(text_input.clone())).unwrap();
-                        if let Err(e) = client.send_message(Channels::Reliable.id(), message) {
-                            error!("Error sending text message: {}", e);
-                            *state = AppState::MainScreen;
-                            *connection_error = Some(e.to_string());
-                        }
+                        client.send_message(Channels::Reliable.id(), message);
                     }
                     _ => unreachable!(),
                 };

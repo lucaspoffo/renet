@@ -1,5 +1,3 @@
-use crate::channel::block::SliceMessage;
-use crate::channel::reliable::ReliableMessage;
 use crate::error::DisconnectionReason;
 
 use bincode::Options;
@@ -7,22 +5,10 @@ use serde::{Deserialize, Serialize};
 
 pub type Payload = Vec<u8>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct ReliableChannelData {
-    pub channel_id: u8,
-    pub messages: Vec<ReliableMessage>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct UnreliableChannelData {
-    pub channel_id: u8,
-    pub messages: Vec<Payload>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct BlockChannelData {
-    pub channel_id: u8,
-    pub messages: Vec<SliceMessage>,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChannelPacketData {
+    pub(crate) messages: Vec<Payload>,
+    pub(crate) channel_id: u8,
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -40,23 +26,10 @@ pub(crate) enum Packet {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct ChannelMessages {
-    pub block_channels_data: Vec<BlockChannelData>,
-    pub unreliable_channels_data: Vec<UnreliableChannelData>,
-    pub reliable_channels_data: Vec<ReliableChannelData>,
-}
-
-impl ChannelMessages {
-    pub fn is_empty(&self) -> bool {
-        self.block_channels_data.is_empty() && self.unreliable_channels_data.is_empty() && self.reliable_channels_data.is_empty()
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Normal {
     pub sequence: u16,
     pub ack_data: AckData,
-    pub channel_messages: ChannelMessages,
+    pub channels_packet_data: Vec<ChannelPacketData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

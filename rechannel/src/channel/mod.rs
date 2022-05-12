@@ -8,11 +8,11 @@ pub use block::BlockChannelConfig;
 pub use reliable::ReliableChannelConfig;
 pub use unreliable::UnreliableChannelConfig;
 
-use block::BlockChannel;
-use reliable::ReliableChannel;
-use unreliable::UnreliableChannel;
-
-use crate::error::RechannelError;
+use crate::{
+    channel::{block::BlockChannel, reliable::ReliableChannel, unreliable::UnreliableChannel},
+    error::ChannelError,
+    packet::{ChannelPacketData, Payload},
+};
 
 /// Configuration for the different types of channels.
 #[derive(Debug, Clone)]
@@ -22,30 +22,14 @@ pub enum ChannelConfig {
     Block(BlockChannelConfig),
 }
 
-#[derive(Debug)]
-pub(crate) enum Channel {
-    Reliable(ReliableChannel),
-    Unreliable(UnreliableChannel),
-    Block(BlockChannel),
-}
-
 impl ChannelConfig {
-    pub(crate) fn new_channel(&self) -> Channel {
+    pub(crate) fn new_channel(&self) -> Box<dyn Channel + Send + Sync + 'static> {
         use ChannelConfig::*;
 
         match self {
-            Reliable(config) => {
-                let reliable_channel = ReliableChannel::new(config.clone());
-                Channel::Reliable(reliable_channel)
-            }
-            Unreliable(config) => {
-                let unreliable_channel = UnreliableChannel::new(config.clone());
-                Channel::Unreliable(unreliable_channel)
-            }
-            Block(config) => {
-                let block_channel = BlockChannel::new(config.clone());
-                Channel::Block(block_channel)
-            }
+            Reliable(config) => Box::new(ReliableChannel::new(config.clone())),
+            Unreliable(config) => Box::new(UnreliableChannel::new(config.clone())),
+            Block(config) => Box::new(BlockChannel::new(config.clone())),
         }
     }
 
@@ -58,36 +42,13 @@ impl ChannelConfig {
     }
 }
 
-impl Channel {
-    pub fn send_message(&mut self, message: Vec<u8>) -> Result<(), RechannelError> {
-        match self {
-            Channel::Unreliable(channel) => channel.send_message(message),
-            Channel::Reliable(channel) => channel.send_message(message),
-            Channel::Block(channel) => channel.send_message(message),
-        }
-    }
-
-    pub fn receive_message(&mut self) -> Option<Vec<u8>> {
-        match self {
-            Channel::Unreliable(channel) => channel.receive_message(),
-            Channel::Reliable(channel) => channel.receive_message(),
-            Channel::Block(channel) => channel.receive_message(),
-        }
-    }
-
-    pub fn process_ack(&mut self, ack: u16) {
-        match self {
-            Channel::Unreliable(_) => {}
-            Channel::Reliable(channel) => channel.process_ack(ack),
-            Channel::Block(channel) => channel.process_ack(ack),
-        }
-    }
-
-    pub fn advance_time(&mut self, duration: Duration) {
-        match self {
-            Channel::Unreliable(_) => {}
-            Channel::Reliable(channel) => channel.advance_time(duration),
-            Channel::Block(channel) => channel.advance_time(duration),
-        }
-    }
+pub trait Channel: std::fmt::Debug {
+    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Option<ChannelPacketData>;
+    fn advance_time(&mut self, duration: Duration);
+    fn process_messages(&mut self, messages: Vec<Payload>);
+    fn process_ack(&mut self, ack: u16);
+    fn send_message(&mut self, payload: Payload);
+    fn receive_message(&mut self) -> Option<Payload>;
+    fn error(&self) -> Option<ChannelError>;
+    // TODO: add fn can_send_message(&self) -> bool;
 }

@@ -1,4 +1,4 @@
-use crate::packet::{AckData, ChannelMessages, Fragment, Packet, Payload};
+use crate::packet::{AckData, ChannelPacketData, Fragment, Packet, Payload};
 use crate::sequence_buffer::SequenceBuffer;
 
 use bincode::Options;
@@ -116,7 +116,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         fragment: Fragment,
         max_packet_size: u64,
         config: &FragmentConfig,
-    ) -> Result<Option<ChannelMessages>, FragmentError> {
+    ) -> Result<Vec<ChannelPacketData>, FragmentError> {
         let Fragment {
             sequence,
             num_fragments,
@@ -186,23 +186,23 @@ impl SequenceBuffer<ReassemblyFragment> {
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
             let reassembly_fragment = self.remove(sequence).expect("ReassemblyFragment always exists here");
 
-            let messages: ChannelMessages = bincode::options().deserialize(&reassembly_fragment.buffer)?;
+            let messages: Vec<ChannelPacketData> = bincode::options().deserialize(&reassembly_fragment.buffer)?;
 
             log::trace!("Completed the reassembly of packet {}.", reassembly_fragment.sequence);
-            return Ok(Some(messages));
+            return Ok(messages);
         }
 
-        Ok(None)
+        Ok(vec![])
     }
 }
 
 pub(crate) fn build_fragments(
-    messages: ChannelMessages,
+    channels_packet_data: Vec<ChannelPacketData>,
     sequence: u16,
     ack_data: AckData,
     config: &FragmentConfig,
 ) -> Result<Vec<Payload>, bincode::Error> {
-    let payload = bincode::options().serialize(&messages)?;
+    let payload = bincode::options().serialize(&channels_packet_data)?;
     let packet_bytes = payload.len();
     let exact_division = (packet_bytes % config.fragment_size != 0) as usize;
     let num_fragments = packet_bytes / config.fragment_size + exact_division;
@@ -226,21 +226,16 @@ pub(crate) fn build_fragments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::packet::UnreliableChannelData;
 
     #[test]
     fn fragment() {
         let config = FragmentConfig::default();
         let ack_data = AckData { ack: 0, ack_bits: 0 };
 
-        let messages = ChannelMessages {
-            block_channels_data: vec![],
-            unreliable_channels_data: vec![UnreliableChannelData {
-                channel_id: 0,
-                messages: vec![vec![7u8; 1000], vec![255u8; 1000], vec![33u8; 1000]],
-            }],
-            reliable_channels_data: vec![],
-        };
+        let messages = vec![ChannelPacketData {
+            channel_id: 0,
+            messages: vec![vec![7u8; 1000], vec![255u8; 1000], vec![33u8; 1000]],
+        }];
 
         let fragments = build_fragments(messages.clone(), 0, ack_data, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> = SequenceBuffer::with_capacity(256);
@@ -258,20 +253,22 @@ mod tests {
             .collect();
 
         let result = fragments_reassembly.handle_fragment(fragments[0].clone(), 250_000, &config);
-        assert!(matches!(result, Ok(None)));
+        match result {
+            Ok(payloads) => assert!(payloads.is_empty()),
+            _ => unreachable!(),
+        }
 
         let result = fragments_reassembly.handle_fragment(fragments[1].clone(), 250_000, &config);
-        assert!(matches!(result, Ok(None)));
+        match result {
+            Ok(payloads) => assert!(payloads.is_empty()),
+            _ => unreachable!(),
+        }
 
         let result = fragments_reassembly.handle_fragment(fragments[2].clone(), 250_000, &config);
-        let result = result.unwrap().unwrap();
+        let result = result.unwrap();
 
-        assert_eq!(messages.unreliable_channels_data.len(), result.unreliable_channels_data.len());
-        let messages = &messages.unreliable_channels_data[0].messages;
-        let result_messages = &result.unreliable_channels_data[0].messages;
+        assert_eq!(messages.len(), result.len());
 
-        assert_eq!(messages[0], result_messages[0]);
-        assert_eq!(messages[1], result_messages[1]);
-        assert_eq!(messages[2], result_messages[2]);
+        assert_eq!(messages[0], result[0]);
     }
 }

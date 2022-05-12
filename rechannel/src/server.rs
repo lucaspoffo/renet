@@ -67,10 +67,8 @@ impl<C: ClientId> RechannelServer<C> {
     }
 
     pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
-        for (connection_id, connection) in self.connections.iter_mut() {
-            if let Err(e) = connection.send_message(channel_id, message.clone()) {
-                log::error!("Failed to broadcast message to {:?}: {}", connection_id, e)
-            }
+        for connection in self.connections.values_mut() {
+            connection.send_message(channel_id, message.clone());
         }
     }
 
@@ -80,16 +78,14 @@ impl<C: ClientId> RechannelServer<C> {
                 continue;
             }
 
-            if let Err(e) = connection.send_message(channel_id, message.clone()) {
-                log::error!("Failed to broadcast message to {:?}: {}", connection_id, e)
-            }
+            connection.send_message(channel_id, message.clone());
         }
     }
 
-    pub fn send_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
+    pub fn send_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) {
         match self.connections.get_mut(connection_id) {
             Some(connection) => connection.send_message(channel_id, message),
-            None => Err(RechannelError::ClientNotFound),
+            None => log::error!("Tried to send message to disconnected client {:?}", connection_id),
         }
     }
 

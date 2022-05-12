@@ -1,8 +1,4 @@
-use rechannel::{
-    disconnect_packet,
-    error::{DisconnectionReason, RechannelError},
-    server::RechannelServer,
-};
+use rechannel::{disconnect_packet, error::DisconnectionReason, server::RechannelServer};
 
 use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
@@ -158,8 +154,8 @@ impl RenetServer {
     }
 
     /// Send a message from a clients over a channel.
-    pub fn send_message(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) -> Result<(), RechannelError> {
-        self.reliable_server.send_message(&client_id, channel_id, message)
+    pub fn send_message(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) {
+        self.reliable_server.send_message(&client_id, channel_id, message);
     }
 
     /// Send a message to all client, except the specified one, over a channel.

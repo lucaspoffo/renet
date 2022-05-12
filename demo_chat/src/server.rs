@@ -53,7 +53,7 @@ impl ChatServer {
                         usernames: self.usernames.clone(),
                     };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
-                    self.server.send_message(client_id, Channels::Reliable.id(), init_message).unwrap();
+                    self.server.send_message(client_id, Channels::Reliable.id(), init_message);
                 }
                 ServerEvent::ClientDisconnected(client_id) => {
                     self.usernames.remove(&client_id);

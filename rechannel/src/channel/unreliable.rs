@@ -1,8 +1,10 @@
 use crate::{
-    error::RechannelError,
-    packet::{Payload, UnreliableChannelData},
+    error::ChannelError,
+    packet::{ChannelPacketData, Payload},
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Duration};
+
+use super::Channel;
 
 /// Configuration for a unreliable and unordered channel.
 /// Messages sent in this channel will behave like a udp packet,
@@ -26,6 +28,7 @@ pub(crate) struct UnreliableChannel {
     config: UnreliableChannelConfig,
     messages_to_send: VecDeque<Payload>,
     messages_received: VecDeque<Payload>,
+    error: Option<ChannelError>,
 }
 
 impl Default for UnreliableChannelConfig {
@@ -46,32 +49,17 @@ impl UnreliableChannel {
             messages_to_send: VecDeque::with_capacity(config.message_send_queue_size),
             messages_received: VecDeque::with_capacity(config.message_receive_queue_size),
             config,
+            error: None,
         }
     }
+}
 
-    pub fn process_messages(&mut self, mut messages: Vec<Payload>) {
-        while let Some(message) = messages.pop() {
-            if self.messages_received.len() == self.config.message_receive_queue_size {
-                // TODO(warn) exceeded limit of unreliable messages
-                return;
-            }
-            self.messages_received.push_back(message);
+impl Channel for UnreliableChannel {
+    fn get_messages_to_send(&mut self, mut available_bytes: u64, _sequence: u16) -> Option<ChannelPacketData> {
+        if self.error.is_some() {
+            return None;
         }
-    }
 
-    pub fn receive_message(&mut self) -> Option<Payload> {
-        self.messages_received.pop_front()
-    }
-
-    pub fn send_message(&mut self, message_payload: Payload) -> Result<(), RechannelError> {
-        if self.messages_to_send.len() > self.config.message_send_queue_size {
-            return Err(RechannelError::ChannelMaxMessagesLimit);
-        }
-        self.messages_to_send.push_back(message_payload);
-        Ok(())
-    }
-
-    pub fn get_messages_to_send(&mut self, mut available_bytes: u64) -> Option<UnreliableChannelData> {
         let mut messages = vec![];
 
         available_bytes = available_bytes.min(self.config.packet_budget);
@@ -90,9 +78,53 @@ impl UnreliableChannel {
             return None;
         }
 
-        Some(UnreliableChannelData {
+        Some(ChannelPacketData {
             channel_id: self.config.channel_id,
             messages,
         })
+    }
+
+    fn advance_time(&mut self, _duration: Duration) {}
+
+    fn process_messages(&mut self, mut messages: Vec<Payload>) {
+        if self.error.is_some() {
+            return;
+        }
+
+        while let Some(message) = messages.pop() {
+            if self.messages_received.len() == self.config.message_receive_queue_size {
+                log::warn!(
+                    "Received message was dropped in unreliable channel {}, reached maximum number of messages {} ",
+                    self.config.channel_id,
+                    self.config.message_receive_queue_size
+                );
+                return;
+            }
+            self.messages_received.push_back(message);
+        }
+    }
+
+    fn process_ack(&mut self, _ack: u16) {}
+
+    fn send_message(&mut self, payload: Payload) {
+        if self.error.is_some() {
+            return;
+        }
+
+        if self.messages_to_send.len() > self.config.message_send_queue_size {
+            self.error = Some(ChannelError::SendQueueFull);
+            log::warn!("Unreliable channel {} has reached the maximum queue size", self.config.channel_id);
+            return;
+        }
+
+        self.messages_to_send.push_back(payload);
+    }
+
+    fn receive_message(&mut self) -> Option<Payload> {
+        self.messages_received.pop_front()
+    }
+
+    fn error(&self) -> Option<ChannelError> {
+        self.error
     }
 }

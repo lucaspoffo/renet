@@ -136,7 +136,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         last_updated = Instant::now();
         if client.is_connected() {
             match stdin_channel.try_recv() {
-                Ok(text) => client.send_message(0, text.as_bytes().to_vec()).unwrap(),
+                Ok(text) => client.send_message(0, text.as_bytes().to_vec()),
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
             }
