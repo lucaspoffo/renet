@@ -3,9 +3,11 @@ mod error;
 mod server;
 
 pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, ReliableChannelConfig, UnreliableChannelConfig};
+pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
 pub use rechannel::remote_connection::NetworkInfo;
+
 use rechannel::{remote_connection::ConnectionConfig, FragmentConfig};
-pub use renetcode::ConnectToken;
+pub use renetcode::{ConnectToken, NetcodeError};
 pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES};
 
 pub use client::RenetClient;
