@@ -24,7 +24,11 @@ pub enum ChannelError {
     SendQueueFull,
     /// Error occurred during (de)serialization
     FailedToSerialize,
+    /// Tried to send a message that is above the packet budget. This would result in a message
+    /// that would never be sent.
+    MessageAbovePacketBudget,
 }
+
 impl fmt::Display for ChannelError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use ChannelError::*;
@@ -33,6 +37,7 @@ impl fmt::Display for ChannelError {
             ReliableChannelOutOfSync => write!(fmt, "out of sync"),
             SendQueueFull => write!(fmt, "send queue was full"),
             FailedToSerialize => write!(fmt, "failed to serialize or deserialize"),
+            MessageAbovePacketBudget => write!(fmt, "sent message above the channel packet budget"),
         }
     }
 }

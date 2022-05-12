@@ -35,7 +35,7 @@ impl Default for UnreliableChannelConfig {
     fn default() -> Self {
         Self {
             channel_id: 1,
-            packet_budget: 2000,
+            packet_budget: 6000,
             max_message_size: 1200,
             message_send_queue_size: 256,
             message_receive_queue_size: 256,
@@ -67,7 +67,7 @@ impl Channel for UnreliableChannel {
         while let Some(message) = self.messages_to_send.pop_front() {
             let message_size = message.len() as u64;
             if message_size > available_bytes {
-                break;
+                continue;
             }
 
             available_bytes -= message_size;
@@ -108,6 +108,15 @@ impl Channel for UnreliableChannel {
 
     fn send_message(&mut self, payload: Payload) {
         if self.error.is_some() {
+            return;
+        }
+
+        if payload.len() as u64 > self.config.packet_budget {
+            // In the case of the on unreliable channel,
+            // if there is no budget, the message is dropped.
+            // So, should we ignore this?
+            // If so, we should still return here and warn the user.
+            self.error = Some(ChannelError::MessageAbovePacketBudget);
             return;
         }
 

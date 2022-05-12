@@ -91,7 +91,7 @@ impl Default for BlockChannelConfig {
             slice_size: 400,
             resend_time: Duration::from_millis(300),
             sent_packet_buffer_size: 256,
-            packet_budget: 2000,
+            packet_budget: 4000,
             message_send_queue_size: 8,
         }
     }
@@ -313,6 +313,8 @@ impl ChunkReceiver {
 
 impl BlockChannel {
     pub fn new(config: BlockChannelConfig) -> Self {
+        assert!((config.slice_size as u64) <= config.packet_budget);
+
         let sender = ChunkSender::new(
             config.slice_size,
             config.sent_packet_buffer_size,

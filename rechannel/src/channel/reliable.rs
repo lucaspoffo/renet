@@ -92,7 +92,7 @@ impl Default for ReliableChannelConfig {
             sent_packet_buffer_size: 1024,
             message_send_queue_size: 1024,
             message_receive_queue_size: 1024,
-            packet_budget: 2000,
+            packet_budget: 6000,
             message_resend_time: Duration::from_millis(100),
         }
     }
@@ -240,6 +240,11 @@ impl Channel for ReliableChannel {
         let message_id = self.send_message_id;
         if !self.messages_send.available(message_id) {
             self.error = Some(ChannelError::ReliableChannelOutOfSync);
+            return;
+        }
+
+        if payload.len() as u64 > self.config.packet_budget {
+            self.error = Some(ChannelError::MessageAbovePacketBudget);
             return;
         }
 
