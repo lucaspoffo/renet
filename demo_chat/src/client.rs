@@ -4,7 +4,7 @@ use eframe::{
     epaint::PathShape,
 };
 use log::error;
-use renet::{ConnectToken, RenetClient, RenetConnectionConfig, NETCODE_KEY_BYTES};
+use renet::{ConnectToken, NetworkInfo, RenetClient, RenetConnectionConfig, NETCODE_KEY_BYTES};
 
 use std::{
     collections::HashMap,
@@ -189,7 +189,7 @@ impl ChatApp {
                     chat_server: ref mut server,
                 } = state
                 {
-                    draw_host_commands(server, ui);
+                    draw_host_commands(ui, server);
                 }
 
                 ui.vertical_centered(|ui| {
@@ -203,6 +203,11 @@ impl ChatApp {
                         ui.label(username);
                     }
                 });
+
+                if let AppState::ClientChat { client, .. } = state {
+                    ui.separator();
+                    draw_network_info(ui, client.network_info());
+                }
 
                 let exit = ui.with_layout(Layout::bottom_up(eframe::emath::Align::Center).with_cross_justify(true), |ui| {
                     ui.button("Exit").clicked()
@@ -248,6 +253,7 @@ impl ChatApp {
                     }
                     AppState::ClientChat { client, .. } => {
                         let message = bincode::options().serialize(&ClientMessages::Text(text_input.clone())).unwrap();
+                        println!("sending message with {} bytes", message.len());
                         client.send_message(Channels::Reliable.id(), message);
                     }
                     _ => unreachable!(),
@@ -365,7 +371,17 @@ fn create_renet_client(username: String, server_addr: SocketAddr, private_key: &
     RenetClient::new(current_time, socket, client_id, connect_token, connection_config).unwrap()
 }
 
-fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
+fn draw_network_info(ui: &mut Ui, network_info: &NetworkInfo) {
+    ui.vertical(|ui| {
+        ui.heading("Network info");
+        ui.label(format!("RTT: {:.2} ms", network_info.rtt * 1000.));
+        ui.label(format!("Sent Kbps: {:.2}", network_info.sent_bandwidth_kbps));
+        ui.label(format!("Received Kbps: {:.2}", network_info.received_bandwidth_kbps));
+        ui.label(format!("Packet Loss: {:.2}%", network_info.packet_loss * 100.));
+    });
+}
+
+fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     ui.vertical_centered(|ui| {
         ui.heading("Server Commands");
     });
@@ -385,7 +401,10 @@ fn draw_host_commands(chat_server: &mut ChatServer, ui: &mut Ui) {
     egui::ScrollArea::vertical().id_source("host_commands_scroll").show(ui, |ui| {
         for client_id in chat_server.server.clients_id().into_iter() {
             ui.horizontal(|ui| {
-                ui.label(format!("Client {}", client_id));
+                ui.label(format!("Client {}", client_id)).on_hover_ui(|ui| {
+                    let network_info = chat_server.server.network_info(client_id).unwrap();
+                    draw_network_info(ui, network_info);
+                });
                 if ui.button("X").on_hover_text("Disconnect client").clicked() {
                     chat_server.server.disconnect(client_id);
                 }

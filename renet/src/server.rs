@@ -1,4 +1,4 @@
-use rechannel::{disconnect_packet, error::DisconnectionReason, server::RechannelServer};
+use rechannel::{disconnect_packet, error::DisconnectionReason, remote_connection::NetworkInfo, server::RechannelServer};
 
 use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
@@ -103,6 +103,11 @@ impl RenetServer {
         for client_id in self.netcode_server.clients_id() {
             self.disconnect(client_id);
         }
+    }
+
+    /// Returns the client's network info if the client exits.
+    pub fn network_info(&self, client_id: u64) -> Option<&NetworkInfo> {
+        self.reliable_server.network_info(client_id)
     }
 
     /// Advances the server by duration, and receive packets from the network.
