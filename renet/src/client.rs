@@ -7,41 +7,44 @@ use rechannel::{
     error::RechannelError,
     remote_connection::{NetworkInfo, RemoteConnection},
 };
-use renetcode::{ConnectToken, NetcodeClient, NetcodeError, PacketToSend, NETCODE_MAX_PACKET_BYTES};
+use renetcode::{ConnectToken, NetcodeClient, NetcodeError, PacketToSend};
 
 use log::debug;
 
-use std::io;
-use std::net::UdpSocket;
+use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
+use std::{
+    net::SocketAddr,
+    sync::mpsc::{Receiver, Sender},
+};
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
 pub struct RenetClient {
     netcode_client: NetcodeClient,
-    socket: UdpSocket,
     reliable_connection: RemoteConnection,
-    buffer: [u8; NETCODE_MAX_PACKET_BYTES],
+    packet_sender: Sender<(SocketAddr, Vec<u8>)>,
+    packet_receiver: Receiver<(SocketAddr, Vec<u8>)>,
 }
 
 impl RenetClient {
     pub fn new(
         current_time: Duration,
-        socket: UdpSocket,
         client_id: u64,
         connect_token: ConnectToken,
         config: RenetConnectionConfig,
-    ) -> Result<Self, std::io::Error> {
-        socket.set_nonblocking(true)?;
+        packet_sender: Sender<(SocketAddr, Vec<u8>)>,
+        packet_receiver: Receiver<(SocketAddr, Vec<u8>)>,
+    ) -> Self {
         let reliable_connection = RemoteConnection::new(config.to_connection_config());
         let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
 
-        Ok(Self {
-            buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
-            socket,
+        Self {
             reliable_connection,
             netcode_client,
-        })
+            packet_receiver,
+            packet_sender,
+        }
     }
 
     pub fn client_id(&self) -> u64 {
@@ -70,7 +73,7 @@ impl RenetClient {
         match self.netcode_client.disconnect() {
             Ok(PacketToSend { packet, address }) => {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = self.socket.send_to(packet, address) {
+                    if let Err(e) = self.packet_sender.send((address, packet.to_vec())) {
                         log::error!("failed to send disconnect packet to server: {}", e);
                     }
                 }
@@ -104,7 +107,9 @@ impl RenetClient {
             let packets = self.reliable_connection.get_packets_to_send()?;
             for packet in packets.into_iter() {
                 let PacketToSend { packet, address } = self.netcode_client.generate_payload_packet(&packet)?;
-                self.socket.send_to(packet, address)?;
+                self.packet_sender
+                    .send((address, packet.to_vec()))
+                    .map_err(|_| RenetError::SenderDisconnected)?;
             }
         }
         Ok(())
@@ -123,27 +128,29 @@ impl RenetClient {
         }
 
         loop {
-            let packet = match self.socket.recv_from(&mut self.buffer) {
-                Ok((len, addr)) => {
+            let mut packet = match self.packet_receiver.try_recv() {
+                Ok((addr, payload)) => {
                     if addr != self.netcode_client.server_addr() {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
                     }
 
-                    &mut self.buffer[..len]
+                    payload
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetError::IO(e)),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return Err(RenetError::ReceiverDisconnected),
             };
 
-            if let Some(payload) = self.netcode_client.process_packet(packet) {
+            if let Some(payload) = self.netcode_client.process_packet(&mut packet) {
                 self.reliable_connection.process_packet(payload)?;
             }
         }
 
         self.reliable_connection.update()?;
         if let Some((packet, addr)) = self.netcode_client.update(duration) {
-            self.socket.send_to(packet, addr)?;
+            self.packet_sender
+                .send((addr, packet.to_vec()))
+                .map_err(|_| RenetError::SenderDisconnected)?;
         }
 
         Ok(())

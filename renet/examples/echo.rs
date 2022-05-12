@@ -1,4 +1,6 @@
-use renet::{ConnectToken, RenetClient, RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_USER_DATA_BYTES};
+use renet::{
+    udp_transport, ConnectToken, RenetClient, RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_USER_DATA_BYTES,
+};
 use renetcode::NETCODE_KEY_BYTES;
 use std::collections::HashMap;
 use std::thread;
@@ -67,7 +69,9 @@ fn server(addr: SocketAddr) {
     let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, *PRIVATE_KEY);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
+    let (sender, receiver) = udp_transport(socket);
+
+    let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, sender, receiver);
 
     let mut usernames: HashMap<u64, String> = HashMap::new();
     let mut received_messages = vec![];
@@ -127,7 +131,9 @@ fn client(server_addr: SocketAddr, username: Username) {
         PRIVATE_KEY,
     )
     .unwrap();
-    let mut client = RenetClient::new(current_time, socket, client_id, connect_token, connection_config).unwrap();
+
+    let (sender, receiver) = udp_transport(socket);
+    let mut client = RenetClient::new(current_time, client_id, connect_token, connection_config, sender, receiver);
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

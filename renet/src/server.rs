@@ -5,22 +5,22 @@ use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NE
 use log::error;
 use std::{
     collections::VecDeque,
-    io,
-    net::{SocketAddr, UdpSocket},
+    net::SocketAddr,
+    sync::mpsc::{Receiver, Sender, TryRecvError},
     time::Duration,
 };
 
-use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
+use crate::{RenetConnectionConfig, RenetError, NUM_DISCONNECT_PACKETS_TO_SEND};
 
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.
 #[derive(Debug)]
 pub struct RenetServer {
-    socket: UdpSocket,
     reliable_server: RechannelServer<u64>,
     netcode_server: NetcodeServer,
-    buffer: Box<[u8]>,
     events: VecDeque<ServerEvent>,
+    packet_sender: Sender<(SocketAddr, Vec<u8>)>,
+    packet_receiver: Receiver<(SocketAddr, Vec<u8>)>,
 }
 
 /// Events that can occur in the server.
@@ -59,9 +59,9 @@ impl RenetServer {
         current_time: Duration,
         server_config: ServerConfig,
         connection_config: RenetConnectionConfig,
-        socket: UdpSocket,
-    ) -> Result<Self, std::io::Error> {
-        let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
+        packet_sender: Sender<(SocketAddr, Vec<u8>)>,
+        packet_receiver: Receiver<(SocketAddr, Vec<u8>)>,
+    ) -> Self {
         let reliable_server = RechannelServer::new(connection_config.to_connection_config());
         let netcode_server = NetcodeServer::new(
             current_time,
@@ -71,15 +71,13 @@ impl RenetServer {
             server_config.private_key,
         );
 
-        socket.set_nonblocking(true)?;
-
-        Ok(Self {
-            socket,
+        Self {
             netcode_server,
             reliable_server,
-            buffer,
+            packet_receiver,
+            packet_sender,
             events: VecDeque::new(),
-        })
+        }
     }
 
     pub fn addr(&self) -> SocketAddr {
@@ -93,7 +91,7 @@ impl RenetServer {
     /// Disconnects a client.
     pub fn disconnect(&mut self, client_id: u64) {
         let server_result = self.netcode_server.disconnect(client_id);
-        if let Err(e) = handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events) {
+        if let Err(e) = handle_server_result(server_result, &mut self.packet_sender, &mut self.reliable_server, &mut self.events) {
             error!("Failed to send disconnect packet to client {}: {}", client_id, e);
         }
     }
@@ -111,15 +109,15 @@ impl RenetServer {
     }
 
     /// Advances the server by duration, and receive packets from the network.
-    pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
+    pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
         loop {
-            match self.socket.recv_from(&mut self.buffer) {
-                Ok((len, addr)) => {
-                    let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
-                    handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
+            match self.packet_receiver.try_recv() {
+                Ok((addr, mut payload)) => {
+                    let server_result = self.netcode_server.process_packet(addr, &mut payload);
+                    handle_server_result(server_result, &mut self.packet_sender, &mut self.reliable_server, &mut self.events)?;
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(e),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return Err(RenetError::ReceiverDisconnected),
             };
         }
 
@@ -128,7 +126,7 @@ impl RenetServer {
 
         for client_id in self.netcode_server.clients_id().into_iter() {
             let server_result = self.netcode_server.update_client(client_id);
-            handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
+            handle_server_result(server_result, &mut self.packet_sender, &mut self.reliable_server, &mut self.events)?;
         }
 
         // Handle disconnected clients from Rechannel
@@ -141,7 +139,9 @@ impl RenetServer {
                         Err(e) => error!("failed to encrypt disconnect packet: {}", e),
                         Ok(PacketToSend { packet, address }) => {
                             for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                                self.socket.send_to(packet, address)?;
+                                self.packet_sender
+                                    .send((address, packet.to_vec()))
+                                    .map_err(|_| RenetError::SenderDisconnected)?;
                             }
                         }
                     },
@@ -179,7 +179,7 @@ impl RenetServer {
     }
 
     /// Send packets to connected clients.
-    pub fn send_packets(&mut self) -> Result<(), io::Error> {
+    pub fn send_packets(&mut self) -> Result<(), RenetError> {
         for client_id in self.reliable_server.connections_id().into_iter() {
             let packets = match self.reliable_server.get_packets_to_send(&client_id) {
                 Ok(p) => p,
@@ -192,7 +192,9 @@ impl RenetServer {
             for packet in packets.iter() {
                 match self.netcode_server.generate_payload_packet(client_id, packet) {
                     Ok(PacketToSend { packet, address }) => {
-                        self.socket.send_to(packet, address)?;
+                        self.packet_sender
+                            .send((address, packet.to_vec()))
+                            .map_err(|_| RenetError::SenderDisconnected)?;
                     }
                     Err(e) => error!("failed to encrypt payload packet: {}", e),
                 }
@@ -210,14 +212,16 @@ impl RenetServer {
 
 fn handle_server_result(
     server_result: ServerResult,
-    socket: &UdpSocket,
+    packet_sender: &mut Sender<(SocketAddr, Vec<u8>)>,
     reliable_server: &mut RechannelServer<u64>,
     events: &mut VecDeque<ServerEvent>,
-) -> Result<(), io::Error> {
+) -> Result<(), RenetError> {
     match server_result {
         ServerResult::None => {}
         ServerResult::PacketToSend(PacketToSend { packet, address }) => {
-            socket.send_to(packet, address)?;
+            packet_sender
+                .send((address, packet.to_vec()))
+                .map_err(|_| RenetError::SenderDisconnected)?;
         }
         ServerResult::Payload(client_id, payload) => {
             if !reliable_server.is_connected(&client_id) {
@@ -230,14 +234,18 @@ fn handle_server_result(
         ServerResult::ClientConnected(client_id, user_data, PacketToSend { packet, address }) => {
             reliable_server.add_connection(&client_id);
             events.push_back(ServerEvent::ClientConnected(client_id, user_data));
-            socket.send_to(packet, address)?;
+            packet_sender
+                .send((address, packet.to_vec()))
+                .map_err(|_| RenetError::SenderDisconnected)?;
         }
         ServerResult::ClientDisconnected(client_id, packet_to_send) => {
             events.push_back(ServerEvent::ClientDisconnected(client_id));
             reliable_server.remove_connection(&client_id);
             if let Some(PacketToSend { packet, address }) = packet_to_send {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    socket.send_to(packet, address)?;
+                    packet_sender
+                        .send((address, packet.to_vec()))
+                        .map_err(|_| RenetError::SenderDisconnected)?;
                 }
             }
         }

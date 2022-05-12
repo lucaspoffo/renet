@@ -9,7 +9,8 @@ use std::fmt;
 pub enum RenetError {
     Netcode(renetcode::NetcodeError),
     Rechannel(rechannel::error::RechannelError),
-    IO(std::io::Error),
+    ReceiverDisconnected,
+    SenderDisconnected,
 }
 
 impl Error for RenetError {}
@@ -19,7 +20,8 @@ impl fmt::Display for RenetError {
         match *self {
             RenetError::Netcode(ref err) => err.fmt(fmt),
             RenetError::Rechannel(ref err) => err.fmt(fmt),
-            RenetError::IO(ref err) => err.fmt(fmt),
+            RenetError::SenderDisconnected => write!(fmt, "packet sender has been disconnected"),
+            RenetError::ReceiverDisconnected => write!(fmt, "packet receiver has been disconnected"),
         }
     }
 }
@@ -33,12 +35,6 @@ impl From<renetcode::NetcodeError> for RenetError {
 impl From<rechannel::error::RechannelError> for RenetError {
     fn from(inner: rechannel::error::RechannelError) -> Self {
         RenetError::Rechannel(inner)
-    }
-}
-
-impl From<std::io::Error> for RenetError {
-    fn from(inner: std::io::Error) -> Self {
-        RenetError::IO(inner)
     }
 }
 

@@ -7,6 +7,7 @@ pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
 pub use rechannel::remote_connection::NetworkInfo;
 
 use rechannel::{remote_connection::ConnectionConfig, FragmentConfig};
+use renetcode::NETCODE_MAX_PACKET_BYTES;
 pub use renetcode::{ConnectToken, NetcodeError};
 pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES};
 
@@ -14,6 +15,8 @@ pub use client::RenetClient;
 pub use error::RenetError;
 pub use server::{RenetServer, ServerConfig, ServerEvent};
 
+use std::net::{SocketAddr, UdpSocket};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::time::Duration;
 
 const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
@@ -73,4 +76,38 @@ impl RenetConnectionConfig {
             fragment_config,
         }
     }
+}
+
+#[allow(clippy::type_complexity)]
+pub fn udp_transport(socket: UdpSocket) -> (Sender<(SocketAddr, Vec<u8>)>, Receiver<(SocketAddr, Vec<u8>)>) {
+    let (packet_sender, packet_receiver) = channel::<(SocketAddr, Vec<u8>)>();
+    let (transport_sender, transport_receiver) = channel::<(SocketAddr, Vec<u8>)>();
+    socket.set_nonblocking(true).unwrap();
+
+    std::thread::spawn(move || {
+        let mut buffer = vec![0u8; NETCODE_MAX_PACKET_BYTES].into_boxed_slice();
+        loop {
+            match socket.recv_from(&mut buffer) {
+                Ok((len, addr)) => {
+                    if transport_sender.send((addr, buffer[..len].to_vec())).is_err() {
+                        break;
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(_) => break,
+            };
+
+            match packet_receiver.try_recv() {
+                Ok((addr, packet)) => {
+                    if socket.send_to(&packet, addr).is_err() {
+                        break;
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+    });
+
+    (packet_sender, transport_receiver)
 }
