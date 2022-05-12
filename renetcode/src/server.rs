@@ -170,24 +170,29 @@ impl NetcodeServer {
         xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
         data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
     ) -> Result<ServerResult<'a, 's>, NetcodeError> {
+        dbg!();
         if version_info != *NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
         }
 
+        dbg!();
         if protocol_id != self.protocol_id {
             return Err(NetcodeError::InvalidProtocolID);
         }
 
+        dbg!();
         if self.current_time.as_secs() >= expire_timestamp {
             return Err(NetcodeError::Expired);
         }
 
+        dbg!();
         let connect_token = PrivateConnectToken::decode(&data, self.protocol_id, expire_timestamp, &xnonce, &self.connect_key)?;
 
         let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.address));
         if !in_host_list {
             return Err(NetcodeError::NotInHostList);
         }
+        dbg!();
 
         let addr_already_connected = find_client_mut_by_addr(&mut self.clients, addr).is_some();
         let id_already_connected = find_client_mut_by_id(&mut self.clients, connect_token.client_id).is_some();
@@ -196,11 +201,13 @@ impl NetcodeServer {
             return Ok(ServerResult::None);
         }
 
+        dbg!();
         if !self.pending_clients.contains_key(&addr) && self.pending_clients.len() >= NETCODE_MAX_PENDING_CLIENTS {
             // TODO(log): debug
             return Ok(ServerResult::None);
         }
 
+        dbg!();
         let mut mac = [0u8; NETCODE_MAC_BYTES];
         mac.copy_from_slice(&data[NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES..]);
         let connect_token_entry = ConnectTokenEntry {
@@ -214,6 +221,7 @@ impl NetcodeServer {
             return Ok(ServerResult::None);
         }
 
+        dbg!();
         if self.clients.iter().flatten().count() >= self.max_clients {
             self.pending_clients.remove(&addr);
             let packet = Packet::ConnectionDenied;
@@ -235,6 +243,7 @@ impl NetcodeServer {
             &self.challenge_key,
         )?;
 
+        dbg!();
         let len = packet.encode(
             &mut self.out,
             self.protocol_id,
@@ -242,6 +251,7 @@ impl NetcodeServer {
         )?;
         self.global_sequence += 1;
 
+        dbg!();
         let pending = self.pending_clients.entry(addr).or_insert_with(|| Connection {
             confirmed: false,
             sequence: 0,
@@ -260,6 +270,7 @@ impl NetcodeServer {
         pending.last_packet_received_time = self.current_time;
         pending.last_packet_send_time = self.current_time;
 
+        dbg!();
         let packet_to_send = PacketToSend::new(addr, &mut self.out[..len]);
         Ok(ServerResult::PacketToSend(packet_to_send))
     }
@@ -285,7 +296,8 @@ impl NetcodeServer {
     /// [ServerResult].
     pub fn process_packet<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> ServerResult<'a, 's> {
         match self.process_packet_internal(addr, buffer) {
-            Err(_) => {
+            Err(e) => {
+                println!("process packet internal: {:?}", e);
                 // TODO(log): error
                 ServerResult::None
             }
@@ -400,7 +412,10 @@ impl NetcodeServer {
         }
 
         // Handle new client
+        dbg!();
         let (_, packet) = Packet::decode(buffer, self.protocol_id, None, None)?;
+        dbg!();
+
         match packet {
             Packet::ConnectionRequest {
                 data,

@@ -5,8 +5,14 @@ use bevy_renet::{
 };
 use renet::RenetError;
 
-use std::time::SystemTime;
-use std::{collections::HashMap, net::UdpSocket};
+use std::{
+    collections::HashMap,
+    net::{ToSocketAddrs, UdpSocket},
+};
+use std::{
+    net::{Ipv4Addr, SocketAddrV4},
+    time::SystemTime,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -39,9 +45,31 @@ enum ServerMessages {
     PlayerDisconnected { id: u64 },
 }
 
+fn get_local_ipaddress() -> Option<String> {
+    let socket = match UdpSocket::bind("0.0.0.0:0") {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+
+    match socket.connect("8.8.8.8:80") {
+        Ok(()) => (),
+        Err(_) => return None,
+    };
+
+    match socket.local_addr() {
+        Ok(addr) => return Some(addr.ip().to_string()),
+        Err(_) => return None,
+    };
+}
+
 fn new_renet_client() -> RenetClient {
-    let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let server_ip = my_internet_ip::get().unwrap();
+    let port = 42069;
+    let server = format!("{}:{}", server_ip, port);
+    println!("connecting to {:?}", server);
+    let server_addr = server.parse().unwrap();
+    let socket = UdpSocket::bind(("0.0.0.0", 0)).unwrap();
+
     let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
@@ -53,10 +81,36 @@ fn new_renet_client() -> RenetClient {
 }
 
 fn new_renet_server() -> RenetServer {
-    let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let socket = UdpSocket::bind(server_addr).unwrap();
+    let local_addr = get_local_ipaddress().unwrap_or("127.0.0.1".to_owned());
+    let port = 42069;
+
+    match igd::search_gateway(Default::default()) {
+        Err(ref err) => println!("Error: {}", err),
+        Ok(gateway) => {
+            let local_ipv4 = local_addr.parse::<Ipv4Addr>().unwrap();
+            let socket = SocketAddrV4::new(local_ipv4, port);
+
+            match gateway.add_port(igd::PortMappingProtocol::UDP, port, socket, 60, "add_port example") {
+                Err(ref err) => {
+                    println!("There was an error! {}", err);
+                }
+                Ok(()) => {
+                    println!("It worked");
+                }
+            }
+        }
+    }
+
+    let socket = UdpSocket::bind((local_addr, port)).unwrap();
+    socket.set_nonblocking(true).expect("Can't set non-blocking mode");
+    println!("binding to test {:?}", socket);
+
+    use std::net::SocketAddr;
+    let server_ip = my_internet_ip::get().unwrap();
+    let server_socket_ip = SocketAddr::new(server_ip, port);
+    println!("server socket ip: {:?}", server_socket_ip);
     let connection_config = RenetConnectionConfig::default();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, *PRIVATE_KEY);
+    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_socket_ip, *PRIVATE_KEY);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
 }

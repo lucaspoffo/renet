@@ -1,6 +1,7 @@
 mod client;
 mod error;
 mod server;
+mod socket;
 
 pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, ReliableChannelConfig, UnreliableChannelConfig};
 use rechannel::{remote_connection::ConnectionConfig, FragmentConfig};
@@ -10,6 +11,7 @@ pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_D
 pub use client::RenetClient;
 pub use error::RenetError;
 pub use server::{RenetServer, ServerConfig, ServerEvent};
+pub use socket::{RawSocket, Socket};
 
 use std::time::Duration;
 

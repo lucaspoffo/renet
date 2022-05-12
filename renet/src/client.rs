@@ -1,6 +1,6 @@
 use crate::{
     error::{DisconnectionReason, RenetError},
-    RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
+    RenetConnectionConfig, Socket, NUM_DISCONNECT_PACKETS_TO_SEND,
 };
 
 use rechannel::{
@@ -12,36 +12,43 @@ use renetcode::{ConnectToken, NetcodeClient, NetcodeError, PacketToSend, NETCODE
 use log::debug;
 
 use std::io;
-use std::net::UdpSocket;
 use std::time::Duration;
+
+use link_conditioner::{ConditionerConfig, SocketLike};
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
 pub struct RenetClient {
     netcode_client: NetcodeClient,
-    socket: UdpSocket,
+    socket: Socket,
     reliable_connection: RemoteConnection,
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
 impl RenetClient {
-    pub fn new(
+    pub fn new<S: Into<Socket>>(
         current_time: Duration,
-        socket: UdpSocket,
+        socket: S,
         client_id: u64,
         connect_token: ConnectToken,
         config: RenetConnectionConfig,
     ) -> Result<Self, std::io::Error> {
-        socket.set_nonblocking(true)?;
         let reliable_connection = RemoteConnection::new(config.to_connection_config());
         let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
 
+        let socket = socket.into();
+        socket.set_nonblocking(true)?;
+
         Ok(Self {
             buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
-            socket,
+            socket: socket,
             reliable_connection,
             netcode_client,
         })
+    }
+
+    pub fn set_conditions(&mut self, config: Option<ConditionerConfig>) {
+        self.socket.set_conditions(config)
     }
 
     pub fn client_id(&self) -> u64 {

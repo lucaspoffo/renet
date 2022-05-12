@@ -1,5 +1,7 @@
 pub use renet;
 
+use std::net::UdpSocket;
+
 use bevy::{
     ecs::{schedule::ShouldRun, system::Resource},
     prelude::*,

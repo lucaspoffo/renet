@@ -6,6 +6,8 @@ use rechannel::{
 
 use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
+use link_conditioner::SocketLike;
+
 use log::error;
 use std::{
     collections::VecDeque,
@@ -14,13 +16,13 @@ use std::{
     time::Duration,
 };
 
-use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
+use crate::{RenetConnectionConfig, Socket, NUM_DISCONNECT_PACKETS_TO_SEND};
 
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.
 #[derive(Debug)]
 pub struct RenetServer {
-    socket: UdpSocket,
+    socket: Socket,
     reliable_server: RechannelServer<u64>,
     netcode_server: NetcodeServer,
     buffer: Box<[u8]>,
@@ -59,11 +61,11 @@ impl ServerConfig {
 }
 
 impl RenetServer {
-    pub fn new(
+    pub fn new<S: Into<Socket>>(
         current_time: Duration,
         server_config: ServerConfig,
         connection_config: RenetConnectionConfig,
-        socket: UdpSocket,
+        socket: S,
     ) -> Result<Self, std::io::Error> {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
         let reliable_server = RechannelServer::new(connection_config.to_connection_config());
@@ -75,6 +77,7 @@ impl RenetServer {
             server_config.private_key,
         );
 
+        let socket = socket.into();
         socket.set_nonblocking(true)?;
 
         Ok(Self {
@@ -117,8 +120,13 @@ impl RenetServer {
                     let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
                     handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(e),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(e) => {
+                    println!("socket recv from: {:?}", e);
+                    return Err(e);
+                }
             };
         }
 
@@ -202,9 +210,9 @@ impl RenetServer {
     }
 }
 
-fn handle_server_result(
+fn handle_server_result<S: SocketLike>(
     server_result: ServerResult,
-    socket: &UdpSocket,
+    socket: &S,
     reliable_server: &mut RechannelServer<u64>,
     events: &mut VecDeque<ServerEvent>,
 ) -> Result<(), io::Error> {
