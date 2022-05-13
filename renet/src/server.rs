@@ -1,8 +1,5 @@
-use rechannel::{disconnect_packet, error::DisconnectionReason, remote_connection::NetworkInfo, server::RechannelServer};
+use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
 
-use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
-
-use log::error;
 use std::{
     collections::VecDeque,
     io,
@@ -10,7 +7,9 @@ use std::{
     time::Duration,
 };
 
-use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
+use log::error;
+use rechannel::{disconnect_packet, error::DisconnectionReason, remote_connection::NetworkInfo, server::RechannelServer};
+use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.

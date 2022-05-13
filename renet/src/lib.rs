@@ -6,7 +6,6 @@ pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, ReliableChannelC
 pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
 pub use rechannel::remote_connection::NetworkInfo;
 
-use rechannel::{remote_connection::ConnectionConfig, FragmentConfig};
 pub use renetcode::{ConnectToken, NetcodeError};
 pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_USER_DATA_BYTES};
 
@@ -15,6 +14,8 @@ pub use error::RenetError;
 pub use server::{RenetServer, ServerConfig, ServerEvent};
 
 use std::time::Duration;
+
+use rechannel::{remote_connection::ConnectionConfig, FragmentConfig};
 
 const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;
 

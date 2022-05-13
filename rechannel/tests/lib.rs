@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use rechannel::{
     disconnect_packet,
     error::DisconnectionReason,
@@ -70,7 +71,7 @@ fn test_server_reliable_channel() {
     for i in 0..number_messages {
         let message = TestMessage { value: i };
         let message = bincode::options().serialize(&message).unwrap();
-        client.send_message(0, message);
+        client.send_message(0, Bytes::from(message));
     }
 
     loop {

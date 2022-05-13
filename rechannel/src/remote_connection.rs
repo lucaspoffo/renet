@@ -7,6 +7,7 @@ use crate::sequence_buffer::SequenceBuffer;
 use crate::timer::Timer;
 
 use bincode::Options;
+use bytes::Bytes;
 use log::{debug, error};
 
 use std::collections::HashMap;
@@ -159,7 +160,7 @@ impl RemoteConnection {
         channel.can_send_message()
     }
 
-    pub fn send_message(&mut self, channel_id: u8, message: Payload) {
+    pub fn send_message(&mut self, channel_id: u8, message: Bytes) {
         let channel = self.channels.get_mut(&channel_id).expect("invalid channel id");
         channel.send_message(message);
     }

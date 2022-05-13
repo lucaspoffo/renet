@@ -1,8 +1,8 @@
-use rechannel::error::DisconnectionReason as RechannelDisconnectReason;
-use renetcode::DisconnectReason as NetcodeDisconnectReason;
-
 use std::error::Error;
 use std::fmt;
+
+use rechannel::error::DisconnectionReason as RechannelDisconnectReason;
+use renetcode::DisconnectReason as NetcodeDisconnectReason;
 
 /// Enum with possibles errors that can occur.
 #[derive(Debug)]

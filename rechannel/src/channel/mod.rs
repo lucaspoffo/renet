@@ -8,6 +8,8 @@ pub use block::BlockChannelConfig;
 pub use reliable::ReliableChannelConfig;
 pub use unreliable::UnreliableChannelConfig;
 
+use bytes::Bytes;
+
 use crate::{
     channel::{block::BlockChannel, reliable::ReliableChannel, unreliable::UnreliableChannel},
     error::ChannelError,
@@ -47,7 +49,7 @@ pub trait Channel: std::fmt::Debug {
     fn advance_time(&mut self, duration: Duration);
     fn process_messages(&mut self, messages: Vec<Payload>);
     fn process_ack(&mut self, ack: u16);
-    fn send_message(&mut self, payload: Payload);
+    fn send_message(&mut self, payload: Bytes);
     fn receive_message(&mut self) -> Option<Payload>;
     fn can_send_message(&self) -> bool;
     fn error(&self) -> Option<ChannelError>;

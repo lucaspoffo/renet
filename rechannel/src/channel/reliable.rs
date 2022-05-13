@@ -1,19 +1,21 @@
-use crate::error::ChannelError;
-use crate::packet::{ChannelPacketData, Payload};
-use crate::sequence_buffer::SequenceBuffer;
-use crate::timer::Timer;
+use crate::{
+    channel::Channel,
+    error::ChannelError,
+    packet::{ChannelPacketData, Payload},
+    sequence_buffer::SequenceBuffer,
+    timer::Timer,
+};
 
 use bincode::Options;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
-use super::Channel;
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct ReliableMessage {
     id: u16,
-    payload: Payload,
+    payload: Bytes,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -63,7 +65,7 @@ pub(crate) struct ReliableChannel {
 }
 
 impl ReliableMessage {
-    pub fn new(id: u16, payload: Payload) -> Self {
+    pub fn new(id: u16, payload: Bytes) -> Self {
         Self { id, payload }
     }
 }
@@ -232,7 +234,7 @@ impl Channel for ReliableChannel {
         }
     }
 
-    fn send_message(&mut self, payload: Payload) {
+    fn send_message(&mut self, payload: Bytes) {
         if self.error.is_some() {
             return;
         }
@@ -250,7 +252,8 @@ impl Channel for ReliableChannel {
 
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
-        let entry = ReliableMessageSent::new(ReliableMessage::new(message_id, payload), self.config.message_resend_time);
+        let reliable_message = ReliableMessage::new(message_id, payload);
+        let entry = ReliableMessageSent::new(reliable_message, self.config.message_resend_time);
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
@@ -270,7 +273,7 @@ impl Channel for ReliableChannel {
         self.received_message_id = self.received_message_id.wrapping_add(1);
         self.num_messages_received += 1;
 
-        self.messages_received.remove(received_message_id).map(|m| m.payload)
+        self.messages_received.remove(received_message_id).map(|m| m.payload.to_vec())
     }
 
     fn can_send_message(&self) -> bool {
@@ -303,8 +306,8 @@ mod tests {
     }
 
     impl TestMessages {
-        fn serialize(&self) -> Payload {
-            bincode::options().serialize(&self).unwrap()
+        fn serialize(&self) -> Bytes {
+            bincode::options().serialize(&self).unwrap().into()
         }
     }
 
@@ -317,7 +320,7 @@ mod tests {
         assert!(!channel.has_messages_to_send());
         assert_eq!(channel.num_messages_sent, 0);
 
-        channel.send_message(TestMessages::Second(0).serialize());
+        channel.send_message(TestMessages::Second(0).serialize().into());
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 

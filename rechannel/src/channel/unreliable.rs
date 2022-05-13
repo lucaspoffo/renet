@@ -1,10 +1,12 @@
 use crate::{
+    channel::Channel,
     error::ChannelError,
     packet::{ChannelPacketData, Payload},
 };
+
 use std::{collections::VecDeque, time::Duration};
 
-use super::Channel;
+use bytes::Bytes;
 
 /// Configuration for a unreliable and unordered channel.
 /// Messages sent in this channel will behave like a udp packet,
@@ -26,7 +28,7 @@ pub struct UnreliableChannelConfig {
 #[derive(Debug)]
 pub(crate) struct UnreliableChannel {
     config: UnreliableChannelConfig,
-    messages_to_send: VecDeque<Payload>,
+    messages_to_send: VecDeque<Bytes>,
     messages_received: VecDeque<Payload>,
     error: Option<ChannelError>,
 }
@@ -71,7 +73,7 @@ impl Channel for UnreliableChannel {
             }
 
             available_bytes -= message_size;
-            messages.push(message);
+            messages.push(message.to_vec());
         }
 
         if messages.is_empty() {
@@ -106,7 +108,7 @@ impl Channel for UnreliableChannel {
 
     fn process_ack(&mut self, _ack: u16) {}
 
-    fn send_message(&mut self, payload: Payload) {
+    fn send_message(&mut self, payload: Bytes) {
         if self.error.is_some() {
             return;
         }

@@ -6,6 +6,8 @@ use crate::ClientId;
 use std::collections::HashMap;
 use std::time::Duration;
 
+use bytes::Bytes;
+
 #[derive(Debug)]
 pub struct RechannelServer<C: ClientId> {
     connections: HashMap<C, RemoteConnection>,
@@ -67,12 +69,14 @@ impl<C: ClientId> RechannelServer<C> {
     }
 
     pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
+        let message = Bytes::from(message);
         for connection in self.connections.values_mut() {
             connection.send_message(channel_id, message.clone());
         }
     }
 
     pub fn broadcast_message_except(&mut self, except_id: &C, channel_id: u8, message: Vec<u8>) {
+        let message = Bytes::from(message);
         for (connection_id, connection) in self.connections.iter_mut() {
             if except_id == connection_id {
                 continue;
@@ -90,6 +94,7 @@ impl<C: ClientId> RechannelServer<C> {
     }
 
     pub fn send_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) {
+        let message = Bytes::from(message);
         match self.connections.get_mut(connection_id) {
             Some(connection) => connection.send_message(channel_id, message),
             None => log::error!("Tried to send message to disconnected client {:?}", connection_id),

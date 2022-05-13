@@ -6,14 +6,15 @@ use crate::{
 use rechannel::{
     error::RechannelError,
     remote_connection::{NetworkInfo, RemoteConnection},
+    Bytes,
 };
 use renetcode::{ConnectToken, NetcodeClient, NetcodeError, PacketToSend, NETCODE_MAX_PACKET_BYTES};
-
-use log::debug;
 
 use std::io;
 use std::net::UdpSocket;
 use std::time::Duration;
+
+use log::debug;
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
@@ -86,6 +87,7 @@ impl RenetClient {
 
     /// Send a message to the server over a channel.
     pub fn send_message(&mut self, channel_id: u8, message: Vec<u8>) {
+        let message = Bytes::from(message);
         self.reliable_connection.send_message(channel_id, message);
     }
 
