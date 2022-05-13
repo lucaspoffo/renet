@@ -33,20 +33,23 @@ pub enum ServerEvent {
 pub struct ServerConfig {
     /// Maximum numbers of clients that can be connected at a time
     pub max_clients: usize,
-    /// Unique id to this game/application
+    /// Unique identifier to this game/application
+    /// One could use a hash function with the game current version to generate this value.
+    /// So old version would be unable to connect to newer versions.
     pub protocol_id: u64,
-    /// The server address
-    pub server_addr: SocketAddr,
+    /// Publicly available address that clients will try to connect to. This is
+    /// the address used to generate the ConnectToken.
+    pub public_addr: SocketAddr,
     /// Private key used for encryption in the server
     pub private_key: [u8; NETCODE_KEY_BYTES],
 }
 
 impl ServerConfig {
-    pub fn new(max_clients: usize, protocol_id: u64, server_addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
+    pub fn new(max_clients: usize, protocol_id: u64, public_addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
         Self {
             max_clients,
             protocol_id,
-            server_addr,
+            public_addr,
             private_key,
         }
     }
@@ -65,7 +68,7 @@ impl RenetServer {
             current_time,
             server_config.max_clients,
             server_config.protocol_id,
-            server_config.server_addr,
+            server_config.public_addr,
             server_config.private_key,
         );
 

@@ -54,7 +54,7 @@ pub struct NetcodeServer {
     max_clients: usize,
     challenge_sequence: u64,
     challenge_key: [u8; NETCODE_KEY_BYTES],
-    address: SocketAddr,
+    public_address: SocketAddr,
     current_time: Duration,
     global_sequence: u64,
     out: [u8; NETCODE_MAX_PACKET_BYTES],
@@ -77,11 +77,21 @@ pub enum ServerResult<'a, 's> {
 }
 
 impl NetcodeServer {
+    /// Starts a new NetcodeServer.
+    ///
+    /// # Arguments
+    ///
+    /// * `public_address` - publicly available address to which clients will attempt to connect. This is
+    /// the address used to generate the ConnectToken.
+    ///
+    /// * `protocol_id` - unique identifier for this particular game/application.
+    /// You can use a hash function with the current version of the game to generate this value
+    /// so that older versions cannot connect to newer versions.
     pub fn new(
         current_time: Duration,
         max_clients: usize,
         protocol_id: u64,
-        address: SocketAddr,
+        public_address: SocketAddr,
         private_key: [u8; NETCODE_KEY_BYTES],
     ) -> Self {
         if max_clients > NETCODE_MAX_CLIENTS {
@@ -102,7 +112,7 @@ impl NetcodeServer {
             challenge_sequence: 0,
             global_sequence: 0,
             challenge_key,
-            address,
+            public_address,
             current_time,
             out: [0u8; NETCODE_MAX_PACKET_BYTES],
         }
@@ -114,7 +124,7 @@ impl NetcodeServer {
     }
 
     pub fn address(&self) -> SocketAddr {
-        self.address
+        self.public_address
     }
 
     fn find_or_add_connect_token_entry(&mut self, new_entry: ConnectTokenEntry) -> bool {
@@ -183,7 +193,7 @@ impl NetcodeServer {
 
         let connect_token = PrivateConnectToken::decode(&data, self.protocol_id, expire_timestamp, &xnonce, &self.connect_key)?;
 
-        let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.address));
+        let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.public_address));
         if !in_host_list {
             return Err(NetcodeError::NotInHostList);
         }
