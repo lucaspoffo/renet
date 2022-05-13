@@ -1,6 +1,6 @@
 [package]
 name = "bevy_renet"
-version = "0.0.1"
+version = "0.0.2"
 keywords = ["gamedev", "networking"]
 description = "Bevy plugin for the renet crate: Server/Client network library for multiplayer games"
 repository = "https://github.com/lucaspoffo/renet"
@@ -12,7 +12,7 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.7.0", default-features = false }
-renet = { path = "../renet", version = "0.0.6" }
+renet = { path = "../renet", version = "0.0.7" }
 
 [dev-dependencies]
 serde = { version = "1.0", features = [ "derive" ] } 
