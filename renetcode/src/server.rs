@@ -62,7 +62,6 @@ pub struct NetcodeServer {
 
 /// Result from processing an packet in the server
 #[derive(Debug, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)] // TODO: Consider boxing types
 pub enum ServerResult<'a, 's> {
     /// Nothing needs to be done.
     None,
@@ -71,7 +70,7 @@ pub enum ServerResult<'a, 's> {
     /// A payload received from the client.
     Payload(ClientID, &'a [u8]),
     /// A new client has connected
-    ClientConnected(ClientID, [u8; NETCODE_USER_DATA_BYTES], PacketToSend<'s>),
+    ClientConnected(ClientID, Box<[u8; NETCODE_USER_DATA_BYTES]>, PacketToSend<'s>),
     /// The client connection has been terminated.
     // TODO: should we return the user_data also here?
     ClientDisconnected(ClientID, Option<PacketToSend<'s>>),
@@ -391,7 +390,7 @@ impl NetcodeServer {
                             let len = packet.encode(&mut self.out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
                             self.global_sequence += 1;
                             let packet_to_send = PacketToSend::new(addr, &mut self.out[..len]);
-                            return Ok(ServerResult::ClientConnected(client_id, user_data, packet_to_send));
+                            return Ok(ServerResult::ClientConnected(client_id, Box::new(user_data), packet_to_send));
                         }
                     }
                 }
@@ -614,7 +613,7 @@ mod tests {
         match result {
             ServerResult::ClientConnected(r_id, r_data, PacketToSend { packet, .. }) => {
                 assert_eq!(client_id, r_id);
-                assert_eq!(user_data, r_data);
+                assert_eq!(user_data, *r_data);
                 client.process_packet(packet)
             }
             _ => unreachable!(),
