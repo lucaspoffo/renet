@@ -33,8 +33,10 @@ enum ConnectionState {
     Disconnected { reason: DisconnectionReason },
 }
 
+/// Network informations about a connection.
 #[derive(Debug, Default)]
 pub struct NetworkInfo {
+    /// Round-trip Time
     pub rtt: f64,
     pub sent_bandwidth_kbps: f64,
     pub received_bandwidth_kbps: f64,

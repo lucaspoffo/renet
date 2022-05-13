@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt;
 
+/// Possibles reasons for a disconnection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisconnectionReason {
     /// Connection terminated by server
@@ -16,6 +17,7 @@ pub enum DisconnectionReason {
     ChannelError { channel_id: u8, error: ChannelError },
 }
 
+/// Possibles errors that can occur in a channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChannelError {
     /// The reliable channel with given Id is out of sync
