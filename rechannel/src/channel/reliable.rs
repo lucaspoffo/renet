@@ -320,7 +320,7 @@ mod tests {
         assert!(!channel.has_messages_to_send());
         assert_eq!(channel.num_messages_sent, 0);
 
-        channel.send_message(TestMessages::Second(0).serialize().into());
+        channel.send_message(TestMessages::Second(0).serialize());
         assert_eq!(channel.num_messages_sent, 1);
         assert!(channel.receive_message().is_none());
 
@@ -393,8 +393,10 @@ mod tests {
 
     #[test]
     fn resend_message() {
-        let mut config = ReliableChannelConfig::default();
-        config.message_resend_time = Duration::from_millis(100);
+        let config = ReliableChannelConfig {
+            message_resend_time: Duration::from_millis(100),
+            ..Default::default()
+        };
         let mut channel: ReliableChannel = ReliableChannel::new(config);
 
         channel.send_message(TestMessages::First.serialize());

@@ -503,9 +503,9 @@ mod tests {
         let mut channel = BlockChannel::new(BlockChannelConfig::default());
         let first_message = Bytes::from(vec![1, 1, 1, 1]);
         let second_message = Bytes::from(vec![2, 2, 2, 2]);
-        channel.send_message(Bytes::from(first_message.clone()));
+        channel.send_message(first_message.clone());
         // Add second message to queue
-        channel.send_message(Bytes::from(second_message.clone()));
+        channel.send_message(second_message.clone());
 
         // First message
         let block_channel_data = channel.get_messages_to_send(u64::MAX, 0).unwrap();

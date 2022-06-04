@@ -169,8 +169,7 @@ mod tests {
     }
 
     fn count_entries(buffer: &SequenceBuffer<DataStub>) -> usize {
-        let nums: Vec<&u16> = buffer.entry_sequences.iter().flatten().collect();
-        nums.len()
+        buffer.entry_sequences.iter().flatten().count()
     }
 
     #[test]
