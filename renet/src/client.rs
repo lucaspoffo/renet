@@ -4,6 +4,7 @@ use crate::{
 };
 
 use rechannel::{
+    channel::ChannelNetworkInfo,
     error::RechannelError,
     remote_connection::{NetworkInfo, RemoteConnection},
     Bytes,
@@ -96,8 +97,12 @@ impl RenetClient {
         self.reliable_connection.can_send_message(channel_id)
     }
 
-    pub fn network_info(&self) -> &NetworkInfo {
+    pub fn network_info(&self) -> NetworkInfo {
         self.reliable_connection.network_info()
+    }
+
+    pub fn channels_network_info(&self) -> Vec<(u8, ChannelNetworkInfo)> {
+        self.reliable_connection.channels_network_info()
     }
 
     /// Send packets to the server.

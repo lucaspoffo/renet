@@ -2,7 +2,7 @@ mod client;
 mod error;
 mod server;
 
-pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, ReliableChannelConfig, UnreliableChannelConfig};
+pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, ChannelNetworkInfo, ReliableChannelConfig, UnreliableChannelConfig};
 pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
 pub use rechannel::remote_connection::NetworkInfo;
 

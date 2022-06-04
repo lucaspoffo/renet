@@ -24,6 +24,23 @@ pub enum ChannelConfig {
     Block(BlockChannelConfig),
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ChannelNetworkInfo {
+    pub messages_sent: u64,
+    pub messages_received: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+}
+
+impl ChannelNetworkInfo {
+    pub fn reset(&mut self) {
+        self.messages_received = 0;
+        self.messages_sent = 0;
+        self.bytes_received = 0;
+        self.bytes_sent = 0;
+    }
+}
+
 impl ChannelConfig {
     pub(crate) fn new_channel(&self) -> Box<dyn Channel + Send + Sync + 'static> {
         use ChannelConfig::*;
@@ -52,5 +69,6 @@ pub trait Channel: std::fmt::Debug {
     fn send_message(&mut self, payload: Bytes);
     fn receive_message(&mut self) -> Option<Payload>;
     fn can_send_message(&self) -> bool;
+    fn channel_network_info(&self) -> ChannelNetworkInfo;
     fn error(&self) -> Option<ChannelError>;
 }

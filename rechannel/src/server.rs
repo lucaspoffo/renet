@@ -1,3 +1,4 @@
+use crate::channel::ChannelNetworkInfo;
 use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
@@ -43,9 +44,16 @@ impl<C: ClientId> RechannelServer<C> {
         self.disconnections.pop()
     }
 
-    pub fn network_info(&self, connection_id: C) -> Option<&NetworkInfo> {
+    pub fn network_info(&self, connection_id: C) -> Option<NetworkInfo> {
         if let Some(connection) = self.connections.get(&connection_id) {
             return Some(connection.network_info());
+        }
+        None
+    }
+
+    pub fn channels_network_info(&self, connection_id: C) -> Option<Vec<(u8, ChannelNetworkInfo)>> {
+        if let Some(connection) = self.connections.get(&connection_id) {
+            return Some(connection.channels_network_info());
         }
         None
     }

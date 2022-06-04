@@ -1,4 +1,4 @@
-use crate::channel::{Channel, ChannelConfig};
+use crate::channel::{Channel, ChannelConfig, ChannelNetworkInfo};
 use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::{HeartBeat, Normal, Packet, Payload};
 
@@ -34,7 +34,7 @@ enum ConnectionState {
 }
 
 /// Network informations about a connection.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct NetworkInfo {
     /// Round-trip Time
     pub rtt: f64,
@@ -131,8 +131,15 @@ impl RemoteConnection {
         }
     }
 
-    pub fn network_info(&self) -> &NetworkInfo {
-        &self.network_info
+    pub fn network_info(&self) -> NetworkInfo {
+        self.network_info
+    }
+
+    pub fn channels_network_info(&self) -> Vec<(u8, ChannelNetworkInfo)> {
+        self.channels
+            .iter()
+            .map(|(channel_id, channel)| (*channel_id, channel.channel_network_info()))
+            .collect()
     }
 
     pub fn is_connected(&self) -> bool {

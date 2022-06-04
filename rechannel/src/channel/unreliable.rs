@@ -8,6 +8,8 @@ use std::{collections::VecDeque, time::Duration};
 
 use bytes::Bytes;
 
+use super::ChannelNetworkInfo;
+
 /// Configuration for a unreliable and unordered channel.
 /// Messages sent in this channel will behave like a udp packet,
 /// can be lost and arrive in an different order that they were sent.
@@ -30,6 +32,7 @@ pub(crate) struct UnreliableChannel {
     config: UnreliableChannelConfig,
     messages_to_send: VecDeque<Bytes>,
     messages_received: VecDeque<Payload>,
+    info: ChannelNetworkInfo,
     error: Option<ChannelError>,
 }
 
@@ -51,6 +54,7 @@ impl UnreliableChannel {
             messages_to_send: VecDeque::with_capacity(config.message_send_queue_size),
             messages_received: VecDeque::with_capacity(config.message_receive_queue_size),
             config,
+            info: ChannelNetworkInfo::default(),
             error: None,
         }
     }
@@ -73,6 +77,8 @@ impl Channel for UnreliableChannel {
             }
 
             available_bytes -= message_size;
+            self.info.messages_sent += 1;
+            self.info.bytes_sent += message_size;
             messages.push(message.to_vec());
         }
 
@@ -86,7 +92,9 @@ impl Channel for UnreliableChannel {
         })
     }
 
-    fn advance_time(&mut self, _duration: Duration) {}
+    fn advance_time(&mut self, _duration: Duration) {
+        self.info.reset();
+    }
 
     fn process_messages(&mut self, mut messages: Vec<Payload>) {
         if self.error.is_some() {
@@ -102,6 +110,8 @@ impl Channel for UnreliableChannel {
                 );
                 return;
             }
+            self.info.messages_received += 1;
+            self.info.bytes_received += message.len() as u64;
             self.messages_received.push_back(message);
         }
     }
@@ -137,6 +147,10 @@ impl Channel for UnreliableChannel {
 
     fn can_send_message(&self) -> bool {
         self.messages_to_send.len() < self.config.message_send_queue_size
+    }
+
+    fn channel_network_info(&self) -> ChannelNetworkInfo {
+        self.info
     }
 
     fn error(&self) -> Option<ChannelError> {

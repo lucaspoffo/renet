@@ -8,7 +8,9 @@ use std::{
 };
 
 use log::error;
-use rechannel::{disconnect_packet, error::DisconnectionReason, remote_connection::NetworkInfo, server::RechannelServer};
+use rechannel::{
+    channel::ChannelNetworkInfo, disconnect_packet, error::DisconnectionReason, remote_connection::NetworkInfo, server::RechannelServer,
+};
 use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 /// A server that can establish authenticated connections with multiple clients.
@@ -107,12 +109,15 @@ impl RenetServer {
     }
 
     /// Returns the client's network info if the client exits.
-    pub fn network_info(&self, client_id: u64) -> Option<&NetworkInfo> {
+    pub fn network_info(&self, client_id: u64) -> Option<NetworkInfo> {
         self.reliable_server.network_info(client_id)
     }
 
     /// Advances the server by duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
+        self.reliable_server.update_connections(duration);
+        self.netcode_server.update(duration);
+
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
@@ -123,9 +128,6 @@ impl RenetServer {
                 Err(e) => return Err(e),
             };
         }
-
-        self.reliable_server.update_connections(duration);
-        self.netcode_server.update(duration);
 
         for client_id in self.netcode_server.clients_id().into_iter() {
             let server_result = self.netcode_server.update_client(client_id);
@@ -206,6 +208,10 @@ impl RenetServer {
     /// Returns all the connected clients id.
     pub fn clients_id(&self) -> Vec<u64> {
         self.netcode_server.clients_id()
+    }
+
+    pub fn channels_network_info(&self, client_id: u64) -> Option<Vec<(u8, ChannelNetworkInfo)>> {
+        self.reliable_server.channels_network_info(client_id)
     }
 }
 

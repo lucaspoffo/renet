@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
+use super::ChannelNetworkInfo;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct ReliableMessage {
     id: u16,
@@ -61,6 +63,7 @@ pub(crate) struct ReliableChannel {
     num_messages_sent: u64,
     num_messages_received: u64,
     oldest_unacked_message_id: u16,
+    info: ChannelNetworkInfo,
     error: Option<ChannelError>,
 }
 
@@ -112,6 +115,7 @@ impl ReliableChannel {
             num_messages_sent: 0,
             oldest_unacked_message_id: 0,
             config,
+            info: ChannelNetworkInfo::default(),
             error: None,
         }
     }
@@ -131,6 +135,7 @@ impl ReliableChannel {
 
 impl Channel for ReliableChannel {
     fn advance_time(&mut self, duration: Duration) {
+        self.info.reset();
         let message_limit = self.config.message_send_queue_size;
         for i in 0..message_limit {
             let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
@@ -171,6 +176,8 @@ impl Channel for ReliableChannel {
                     available_bytes -= serialized_size;
                     message_send.resend_timer.reset();
                     message_ids.push(message_id);
+                    self.info.messages_sent += 1;
+                    self.info.bytes_sent += serialized_size;
                     let message = match bincode::options().serialize(&message_send.reliable_message) {
                         Ok(message) => message,
                         Err(e) => {
@@ -203,6 +210,8 @@ impl Channel for ReliableChannel {
         }
 
         for message in messages.iter() {
+            self.info.bytes_received += message.len() as u64;
+            self.info.messages_received += 1;
             match bincode::options().deserialize::<ReliableMessage>(message) {
                 Ok(message) => {
                     if !self.messages_received.exists(message.id) {
@@ -278,6 +287,10 @@ impl Channel for ReliableChannel {
 
     fn can_send_message(&self) -> bool {
         self.messages_send.available(self.send_message_id)
+    }
+
+    fn channel_network_info(&self) -> ChannelNetworkInfo {
+        self.info
     }
 
     fn error(&self) -> Option<ChannelError> {

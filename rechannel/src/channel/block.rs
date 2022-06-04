@@ -12,7 +12,7 @@ use crate::{
 };
 use log::{error, info};
 
-use super::Channel;
+use super::{Channel, ChannelNetworkInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SliceMessage {
@@ -82,6 +82,7 @@ pub(crate) struct BlockChannel {
     messages_received: VecDeque<Payload>,
     messages_to_send: VecDeque<Bytes>,
     message_send_queue_size: usize,
+    info: ChannelNetworkInfo,
     error: Option<ChannelError>,
 }
 
@@ -331,6 +332,7 @@ impl BlockChannel {
             messages_received: VecDeque::new(),
             messages_to_send: VecDeque::with_capacity(config.message_send_queue_size),
             message_send_queue_size: config.message_send_queue_size,
+            info: ChannelNetworkInfo::default(),
             error: None,
         }
     }
@@ -363,6 +365,8 @@ impl Channel for BlockChannel {
             let slice_id = message.slice_id;
             match bincode::options().serialize(message) {
                 Ok(message) => {
+                    self.info.messages_sent += 1;
+                    self.info.bytes_sent += message.len() as u64;
                     slice_ids.push(slice_id);
                     messages.push(message);
                 }
@@ -437,6 +441,10 @@ impl Channel for BlockChannel {
 
     fn can_send_message(&self) -> bool {
         self.messages_to_send.len() < self.message_send_queue_size
+    }
+
+    fn channel_network_info(&self) -> ChannelNetworkInfo {
+        self.info
     }
 
     fn error(&self) -> Option<ChannelError> {
