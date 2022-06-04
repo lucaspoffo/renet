@@ -206,7 +206,7 @@ impl ChatApp {
 
                 if let AppState::ClientChat { client, .. } = state {
                     ui.separator();
-                    draw_network_info(ui, client.network_info());
+                    draw_network_info(ui, &client.network_info());
                 }
 
                 let exit = ui.with_layout(Layout::bottom_up(eframe::emath::Align::Center).with_cross_justify(true), |ui| {
@@ -403,7 +403,7 @@ fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
             ui.horizontal(|ui| {
                 ui.label(format!("Client {}", client_id)).on_hover_ui(|ui| {
                     let network_info = chat_server.server.network_info(client_id).unwrap();
-                    draw_network_info(ui, network_info);
+                    draw_network_info(ui, &network_info);
                 });
                 if ui.button("X").on_hover_text("Disconnect client").clicked() {
                     chat_server.server.disconnect(client_id);
