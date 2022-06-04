@@ -24,7 +24,7 @@ impl ChatServer {
             channels_config: channels_config(),
             ..Default::default()
         };
-        let server_config = ServerConfig::new(64, 0, addr, *private_key);
+        let server_config = ServerConfig::new(64, 0, *private_key);
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
         let mut usernames = HashMap::new();

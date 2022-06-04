@@ -37,19 +37,15 @@ pub struct ServerConfig {
     /// One could use a hash function with the game current version to generate this value.
     /// So old version would be unable to connect to newer versions.
     pub protocol_id: u64,
-    /// Publicly available address that clients will try to connect to. This is
-    /// the address used to generate the ConnectToken.
-    pub public_addr: SocketAddr,
     /// Private key used for encryption in the server
     pub private_key: [u8; NETCODE_KEY_BYTES],
 }
 
 impl ServerConfig {
-    pub fn new(max_clients: usize, protocol_id: u64, public_addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
+    pub fn new(max_clients: usize, protocol_id: u64, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
         Self {
             max_clients,
             protocol_id,
-            public_addr,
             private_key,
         }
     }
@@ -68,7 +64,7 @@ impl RenetServer {
             current_time,
             server_config.max_clients,
             server_config.protocol_id,
-            server_config.public_addr,
+            socket.local_addr()?,
             server_config.private_key,
         );
 
