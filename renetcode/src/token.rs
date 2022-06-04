@@ -362,7 +362,7 @@ mod tests {
         let xnonce = generate_random_bytes();
         token.encode(&mut buffer, protocol_id, expire_timestamp, &xnonce, key).unwrap();
 
-        let result = PrivateConnectToken::decode(&mut buffer, protocol_id, expire_timestamp, &xnonce, key).unwrap();
+        let result = PrivateConnectToken::decode(&buffer, protocol_id, expire_timestamp, &xnonce, key).unwrap();
         assert_eq!(token, result);
     }
 
