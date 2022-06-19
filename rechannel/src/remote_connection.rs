@@ -8,23 +8,15 @@ use crate::timer::Timer;
 
 use bincode::Options;
 use bytes::Bytes;
-use log::{debug, error};
+use log::error;
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 struct SentPacket {
-    // TODO: replace with Duration
-    time: Instant,
+    time: Duration,
     ack: bool,
-    size_bytes: usize,
-}
-
-#[derive(Debug, Clone)]
-struct ReceivedPacket {
-    time: Instant,
-    size_bytes: usize,
 }
 
 #[derive(Debug)]
@@ -33,22 +25,13 @@ enum ConnectionState {
     Disconnected { reason: DisconnectionReason },
 }
 
-/// Network informations about a connection.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NetworkInfo {
-    /// Round-trip Time
-    pub rtt: f64,
-    pub sent_bandwidth_kbps: f64,
-    pub received_bandwidth_kbps: f64,
-    pub packet_loss: f64,
-}
-
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
     pub max_packet_size: u64,
     pub sent_packets_buffer_size: usize,
     pub received_packets_buffer_size: usize,
-    pub measure_smoothing_factor: f64,
+    pub rtt_smoothing_factor: f32,
+    pub packet_loss_smoothing_factor: f32,
     pub heartbeat_time: Duration,
     pub fragment_config: FragmentConfig,
     pub channels_config: Vec<ChannelConfig>,
@@ -63,24 +46,16 @@ pub struct RemoteConnection {
     config: ConnectionConfig,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
     sent_buffer: SequenceBuffer<SentPacket>,
-    received_buffer: SequenceBuffer<ReceivedPacket>,
-    network_info: NetworkInfo,
+    received_buffer: SequenceBuffer<()>,
+    current_time: Duration,
+    rtt: f32,
+    packet_loss: f32,
     acks: Vec<u16>,
 }
 
 impl SentPacket {
-    fn new(time: Instant, size_bytes: usize) -> Self {
-        Self {
-            time,
-            size_bytes,
-            ack: false,
-        }
-    }
-}
-
-impl ReceivedPacket {
-    fn new(time: Instant, size_bytes: usize) -> Self {
-        Self { time, size_bytes }
+    fn new(time: Duration) -> Self {
+        Self { time, ack: false }
     }
 }
 
@@ -90,8 +65,9 @@ impl Default for ConnectionConfig {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
-            measure_smoothing_factor: 0.1,
-            heartbeat_time: Duration::from_millis(200),
+            rtt_smoothing_factor: 0.0025,
+            packet_loss_smoothing_factor: 0.1,
+            heartbeat_time: Duration::from_millis(100),
             fragment_config: FragmentConfig::default(),
             channels_config: vec![
                 ChannelConfig::Reliable(Default::default()),
@@ -103,7 +79,7 @@ impl Default for ConnectionConfig {
 }
 
 impl RemoteConnection {
-    pub fn new(config: ConnectionConfig) -> Self {
+    pub fn new(current_time: Duration, config: ConnectionConfig) -> Self {
         let heartbeat_timer = Timer::new(config.heartbeat_time);
         let reassembly_buffer = SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
@@ -125,14 +101,20 @@ impl RemoteConnection {
             reassembly_buffer,
             sent_buffer,
             received_buffer,
+            current_time,
             config,
-            network_info: NetworkInfo::default(),
+            rtt: 0.0,
+            packet_loss: 0.0,
             acks: vec![],
         }
     }
 
-    pub fn network_info(&self) -> NetworkInfo {
-        self.network_info
+    pub fn rtt(&self) -> f32 {
+        self.rtt
+    }
+
+    pub fn packet_loss(&self) -> f32 {
+        self.packet_loss
     }
 
     pub fn channels_network_info(&self) -> Vec<(u8, ChannelNetworkInfo)> {
@@ -180,6 +162,7 @@ impl RemoteConnection {
     }
 
     pub fn advance_time(&mut self, duration: Duration) {
+        self.current_time += duration;
         self.heartbeat_timer.advance(duration);
         for channel in self.channels.values_mut() {
             channel.advance_time(duration);
@@ -205,8 +188,7 @@ impl RemoteConnection {
             }
         }
 
-        self.update_sent_bandwidth();
-        self.update_received_bandwidth();
+        self.update_packet_loss();
 
         Ok(())
     }
@@ -216,7 +198,6 @@ impl RemoteConnection {
             return Err(RechannelError::ClientDisconnected(reason));
         }
 
-        let received_bytes = packet.len();
         let packet: Packet = bincode::options().deserialize(packet)?;
 
         let channels_packet_data = match packet {
@@ -225,17 +206,13 @@ impl RemoteConnection {
                 ack_data,
                 channels_packet_data,
             }) => {
-                let received_packet = ReceivedPacket::new(Instant::now(), received_bytes);
-                self.received_buffer.insert(sequence, received_packet);
+                self.received_buffer.insert(sequence, ());
                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
                 channels_packet_data
             }
             Packet::Fragment(fragment) => {
-                if let Some(received_packet) = self.received_buffer.get_mut(fragment.sequence) {
-                    received_packet.size_bytes += received_bytes;
-                } else {
-                    let received_packet = ReceivedPacket::new(Instant::now(), received_bytes);
-                    self.received_buffer.insert(fragment.sequence, received_packet);
+                if self.received_buffer.get_mut(fragment.sequence).is_none() {
+                    self.received_buffer.insert(fragment.sequence, ());
                 }
 
                 self.update_acket_packets(fragment.ack_data.ack, fragment.ack_data.ack_bits);
@@ -250,7 +227,6 @@ impl RemoteConnection {
             Packet::Disconnect(reason) => {
                 self.state = ConnectionState::Disconnected { reason };
                 return Ok(());
-                //return Err(RechannelError::ClientDisconnected(reason));
             }
         };
 
@@ -292,7 +268,7 @@ impl RemoteConnection {
             let packet_size = bincode::options().serialized_size(&channels_packet_data)?;
             let ack_data = self.received_buffer.ack_data();
 
-            let sent_packet = SentPacket::new(Instant::now(), packet_size as usize);
+            let sent_packet = SentPacket::new(self.current_time);
             self.sent_buffer.insert(sequence, sent_packet);
 
             let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above as u64 {
@@ -324,20 +300,19 @@ impl RemoteConnection {
 
     fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {
         let mut ack_bits = ack_bits;
-        let now = Instant::now();
         for i in 0..32 {
             if ack_bits & 1 != 0 {
                 let ack_sequence = ack.wrapping_sub(i);
                 if let Some(ref mut sent_packet) = self.sent_buffer.get_mut(ack_sequence) {
                     if !sent_packet.ack {
-                        debug!("Acked packet {}", ack_sequence);
                         self.acks.push(ack_sequence);
                         sent_packet.ack = true;
-                        let rtt = (now - sent_packet.time).as_secs_f64();
-                        if self.network_info.rtt == 0.0 && rtt > 0.0 || f64::abs(self.network_info.rtt - rtt) < 0.00001 {
-                            self.network_info.rtt = rtt;
+                        let rtt = (self.current_time - sent_packet.time).as_secs_f32() * 1000.;
+
+                        if self.rtt == 0.0 || self.rtt < f32::EPSILON {
+                            self.rtt = rtt;
                         } else {
-                            self.network_info.rtt += (rtt - self.network_info.rtt) * self.config.measure_smoothing_factor;
+                            self.rtt += (rtt - self.rtt) * self.config.rtt_smoothing_factor;
                         }
                     }
                 }
@@ -346,85 +321,25 @@ impl RemoteConnection {
         }
     }
 
-    fn update_sent_bandwidth(&mut self) {
-        let sample_size = self.config.sent_packets_buffer_size / 4;
+    fn update_packet_loss(&mut self) {
+        let sample_size = self.config.sent_packets_buffer_size;
         let base_sequence = self.sent_buffer.sequence().wrapping_sub(sample_size as u16);
 
         let mut packets_dropped = 0;
-        let mut bytes_sent = 0;
-        let mut start_time = Instant::now();
-        let mut end_time = Instant::now() - Duration::from_secs(100);
         for i in 0..sample_size {
             if let Some(sent_packet) = self.sent_buffer.get(base_sequence.wrapping_add(i as u16)) {
-                if sent_packet.size_bytes == 0 {
-                    // Only Default Packets have size 0
-                    continue;
-                }
-                bytes_sent += sent_packet.size_bytes;
-                if sent_packet.time < start_time {
-                    start_time = sent_packet.time;
-                }
-                if sent_packet.time > end_time {
-                    end_time = sent_packet.time;
-                }
-                // FIXME: check against RTT to see if it has actually dropped
-                if !sent_packet.ack {
+                let secs_since_sent = (self.current_time - sent_packet.time).as_secs_f32();
+                if !sent_packet.ack && secs_since_sent > self.rtt * 1.5 {
                     packets_dropped += 1;
                 }
             }
         }
 
-        // Calculate packet loss
-        let packet_loss = packets_dropped as f64 / sample_size as f64 * 100.0;
-        if f64::abs(self.network_info.packet_loss - packet_loss) > 0.0001 {
-            self.network_info.packet_loss += (packet_loss - self.network_info.packet_loss) * self.config.measure_smoothing_factor;
+        let packet_loss = packets_dropped as f32 / sample_size as f32;
+        if self.packet_loss == 0.0 || self.packet_loss < f32::EPSILON {
+            self.packet_loss = packet_loss;
         } else {
-            self.network_info.packet_loss = packet_loss;
-        }
-
-        // Calculate sent bandwidth
-        if end_time <= start_time {
-            return;
-        }
-
-        let sent_bandwidth_kbps = bytes_sent as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
-        if f64::abs(self.network_info.sent_bandwidth_kbps - sent_bandwidth_kbps) > 0.0001 {
-            self.network_info.sent_bandwidth_kbps +=
-                (sent_bandwidth_kbps - self.network_info.sent_bandwidth_kbps) * self.config.measure_smoothing_factor;
-        } else {
-            self.network_info.sent_bandwidth_kbps = sent_bandwidth_kbps;
-        }
-    }
-
-    fn update_received_bandwidth(&mut self) {
-        let sample_size = self.config.received_packets_buffer_size / 4;
-        let base_sequence = self.received_buffer.sequence().wrapping_sub(sample_size as u16 - 1);
-
-        let mut bytes_received = 0;
-        let mut start_time = Instant::now();
-        let mut end_time = Instant::now() - Duration::from_secs(100);
-        for i in 0..sample_size {
-            if let Some(received_packet) = self.received_buffer.get_mut(base_sequence.wrapping_add(i as u16)) {
-                bytes_received += received_packet.size_bytes;
-                if received_packet.time < start_time {
-                    start_time = received_packet.time;
-                }
-                if received_packet.time > end_time {
-                    end_time = received_packet.time;
-                }
-            }
-        }
-
-        if end_time <= start_time {
-            return;
-        }
-
-        let received_bandwidth_kbps = bytes_received as f64 / (end_time - start_time).as_secs_f64() * 8.0 / 1000.0;
-        if f64::abs(self.network_info.received_bandwidth_kbps - received_bandwidth_kbps) > 0.0001 {
-            self.network_info.received_bandwidth_kbps +=
-                (received_bandwidth_kbps - self.network_info.received_bandwidth_kbps) * self.config.measure_smoothing_factor;
-        } else {
-            self.network_info.received_bandwidth_kbps = received_bandwidth_kbps;
+            self.packet_loss += (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
         }
     }
 }

@@ -24,7 +24,7 @@ pub enum ChannelConfig {
     Block(BlockChannelConfig),
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelNetworkInfo {
     pub messages_sent: u64,
     pub messages_received: u64,

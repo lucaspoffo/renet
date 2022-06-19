@@ -1,7 +1,7 @@
 use crate::channel::ChannelNetworkInfo;
 use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::Payload;
-use crate::remote_connection::{ConnectionConfig, NetworkInfo, RemoteConnection};
+use crate::remote_connection::{ConnectionConfig, RemoteConnection};
 use crate::ClientId;
 
 use std::collections::HashMap;
@@ -11,14 +11,16 @@ use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct RechannelServer<C: ClientId> {
+    current_time: Duration,
     connections: HashMap<C, RemoteConnection>,
     connection_config: ConnectionConfig,
     disconnections: Vec<(C, DisconnectionReason)>,
 }
 
 impl<C: ClientId> RechannelServer<C> {
-    pub fn new(connection_config: ConnectionConfig) -> Self {
+    pub fn new(current_time: Duration, connection_config: ConnectionConfig) -> Self {
         Self {
+            current_time,
             connections: HashMap::new(),
             connection_config,
             disconnections: Vec::new(),
@@ -31,7 +33,7 @@ impl<C: ClientId> RechannelServer<C> {
             return;
         }
 
-        let connection = RemoteConnection::new(self.connection_config.clone());
+        let connection = RemoteConnection::new(self.current_time, self.connection_config.clone());
         self.connections.insert(*connection_id, connection);
     }
 
@@ -44,18 +46,25 @@ impl<C: ClientId> RechannelServer<C> {
         self.disconnections.pop()
     }
 
-    pub fn network_info(&self, connection_id: C) -> Option<NetworkInfo> {
-        if let Some(connection) = self.connections.get(&connection_id) {
-            return Some(connection.network_info());
+    pub fn client_rtt(&self, connection_id: C) -> f32 {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.rtt(),
+            None => 0.0,
         }
-        None
     }
 
-    pub fn channels_network_info(&self, connection_id: C) -> Option<Vec<(u8, ChannelNetworkInfo)>> {
-        if let Some(connection) = self.connections.get(&connection_id) {
-            return Some(connection.channels_network_info());
+    pub fn client_packet_loss(&self, connection_id: C) -> f32 {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.packet_loss(),
+            None => 0.0,
         }
-        None
+    }
+
+    pub fn channels_network_info(&self, connection_id: C) -> Vec<(u8, ChannelNetworkInfo)> {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.channels_network_info(),
+            None => Vec::with_capacity(0),
+        }
     }
 
     /// Similar to disconnect but does not emit an event
