@@ -6,6 +6,7 @@ use std::{
 };
 
 use renet::{RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_KEY_BYTES};
+use renet_visualizer::{RenetServerVisualizer, RenetVisualizerStyle};
 
 use crate::{channels_config, Channels, ClientMessages, Message, ServerMessages, Username};
 use bincode::Options;
@@ -15,6 +16,7 @@ pub struct ChatServer {
     pub server: RenetServer,
     pub usernames: HashMap<u64, String>,
     pub messages: Vec<Message>,
+    pub visualizer: RenetServerVisualizer<240>,
 }
 
 impl ChatServer {
@@ -34,15 +36,18 @@ impl ChatServer {
             server,
             usernames,
             messages: vec![],
+            visualizer: RenetServerVisualizer::new(RenetVisualizerStyle::default()),
         }
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
         self.server.update(duration).unwrap();
+        self.visualizer.update(&self.server);
 
         while let Some(event) = self.server.get_event() {
             match event {
                 ServerEvent::ClientConnected(client_id, user_data) => {
+                    self.visualizer.add_client(client_id);
                     let username = Username::from_user_data(&user_data).0;
                     self.usernames.insert(client_id, username.clone());
                     let message = bincode::options()
@@ -56,6 +61,7 @@ impl ChatServer {
                     self.server.send_message(client_id, Channels::Reliable.id(), init_message);
                 }
                 ServerEvent::ClientDisconnected(client_id) => {
+                    self.visualizer.remove_client(client_id);
                     self.usernames.remove(&client_id);
                     let message = bincode::options()
                         .serialize(&ServerMessages::ClientDisconnected { client_id })

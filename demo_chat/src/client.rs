@@ -5,6 +5,7 @@ use eframe::{
 };
 use log::error;
 use renet::{ConnectToken, NetworkInfo, RenetClient, RenetConnectionConfig, NETCODE_KEY_BYTES};
+use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 
 use std::{
     collections::HashMap,
@@ -21,6 +22,7 @@ enum AppState {
         client: Box<RenetClient>,
         usernames: HashMap<u64, String>,
         messages: Vec<Message>,
+        visualizer: RenetClientVisualizer<240>,
     },
     HostChat {
         chat_server: Box<ChatServer>,
@@ -35,6 +37,7 @@ pub struct ChatApp {
     connection_error: Option<String>,
     text_input: String,
     last_updated: Instant,
+    show_network_info: bool,
 }
 
 impl Default for AppState {
@@ -53,6 +56,7 @@ impl Default for ChatApp {
             connection_error: None,
             text_input: String::new(),
             last_updated: Instant::now(),
+            show_network_info: false,
         }
     }
 }
@@ -111,6 +115,7 @@ impl ChatApp {
                                             let client = create_renet_client(username.clone(), server_addr, &key);
 
                                             *state = AppState::ClientChat {
+                                                visualizer: RenetClientVisualizer::new(RenetVisualizerStyle::default()),
                                                 client: Box::new(client),
                                                 messages: vec![],
                                                 usernames: HashMap::new(),
@@ -173,7 +178,12 @@ impl ChatApp {
     }
 
     fn draw_chat(&mut self, ctx: &egui::Context) {
-        let Self { text_input, state, .. } = self;
+        let Self {
+            text_input,
+            state,
+            show_network_info,
+            ..
+        } = self;
 
         let usernames = match state {
             AppState::HostChat { chat_server: server } => server.usernames.clone(),
@@ -181,15 +191,26 @@ impl ChatApp {
             _ => unreachable!(),
         };
 
+        if *show_network_info {
+            match state {
+                AppState::ClientChat { visualizer, .. } => {
+                    visualizer.show_window(ctx);
+                }
+                AppState::HostChat { ref mut chat_server } => {
+                    chat_server.visualizer.show_window(ctx);
+                }
+                _ => {}
+            }
+        }
+
         let exit = egui::SidePanel::right("right_panel")
             .min_width(200.0)
             .default_width(200.0)
             .show(ctx, |ui| {
-                if let AppState::HostChat {
-                    chat_server: ref mut server,
-                } = state
-                {
-                    draw_host_commands(ui, server);
+                ui.checkbox(show_network_info, "Show Network Graphs");
+
+                if let AppState::HostChat { ref mut chat_server } = state {
+                    draw_host_commands(ui, chat_server);
                 }
 
                 ui.vertical_centered(|ui| {
@@ -203,11 +224,6 @@ impl ChatApp {
                         ui.label(username);
                     }
                 });
-
-                if let AppState::ClientChat { client, .. } = state {
-                    ui.separator();
-                    draw_network_info(ui, &client.network_info());
-                }
 
                 let exit = ui.with_layout(Layout::bottom_up(eframe::emath::Align::Center).with_cross_justify(true), |ui| {
                     ui.button("Exit").clicked()
@@ -253,7 +269,6 @@ impl ChatApp {
                     }
                     AppState::ClientChat { client, .. } => {
                         let message = bincode::options().serialize(&ClientMessages::Text(text_input.clone())).unwrap();
-                        println!("sending message with {} bytes", message.len());
                         client.send_message(Channels::Reliable.id(), message);
                     }
                     _ => unreachable!(),
@@ -297,6 +312,7 @@ impl ChatApp {
                 client,
                 usernames,
                 messages,
+                visualizer,
             } => {
                 if let Err(e) = client.update(duration) {
                     error!("{}", e);
@@ -305,6 +321,8 @@ impl ChatApp {
                     self.state = AppState::MainScreen;
                     self.connection_error = Some(e.to_string());
                 } else {
+                    visualizer.add_network_info(client.network_info());
+
                     while let Some(message) = client.receive_message(Channels::Reliable.id()) {
                         let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                         match message {
@@ -374,9 +392,9 @@ fn create_renet_client(username: String, server_addr: SocketAddr, private_key: &
 fn draw_network_info(ui: &mut Ui, network_info: &NetworkInfo) {
     ui.vertical(|ui| {
         ui.heading("Network info");
-        ui.label(format!("RTT: {:.2} ms", network_info.rtt * 1000.));
-        ui.label(format!("Sent Kbps: {:.2}", network_info.sent_bandwidth_kbps));
-        ui.label(format!("Received Kbps: {:.2}", network_info.received_bandwidth_kbps));
+        ui.label(format!("RTT: {:.2} ms", network_info.rtt));
+        ui.label(format!("Sent Kbps: {:.2}", network_info.sent_kbps));
+        ui.label(format!("Received Kbps: {:.2}", network_info.received_kbps));
         ui.label(format!("Packet Loss: {:.2}%", network_info.packet_loss * 100.));
     });
 }
