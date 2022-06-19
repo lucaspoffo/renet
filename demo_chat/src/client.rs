@@ -22,7 +22,7 @@ enum AppState {
         client: Box<RenetClient>,
         usernames: HashMap<u64, String>,
         messages: Vec<Message>,
-        visualizer: RenetClientVisualizer<240>,
+        visualizer: Box<RenetClientVisualizer<240>>,
     },
     HostChat {
         chat_server: Box<ChatServer>,
@@ -115,7 +115,7 @@ impl ChatApp {
                                             let client = create_renet_client(username.clone(), server_addr, &key);
 
                                             *state = AppState::ClientChat {
-                                                visualizer: RenetClientVisualizer::new(RenetVisualizerStyle::default()),
+                                                visualizer: Box::new(RenetClientVisualizer::new(RenetVisualizerStyle::default())),
                                                 client: Box::new(client),
                                                 messages: vec![],
                                                 usernames: HashMap::new(),
