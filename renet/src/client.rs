@@ -1,29 +1,26 @@
 use crate::{
     error::{DisconnectionReason, RenetError},
+    network_info::{ClientPacketInfo, NetworkInfo, PacketInfo},
     RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
 };
 
-use rechannel::{
-    channel::ChannelNetworkInfo,
-    error::RechannelError,
-    remote_connection::{NetworkInfo, RemoteConnection},
-    Bytes,
-};
-use renetcode::{ConnectToken, NetcodeClient, NetcodeError, PacketToSend, NETCODE_MAX_PACKET_BYTES};
+use log::debug;
+use rechannel::{channel::ChannelNetworkInfo, error::RechannelError, remote_connection::RemoteConnection, Bytes};
+use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
-use std::io;
 use std::net::UdpSocket;
 use std::time::Duration;
-
-use log::debug;
+use std::{io, net::SocketAddr};
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
 pub struct RenetClient {
+    current_time: Duration,
     netcode_client: NetcodeClient,
     socket: UdpSocket,
     reliable_connection: RemoteConnection,
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
+    client_packet_info: ClientPacketInfo,
 }
 
 impl RenetClient {
@@ -35,14 +32,17 @@ impl RenetClient {
         config: RenetConnectionConfig,
     ) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
-        let reliable_connection = RemoteConnection::new(config.to_connection_config());
+        let reliable_connection = RemoteConnection::new(current_time, config.to_connection_config());
         let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
+        let client_packet_info = ClientPacketInfo::new(config.bandwidth_smoothing_factor);
 
         Ok(Self {
+            current_time,
             buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
             socket,
             reliable_connection,
             netcode_client,
+            client_packet_info,
         })
     }
 
@@ -70,9 +70,9 @@ impl RenetClient {
     /// Disconnect the client from the server.
     pub fn disconnect(&mut self) {
         match self.netcode_client.disconnect() {
-            Ok(PacketToSend { packet, address }) => {
+            Ok((addr, payload)) => {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = self.socket.send_to(packet, address) {
+                    if let Err(e) = send_to(self.current_time, &self.socket, &mut self.client_packet_info, payload, addr) {
                         log::error!("failed to send disconnect packet to server: {}", e);
                     }
                 }
@@ -98,7 +98,12 @@ impl RenetClient {
     }
 
     pub fn network_info(&self) -> NetworkInfo {
-        self.reliable_connection.network_info()
+        NetworkInfo {
+            sent_kbps: self.client_packet_info.sent_kbps,
+            received_kbps: self.client_packet_info.received_kbps,
+            rtt: self.reliable_connection.rtt(),
+            packet_loss: self.reliable_connection.packet_loss(),
+        }
     }
 
     pub fn channels_network_info(&self) -> Vec<(u8, ChannelNetworkInfo)> {
@@ -110,8 +115,8 @@ impl RenetClient {
         if self.netcode_client.connected() {
             let packets = self.reliable_connection.get_packets_to_send()?;
             for packet in packets.into_iter() {
-                let PacketToSend { packet, address } = self.netcode_client.generate_payload_packet(&packet)?;
-                self.socket.send_to(packet, address)?;
+                let (addr, payload) = self.netcode_client.generate_payload_packet(&packet)?;
+                send_to(self.current_time, &self.socket, &mut self.client_packet_info, payload, addr)?;
             }
         }
         Ok(())
@@ -119,6 +124,7 @@ impl RenetClient {
 
     /// Advances the client by duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration) -> Result<(), RenetError> {
+        self.current_time += duration;
         self.reliable_connection.advance_time(duration);
         if let Some(reason) = self.netcode_client.disconnected() {
             return Err(NetcodeError::Disconnected(reason).into());
@@ -143,6 +149,9 @@ impl RenetClient {
                 Err(e) => return Err(RenetError::IO(e)),
             };
 
+            let packet_info = PacketInfo::new(self.current_time, packet.len());
+            self.client_packet_info.add_packet_received(packet_info);
+
             if let Some(payload) = self.netcode_client.process_packet(packet) {
                 self.reliable_connection.process_packet(payload)?;
             }
@@ -150,9 +159,23 @@ impl RenetClient {
 
         self.reliable_connection.update()?;
         if let Some((packet, addr)) = self.netcode_client.update(duration) {
-            self.socket.send_to(packet, addr)?;
+            send_to(self.current_time, &self.socket, &mut self.client_packet_info, packet, addr)?;
         }
+
+        self.client_packet_info.update_metrics();
 
         Ok(())
     }
+}
+
+fn send_to(
+    current_time: Duration,
+    socket: &UdpSocket,
+    client_packet_info: &mut ClientPacketInfo,
+    packet: &[u8],
+    address: SocketAddr,
+) -> Result<usize, std::io::Error> {
+    let packet_info = PacketInfo::new(current_time, packet.len());
+    client_packet_info.add_packet_sent(packet_info);
+    socket.send_to(packet, address)
 }

@@ -74,8 +74,9 @@ fn server(addr: SocketAddr) {
     let mut last_updated = Instant::now();
 
     loop {
-        server.update(Instant::now() - last_updated).unwrap();
-        last_updated = Instant::now();
+        let now = Instant::now();
+        server.update(now - last_updated).unwrap();
+        last_updated = now;
         received_messages.clear();
 
         while let Some(event) = server.get_event() {
@@ -107,7 +108,7 @@ fn server(addr: SocketAddr) {
         }
 
         server.send_packets().unwrap();
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -132,8 +133,9 @@ fn client(server_addr: SocketAddr, username: Username) {
 
     let mut last_updated = Instant::now();
     loop {
-        client.update(Instant::now() - last_updated).unwrap();
-        last_updated = Instant::now();
+        let now = Instant::now();
+        client.update(now - last_updated).unwrap();
+        last_updated = now;
         if client.is_connected() {
             match stdin_channel.try_recv() {
                 Ok(text) => client.send_message(0, text.as_bytes().to_vec()),
@@ -148,7 +150,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         }
 
         client.send_packets().unwrap();
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(50));
     }
 }
 

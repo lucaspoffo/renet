@@ -1,17 +1,18 @@
-use crate::{RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND};
+use crate::{
+    network_info::{ClientPacketInfo, NetworkInfo, PacketInfo},
+    RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
+};
 
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     io,
     net::{SocketAddr, UdpSocket},
     time::Duration,
 };
 
 use log::error;
-use rechannel::{
-    channel::ChannelNetworkInfo, disconnect_packet, error::DisconnectionReason, remote_connection::NetworkInfo, server::RechannelServer,
-};
-use renetcode::{NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
+use rechannel::{channel::ChannelNetworkInfo, disconnect_packet, error::DisconnectionReason, server::RechannelServer};
+use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.
@@ -20,6 +21,8 @@ pub struct RenetServer {
     socket: UdpSocket,
     reliable_server: RechannelServer<u64>,
     netcode_server: NetcodeServer,
+    bandwidth_smoothing_factor: f32,
+    clients_packet_info: HashMap<SocketAddr, ClientPacketInfo>,
     buffer: Box<[u8]>,
     events: VecDeque<ServerEvent>,
 }
@@ -61,7 +64,8 @@ impl RenetServer {
         socket: UdpSocket,
     ) -> Result<Self, std::io::Error> {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
-        let reliable_server = RechannelServer::new(connection_config.to_connection_config());
+        let bandwidth_smoothing_factor = connection_config.bandwidth_smoothing_factor;
+        let reliable_server = RechannelServer::new(current_time, connection_config.to_connection_config());
         let netcode_server = NetcodeServer::new(
             current_time,
             server_config.max_clients,
@@ -76,7 +80,9 @@ impl RenetServer {
             socket,
             netcode_server,
             reliable_server,
+            bandwidth_smoothing_factor,
             buffer,
+            clients_packet_info: HashMap::new(),
             events: VecDeque::new(),
         })
     }
@@ -91,8 +97,17 @@ impl RenetServer {
 
     /// Disconnects a client.
     pub fn disconnect(&mut self, client_id: u64) {
+        let current_time = self.netcode_server.current_time();
         let server_result = self.netcode_server.disconnect(client_id);
-        if let Err(e) = handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events) {
+        if let Err(e) = handle_server_result(
+            server_result,
+            current_time,
+            self.bandwidth_smoothing_factor,
+            &self.socket,
+            &mut self.reliable_server,
+            &mut self.clients_packet_info,
+            &mut self.events,
+        ) {
             error!("Failed to send disconnect packet to client {}: {}", client_id, e);
         }
     }
@@ -104,9 +119,30 @@ impl RenetServer {
         }
     }
 
+    pub fn channels_network_info(&self, client_id: u64) -> Vec<(u8, ChannelNetworkInfo)> {
+        self.reliable_server.channels_network_info(client_id)
+    }
+
     /// Returns the client's network info if the client exits.
     pub fn network_info(&self, client_id: u64) -> Option<NetworkInfo> {
-        self.reliable_server.network_info(client_id)
+        let addr = match self.netcode_server.client_addr(client_id) {
+            Some(addr) => addr,
+            None => return None,
+        };
+
+        let client_packet_info = self.clients_packet_info.get(&addr).unwrap();
+
+        let sent_kbps = client_packet_info.sent_kbps;
+        let received_kbps = client_packet_info.received_kbps;
+        let rtt = self.reliable_server.client_rtt(client_id);
+        let packet_loss = self.reliable_server.client_packet_loss(client_id);
+
+        Some(NetworkInfo {
+            received_kbps,
+            sent_kbps,
+            rtt,
+            packet_loss,
+        })
     }
 
     /// Advances the server by duration, and receive packets from the network.
@@ -114,11 +150,26 @@ impl RenetServer {
         self.reliable_server.update_connections(duration);
         self.netcode_server.update(duration);
 
+        let current_time = self.netcode_server.current_time();
+
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
+                    if let Some(info) = self.clients_packet_info.get_mut(&addr) {
+                        let packet_info = PacketInfo::new(current_time, len);
+                        info.add_packet_received(packet_info);
+                    }
+
                     let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
-                    handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
+                    handle_server_result(
+                        server_result,
+                        current_time,
+                        self.bandwidth_smoothing_factor,
+                        &self.socket,
+                        &mut self.reliable_server,
+                        &mut self.clients_packet_info,
+                        &mut self.events,
+                    )?;
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
@@ -127,7 +178,15 @@ impl RenetServer {
 
         for client_id in self.netcode_server.clients_id().into_iter() {
             let server_result = self.netcode_server.update_client(client_id);
-            handle_server_result(server_result, &self.socket, &mut self.reliable_server, &mut self.events)?;
+            handle_server_result(
+                server_result,
+                current_time,
+                self.bandwidth_smoothing_factor,
+                &self.socket,
+                &mut self.reliable_server,
+                &mut self.clients_packet_info,
+                &mut self.events,
+            )?;
         }
 
         // Handle disconnected clients from Rechannel
@@ -138,15 +197,19 @@ impl RenetServer {
                     Err(e) => error!("failed to serialize disconnect packet: {}", e),
                     Ok(packet) => match self.netcode_server.generate_payload_packet(client_id, &packet) {
                         Err(e) => error!("failed to encrypt disconnect packet: {}", e),
-                        Ok(PacketToSend { packet, address }) => {
+                        Ok((addr, payload)) => {
                             for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                                self.socket.send_to(packet, address)?;
+                                self.socket.send_to(payload, addr)?;
                             }
                         }
                     },
                 }
             }
             self.netcode_server.disconnect(client_id);
+        }
+
+        for packet_info in self.clients_packet_info.values_mut() {
+            packet_info.update_metrics();
         }
 
         Ok(())
@@ -188,10 +251,11 @@ impl RenetServer {
                 }
             };
 
+            let current_time = self.netcode_server.current_time();
             for packet in packets.iter() {
                 match self.netcode_server.generate_payload_packet(client_id, packet) {
-                    Ok(PacketToSend { packet, address }) => {
-                        self.socket.send_to(packet, address)?;
+                    Ok((addr, payload)) => {
+                        send_to(current_time, &self.socket, &mut self.clients_packet_info, payload, addr)?;
                     }
                     Err(e) => error!("failed to encrypt payload packet: {}", e),
                 }
@@ -205,46 +269,67 @@ impl RenetServer {
     pub fn clients_id(&self) -> Vec<u64> {
         self.netcode_server.clients_id()
     }
-
-    pub fn channels_network_info(&self, client_id: u64) -> Option<Vec<(u8, ChannelNetworkInfo)>> {
-        self.reliable_server.channels_network_info(client_id)
-    }
 }
 
 fn handle_server_result(
     server_result: ServerResult,
+    current_time: Duration,
+    bandwidth_smoothing_factor: f32,
     socket: &UdpSocket,
     reliable_server: &mut RechannelServer<u64>,
+    packet_infos: &mut HashMap<SocketAddr, ClientPacketInfo>,
     events: &mut VecDeque<ServerEvent>,
 ) -> Result<(), io::Error> {
     match server_result {
         ServerResult::None => {}
-        ServerResult::PacketToSend(PacketToSend { packet, address }) => {
-            socket.send_to(packet, address)?;
+        ServerResult::PacketToSend { payload, addr } => {
+            send_to(current_time, socket, packet_infos, payload, addr)?;
         }
-        ServerResult::Payload(client_id, payload) => {
+        ServerResult::Payload { client_id, payload } => {
             if !reliable_server.is_connected(&client_id) {
                 reliable_server.add_connection(&client_id);
             }
+
             if let Err(e) = reliable_server.process_packet_from(payload, &client_id) {
                 log::error!("Error while processing payload for {}: {}", client_id, e)
             }
         }
-        ServerResult::ClientConnected(client_id, user_data, PacketToSend { packet, address }) => {
+        ServerResult::ClientConnected {
+            client_id,
+            user_data,
+            addr,
+            payload,
+        } => {
             reliable_server.add_connection(&client_id);
+            packet_infos.insert(addr, ClientPacketInfo::new(bandwidth_smoothing_factor));
             events.push_back(ServerEvent::ClientConnected(client_id, user_data));
-            socket.send_to(packet, address)?;
+            send_to(current_time, socket, packet_infos, payload, addr)?;
         }
-        ServerResult::ClientDisconnected(client_id, packet_to_send) => {
+        ServerResult::ClientDisconnected { client_id, addr, payload } => {
             events.push_back(ServerEvent::ClientDisconnected(client_id));
             reliable_server.remove_connection(&client_id);
-            if let Some(PacketToSend { packet, address }) = packet_to_send {
+            packet_infos.remove(&addr);
+            if let Some(payload) = payload {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    socket.send_to(packet, address)?;
+                    socket.send_to(payload, addr)?;
                 }
             }
         }
     }
 
     Ok(())
+}
+
+fn send_to(
+    current_time: Duration,
+    socket: &UdpSocket,
+    packet_infos: &mut HashMap<SocketAddr, ClientPacketInfo>,
+    packet: &[u8],
+    addr: SocketAddr,
+) -> Result<usize, std::io::Error> {
+    if let Some(info) = packet_infos.get_mut(&addr) {
+        let packet_info = PacketInfo::new(current_time, packet.len());
+        info.add_packet_sent(packet_info);
+    }
+    socket.send_to(packet, addr)
 }
