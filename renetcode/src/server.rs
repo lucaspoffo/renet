@@ -68,10 +68,7 @@ pub enum ServerResult<'a, 's> {
     /// A packet to be sent back to the processed address.
     PacketToSend { addr: SocketAddr, payload: &'s mut [u8] },
     /// A payload received from the client.
-    Payload {
-        client_id: ClientID,
-        payload: &'a [u8],
-    },
+    Payload { client_id: ClientID, payload: &'a [u8] },
     /// A new client has connected
     ClientConnected {
         client_id: ClientID,
@@ -722,10 +719,7 @@ mod tests {
         let (_, packet) = client.generate_payload_packet(&client_payload).unwrap();
 
         match server.process_packet(client_addr, packet) {
-            ServerResult::Payload {
-                client_id: id,
-                payload,
-            } => {
+            ServerResult::Payload { client_id: id, payload } => {
                 assert_eq!(id, client_id);
                 assert_eq!(client_payload, payload);
             }
