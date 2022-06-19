@@ -1,8 +1,8 @@
 use std::{fmt, net::SocketAddr, time::Duration};
 
 use crate::{
-    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientID, NetcodeError, PacketToSend,
-    NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
+    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientID, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
+    NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
 };
 
 /// The reason why a client is in error state
@@ -95,6 +95,10 @@ impl NetcodeClient {
         self.state == ClientState::Connected
     }
 
+    pub fn current_time(&self) -> Duration {
+        self.current_time
+    }
+
     pub fn client_id(&self) -> ClientID {
         self.client_id
     }
@@ -114,7 +118,7 @@ impl NetcodeClient {
 
     /// Disconnect the client from the server.
     /// Returns a disconnect packet that should be sent to the server.
-    pub fn disconnect(&mut self) -> Result<PacketToSend, NetcodeError> {
+    pub fn disconnect(&mut self) -> Result<(SocketAddr, &mut [u8]), NetcodeError> {
         self.state = ClientState::Disconnected(DisconnectReason::DisconnectedByClient);
         let packet = Packet::Disconnect;
         let len = packet.encode(
@@ -123,7 +127,7 @@ impl NetcodeClient {
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
 
-        Ok(PacketToSend::new(self.server_addr, &mut self.out[..len]))
+        Ok((self.server_addr, &mut self.out[..len]))
     }
 
     /// Process any packet received from the server. This function might return a payload sent from the
@@ -179,7 +183,7 @@ impl NetcodeClient {
     }
 
     /// Returns the server address and an encrypted payload packet that can be sent to the server.
-    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<PacketToSend, NetcodeError> {
+    pub fn generate_payload_packet(&mut self, payload: &[u8]) -> Result<(SocketAddr, &mut [u8]), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
@@ -196,7 +200,7 @@ impl NetcodeClient {
         )?;
         self.sequence += 1;
 
-        Ok(PacketToSend::new(self.server_addr, &mut self.out[..len]))
+        Ok((self.server_addr, &mut self.out[..len]))
     }
 
     /// Update the internal state of the client, receives the duration since last updated.
@@ -369,7 +373,7 @@ mod tests {
         assert_eq!(payload, payload_client);
 
         let to_send_payload = vec![5u8; 1000];
-        let PacketToSend { packet, .. } = client.generate_payload_packet(&to_send_payload).unwrap();
+        let (_, packet) = client.generate_payload_packet(&to_send_payload).unwrap();
         let (_, result) = Packet::decode(packet, protocol_id, Some(&client_key), None).unwrap();
         match result {
             Packet::Payload(payload) => assert_eq!(to_send_payload, payload),

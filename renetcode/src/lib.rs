@@ -61,15 +61,3 @@ const NETCODE_ADDITIONAL_DATA_SIZE: usize = 13 + 8 + 8;
 const NETCODE_TIMEOUT_SECONDS: i32 = 15;
 
 const NETCODE_SEND_RATE: Duration = Duration::from_millis(200);
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct PacketToSend<'s> {
-    pub address: std::net::SocketAddr,
-    pub packet: &'s mut [u8],
-}
-
-impl<'s> PacketToSend<'s> {
-    pub fn new(address: std::net::SocketAddr, packet: &'s mut [u8]) -> Self {
-        Self { address, packet }
-    }
-}

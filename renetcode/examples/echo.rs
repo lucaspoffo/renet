@@ -1,6 +1,5 @@
 use renetcode::{
-    ConnectToken, NetcodeClient, NetcodeServer, PacketToSend, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES,
-    NETCODE_USER_DATA_BYTES,
+    ConnectToken, NetcodeClient, NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};
@@ -85,27 +84,32 @@ fn handle_server_result(
     usernames: &mut HashMap<u64, String>,
 ) {
     match server_result {
-        ServerResult::Payload(client_id, payload) => {
+        ServerResult::Payload { client_id, payload } => {
             let text = String::from_utf8(payload.to_vec()).unwrap();
             let username = usernames.get(&client_id).unwrap();
             println!("Client {} ({}) sent message {:?}.", username, client_id, text);
             let text = format!("{}: {}", username, text);
             received_messages.push(text);
         }
-        ServerResult::PacketToSend(PacketToSend { packet, address }) => {
-            socket.send_to(packet, address).unwrap();
+        ServerResult::PacketToSend { payload, addr } => {
+            socket.send_to(payload, addr).unwrap();
         }
-        ServerResult::ClientConnected(id, user_data, PacketToSend { packet, address }) => {
+        ServerResult::ClientConnected {
+            client_id,
+            user_data,
+            payload,
+            addr,
+        } => {
             let username = Username::from_user_data(&user_data);
-            println!("Client {} with id {} connected.", username.0, id);
-            usernames.insert(id, username.0);
-            socket.send_to(packet, address).unwrap();
+            println!("Client {} with id {} connected.", username.0, client_id);
+            usernames.insert(client_id, username.0);
+            socket.send_to(payload, addr).unwrap();
         }
-        ServerResult::ClientDisconnected(id, packet_to_send) => {
-            println!("Client {} disconnected.", id);
-            usernames.remove_entry(&id);
-            if let Some(PacketToSend { packet, address }) = packet_to_send {
-                socket.send_to(packet, address).unwrap();
+        ServerResult::ClientDisconnected { client_id, addr, payload } => {
+            println!("Client {} disconnected.", client_id);
+            usernames.remove_entry(&client_id);
+            if let Some(payload) = payload {
+                socket.send_to(payload, addr).unwrap();
             }
         }
         ServerResult::None => {}
@@ -139,8 +143,8 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
 
         for text in received_messages.iter() {
             for client_id in server.clients_id().iter() {
-                let PacketToSend { packet, address } = server.generate_payload_packet(*client_id, text.as_bytes()).unwrap();
-                udp_socket.send_to(packet, address).unwrap();
+                let (addr, payload) = server.generate_payload_packet(*client_id, text.as_bytes()).unwrap();
+                udp_socket.send_to(payload, addr).unwrap();
             }
         }
 
@@ -171,8 +175,8 @@ fn client(client_id: u64, connect_token: ConnectToken) {
         match stdin_channel.try_recv() {
             Ok(text) => {
                 if client.connected() {
-                    let PacketToSend { packet, address } = client.generate_payload_packet(text.as_bytes()).unwrap();
-                    udp_socket.send_to(packet, address).unwrap();
+                    let (addr, payload) = client.generate_payload_packet(text.as_bytes()).unwrap();
+                    udp_socket.send_to(payload, addr).unwrap();
                 } else {
                     println!("Client is not yet connected");
                 }
