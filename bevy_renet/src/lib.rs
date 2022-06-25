@@ -17,11 +17,11 @@ impl Plugin for RenetServerPlugin {
             .add_event::<RenetError>()
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                renet_server_update.with_run_criteria(has_resource::<RenetServer>),
+                Self::update_system.with_run_criteria(has_resource::<RenetServer>),
             )
             .add_system_to_stage(
                 CoreStage::PostUpdate,
-                renet_server_send_packets.with_run_criteria(has_resource::<RenetServer>),
+                Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
             );
     }
 }
@@ -31,12 +31,49 @@ impl Plugin for RenetClientPlugin {
         app.add_event::<RenetError>()
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                renet_client_update.with_run_criteria(has_resource::<RenetClient>),
+                Self::update_system.with_run_criteria(has_resource::<RenetClient>),
             )
             .add_system_to_stage(
                 CoreStage::PostUpdate,
-                renet_client_send_packets.with_run_criteria(has_resource::<RenetClient>),
+                Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
             );
+    }
+}
+
+impl RenetServerPlugin {
+    pub fn update_system(
+        mut server: ResMut<RenetServer>,
+        mut renet_error: EventWriter<RenetError>,
+        time: Res<Time>,
+        mut server_events: EventWriter<ServerEvent>,
+    ) {
+        if let Err(e) = server.update(time.delta()) {
+            renet_error.send(RenetError::IO(e));
+        }
+
+        while let Some(event) = server.get_event() {
+            server_events.send(event);
+        }
+    }
+
+    pub fn send_packets_system(mut server: ResMut<RenetServer>, mut renet_error: EventWriter<RenetError>) {
+        if let Err(e) = server.send_packets() {
+            renet_error.send(RenetError::IO(e));
+        }
+    }
+}
+
+impl RenetClientPlugin {
+    pub fn update_system(mut client: ResMut<RenetClient>, mut renet_error: EventWriter<RenetError>, time: Res<Time>) {
+        if let Err(e) = client.update(time.delta()) {
+            renet_error.send(e);
+        }
+    }
+
+    pub fn send_packets_system(mut client: ResMut<RenetClient>, mut renet_error: EventWriter<RenetError>) {
+        if let Err(e) = client.send_packets() {
+            renet_error.send(e);
+        }
     }
 }
 
@@ -44,39 +81,6 @@ fn has_resource<T: Resource>(resource: Option<Res<T>>) -> ShouldRun {
     match resource.is_some() {
         true => ShouldRun::Yes,
         false => ShouldRun::No,
-    }
-}
-
-fn renet_server_update(
-    mut server: ResMut<RenetServer>,
-    mut renet_error: EventWriter<RenetError>,
-    time: Res<Time>,
-    mut server_events: EventWriter<ServerEvent>,
-) {
-    if let Err(e) = server.update(time.delta()) {
-        renet_error.send(RenetError::IO(e));
-    }
-
-    while let Some(event) = server.get_event() {
-        server_events.send(event);
-    }
-}
-
-fn renet_server_send_packets(mut server: ResMut<RenetServer>, mut renet_error: EventWriter<RenetError>) {
-    if let Err(e) = server.send_packets() {
-        renet_error.send(RenetError::IO(e));
-    }
-}
-
-fn renet_client_update(mut client: ResMut<RenetClient>, mut renet_error: EventWriter<RenetError>, time: Res<Time>) {
-    if let Err(e) = client.update(time.delta()) {
-        renet_error.send(e);
-    }
-}
-
-fn renet_client_send_packets(mut client: ResMut<RenetClient>, mut renet_error: EventWriter<RenetError>) {
-    if let Err(e) = client.send_packets() {
-        renet_error.send(e);
     }
 }
 
