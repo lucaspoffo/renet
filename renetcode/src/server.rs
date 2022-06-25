@@ -423,20 +423,21 @@ impl NetcodeServer {
                             });
                         }
                         Some(client_index) => {
-                            let send_key = pending.send_key;
                             pending.state = ConnectionState::Connected;
                             pending.user_data = challenge_token.user_data;
                             pending.last_packet_send_time = self.current_time;
-                            let client_id: ClientID = pending.client_id;
-                            let user_data: [u8; NETCODE_USER_DATA_BYTES] = pending.user_data;
-                            self.clients[client_index] = Some(pending);
 
                             let packet = Packet::KeepAlive {
                                 max_clients: self.max_clients as u32,
                                 client_index: client_index as u32,
                             };
-                            let len = packet.encode(&mut self.out, self.protocol_id, Some((self.global_sequence, &send_key)))?;
-                            self.global_sequence += 1;
+                            let len = packet.encode(&mut self.out, self.protocol_id, Some((pending.sequence, &pending.send_key)))?;
+                            pending.sequence += 1;
+
+                            let client_id: ClientID = pending.client_id;
+                            let user_data: [u8; NETCODE_USER_DATA_BYTES] = pending.user_data;
+                            self.clients[client_index] = Some(pending);
+
                             return Ok(ServerResult::ClientConnected {
                                 client_id,
                                 addr,
@@ -698,10 +699,12 @@ mod tests {
 
         assert!(client.connected());
 
-        let payload = [7u8; 300];
-        let (_, packet) = server.generate_payload_packet(client_id, &payload).unwrap();
-        let result_payload = client.process_packet(packet).unwrap();
-        assert_eq!(payload, result_payload);
+        for _ in 0..3 {
+            let payload = [7u8; 300];
+            let (_, packet) = server.generate_payload_packet(client_id, &payload).unwrap();
+            let result_payload = client.process_packet(packet).unwrap();
+            assert_eq!(payload, result_payload);
+        }
 
         let result = server.update_client(client_id);
         assert_eq!(result, ServerResult::None);
