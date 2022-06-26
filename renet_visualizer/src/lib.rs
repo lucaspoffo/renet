@@ -6,6 +6,11 @@ use egui::{
 };
 use renet::{CircularBuffer, NetworkInfo, RenetServer};
 
+/// Egui visualizer for the renet client. Draws graphs with metrics:
+/// RTT, Packet Loss, Kbps Sent/Received.
+///
+/// N: determines how many values are shown in the graph.
+/// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
 pub struct RenetClientVisualizer<const N: usize> {
     rtt: CircularBuffer<N, f32>,
     sent_bandwidth_kbps: CircularBuffer<N, f32>,
@@ -14,6 +19,11 @@ pub struct RenetClientVisualizer<const N: usize> {
     style: RenetVisualizerStyle,
 }
 
+/// Egui visualizer for the renet server. Draws graphs for each connected client with metrics:
+/// RTT, Packet Loss, Kbps Sent/Received.
+///
+/// N: determines how many values are shown in the graph.
+/// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
 pub struct RenetServerVisualizer<const N: usize> {
     show_all_clients: bool,
     selected_client: Option<u64>,
@@ -21,6 +31,7 @@ pub struct RenetServerVisualizer<const N: usize> {
     style: RenetVisualizerStyle,
 }
 
+/// Style configuration for the visualizer. Customize size, color and line width.
 #[derive(Debug, Clone)]
 pub struct RenetVisualizerStyle {
     pub width: f32,
@@ -63,6 +74,19 @@ impl<const N: usize> RenetClientVisualizer<N> {
         }
     }
 
+    /// Add the network information from the client. Should be called every time the client
+    /// updates.
+    ///
+    /// # Usage
+    /// ```
+    /// # use renet::RenetClient;
+    /// # use renet_visualizer::RenetClientVisualizer;
+    /// # let mut client = RenetClient::__test();
+    /// # let delta = std::time::Duration::ZERO;
+    /// # let mut visualizer = RenetClientVisualizer::<5>::new(Default::default());
+    /// client.update(delta).unwrap();
+    /// visualizer.add_network_info(client.network_info());
+    /// ```
     pub fn add_network_info(&mut self, network_info: NetworkInfo) {
         self.rtt.push(network_info.rtt);
         self.sent_bandwidth_kbps.push(network_info.sent_kbps);
@@ -70,6 +94,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
         self.packet_loss.push(network_info.packet_loss);
     }
 
+    /// Renders a new window with all the graphs metrics drawn.
     pub fn show_window(&self, ctx: &egui::Context) {
         egui::Window::new("Client Network Info")
             .resizable(false)
@@ -81,6 +106,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
             });
     }
 
+    /// Draws only the Received Kbps metric.
     pub fn draw_received_kbps(&self, ui: &mut egui::Ui) {
         show_graph(
             ui,
@@ -92,6 +118,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
         );
     }
 
+    /// Draws only the Sent Kbps metric.
     pub fn draw_sent_kbps(&self, ui: &mut egui::Ui) {
         show_graph(
             ui,
@@ -103,6 +130,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
         );
     }
 
+    /// Draws only the Packet Loss metric.
     pub fn draw_packet_loss(&self, ui: &mut egui::Ui) {
         show_graph(
             ui,
@@ -114,6 +142,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
         );
     }
 
+    /// Draws only the Round Time Trip metric.
     pub fn draw_rtt(&self, ui: &mut egui::Ui) {
         show_graph(
             ui,
@@ -125,6 +154,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
         );
     }
 
+    /// Draw all metrics without a window or layout.
     pub fn draw_all(&self, ui: &mut egui::Ui) {
         self.draw_received_kbps(ui);
         self.draw_sent_kbps(ui);
@@ -143,20 +173,71 @@ impl<const N: usize> RenetServerVisualizer<N> {
         }
     }
 
+    /// Add a new client to keep track off. Should be called whenever a new client
+    /// connected event is received.
+    ///
+    /// # Usage
+    /// ```
+    /// # use renet::{RenetServer, ServerEvent};
+    /// # use renet_visualizer::RenetServerVisualizer;
+    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
+    /// while let Some(event) = renet_server.get_event() {
+    ///     match event {
+    ///         ServerEvent::ClientConnected(client_id, user_data) => {
+    ///             visualizer.add_client(client_id);
+    ///             // ...
+    ///         }
+    ///         _ => {}
+    ///     }
+    /// }
+    /// ```
     pub fn add_client(&mut self, client_id: u64) {
         self.clients.insert(client_id, RenetClientVisualizer::new(self.style.clone()));
     }
 
+    /// Remove a client from the visualizer. Should be called whenever a client
+    /// disconnected event is received.
+    ///
+    /// # Usage
+    /// ```
+    /// # use renet::{RenetServer, ServerEvent};
+    /// # use renet_visualizer::RenetServerVisualizer;
+    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
+    /// while let Some(event) = renet_server.get_event() {
+    ///     match event {
+    ///         ServerEvent::ClientDisconnected(client_id) => {
+    ///             visualizer.remove_client(client_id);
+    ///             // ...
+    ///         }
+    ///         _ => {}
+    ///     }
+    /// }
+    /// ```
     pub fn remove_client(&mut self, client_id: u64) {
         self.clients.remove(&client_id);
     }
 
-    pub fn add_network_info(&mut self, client_id: u64, network_info: NetworkInfo) {
+    fn add_network_info(&mut self, client_id: u64, network_info: NetworkInfo) {
         if let Some(client) = self.clients.get_mut(&client_id) {
             client.add_network_info(network_info);
         }
     }
 
+    /// Update the metrics for all connected clients. Should be called every time the server
+    /// updates.
+    ///
+    /// # Usage
+    /// ```
+    /// # use renet::RenetServer;
+    /// # use renet_visualizer::RenetServerVisualizer;
+    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
+    /// # let delta = std::time::Duration::ZERO;
+    /// renet_server.update(delta).unwrap();
+    /// visualizer.update(&renet_server);
+    /// ```
     pub fn update(&mut self, server: &RenetServer) {
         for client_id in server.clients_id().into_iter() {
             if let Some(network_info) = server.network_info(client_id) {
@@ -165,6 +246,15 @@ impl<const N: usize> RenetServerVisualizer<N> {
         }
     }
 
+    /// Draw all metrics without a window or layout for the specified client.
+    pub fn draw_client_metrics(&self, client_id: u64, ui: &mut egui::Ui) {
+        if let Some(client) = self.clients.get(&client_id) {
+            client.draw_all(ui);
+        }
+    }
+
+    /// Renders a new window with all the graphs metrics drawn. You can choose to show metrics for
+    /// all connected clients or for only one chosen by a dropdown.
     pub fn show_window(&mut self, ctx: &egui::Context) {
         egui::Window::new("Server Network Info")
             .resizable(false)
