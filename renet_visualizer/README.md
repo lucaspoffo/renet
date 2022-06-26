@@ -6,6 +6,8 @@
 
 A egui metrics visualizer for the [renet](https://github.com/lucaspoffo/renet) crate with simple usage.
 
+https://user-images.githubusercontent.com/35241085/175834010-b1eafd77-7ea2-47dc-a915-a399099c7a99.mp4
+
 ### Usage
 
 Client
