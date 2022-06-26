@@ -91,6 +91,13 @@ impl RenetServer {
         })
     }
 
+    #[doc(hidden)]
+    pub fn __test() -> Self {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), [0; NETCODE_KEY_BYTES]);
+        Self::new(Duration::ZERO, server_config, RenetConnectionConfig::default(), socket).unwrap()
+    }
+
     pub fn addr(&self) -> SocketAddr {
         self.netcode_server.address()
     }

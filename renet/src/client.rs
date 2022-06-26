@@ -6,7 +6,7 @@ use crate::{
 
 use log::debug;
 use rechannel::{channel::ChannelNetworkInfo, error::RechannelError, remote_connection::RemoteConnection, Bytes};
-use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
+use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES};
 
 use std::net::UdpSocket;
 use std::time::Duration;
@@ -44,6 +44,15 @@ impl RenetClient {
             netcode_client,
             client_packet_info,
         })
+    }
+
+    #[doc(hidden)]
+    pub fn __test() -> Self {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let server_addr = "127.0.0.1:5000".parse().unwrap();
+        let connect_token =
+            ConnectToken::generate(Duration::ZERO, 0, 300, 0, 15, vec![server_addr], None, &[0; NETCODE_KEY_BYTES]).unwrap();
+        Self::new(Duration::ZERO, socket, 0, connect_token, Default::default()).unwrap()
     }
 
     pub fn client_id(&self) -> u64 {
