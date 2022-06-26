@@ -75,7 +75,9 @@ impl<const N: usize> RenetClientVisualizer<N> {
             .resizable(false)
             .collapsible(true)
             .show(ctx, |ui| {
-                self.draw_all(ui);
+                ui.horizontal(|ui| {
+                    self.draw_all(ui);
+                });
             });
     }
 
@@ -124,16 +126,10 @@ impl<const N: usize> RenetClientVisualizer<N> {
     }
 
     pub fn draw_all(&self, ui: &mut egui::Ui) {
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                self.draw_received_kbps(ui);
-                self.draw_sent_kbps(ui);
-            });
-            ui.horizontal(|ui| {
-                self.draw_rtt(ui);
-                self.draw_packet_loss(ui);
-            });
-        });
+        self.draw_received_kbps(ui);
+        self.draw_sent_kbps(ui);
+        self.draw_rtt(ui);
+        self.draw_packet_loss(ui);
     }
 }
 
@@ -196,20 +192,14 @@ impl<const N: usize> RenetServerVisualizer<N> {
                             ui.vertical(|ui| {
                                 ui.heading(format!("Client {}", client_id));
                                 ui.horizontal(|ui| {
-                                    client.draw_received_kbps(ui);
-                                    client.draw_sent_kbps(ui);
-                                    client.draw_rtt(ui);
-                                    client.draw_packet_loss(ui);
+                                    client.draw_all(ui);
                                 });
                             });
                         }
                     } else if let Some(selected_client) = self.selected_client {
                         if let Some(client) = self.clients.get(&selected_client) {
                             ui.horizontal(|ui| {
-                                client.draw_received_kbps(ui);
-                                client.draw_sent_kbps(ui);
-                                client.draw_rtt(ui);
-                                client.draw_packet_loss(ui);
+                                client.draw_all(ui);
                             });
                         }
                     }
