@@ -223,7 +223,6 @@ impl<'a> Packet<'a> {
             self.write(&mut writer)?;
             Ok(writer.position() as usize)
         } else if let Some((sequence, private_key)) = crypto_info {
-            println!("ENCONDING WITH SEQUENCE {}", sequence);
             let (start, end, aad) = {
                 let mut writer = io::Cursor::new(&mut *buffer);
                 let prefix_byte = {
