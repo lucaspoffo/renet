@@ -65,7 +65,7 @@ impl Default for ConnectionConfig {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
-            rtt_smoothing_factor: 0.0025,
+            rtt_smoothing_factor: 0.01,
             packet_loss_smoothing_factor: 0.1,
             heartbeat_time: Duration::from_millis(100),
             fragment_config: FragmentConfig::default(),
