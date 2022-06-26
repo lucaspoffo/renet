@@ -1,6 +1,6 @@
 [package]
 name = "renetcode"
-version = "0.0.3"
+version = "0.0.4"
 description = "Server/Client network protocol library for multiplayer games"
 keywords = ["gamedev", "networking", "cryptography"]
 repository = "https://github.com/lucaspoffo/renet"
