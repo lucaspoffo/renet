@@ -2,10 +2,12 @@ use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
 
 use bevy::prelude::*;
 use bevy_renet::{
-    renet::{ConnectToken, RenetClient, RenetConnectionConfig, RenetError},
+    renet::{ConnectToken, RenetClient, RenetError},
     run_if_client_conected, RenetClientPlugin,
 };
-use demo_royale::{setup_level, Lobby, PlayerInput, Ray3d, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
+use demo_royale::{
+    connection_config, setup_level, Channel, Lobby, PlayerCommand, PlayerInput, Ray3d, ServerMessages, PRIVATE_KEY, PROTOCOL_ID,
+};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
 #[derive(Component)]
@@ -14,7 +16,7 @@ struct ControlledPlayer;
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let connection_config = RenetConnectionConfig::default();
+    let connection_config = connection_config();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     // This connect token should come from another system, NOT generated from the client.
@@ -30,6 +32,8 @@ fn main() {
     app.add_plugin(RenetClientPlugin);
     app.add_plugin(LookTransformPlugin);
 
+    app.add_event::<PlayerCommand>();
+
     app.insert_resource(Lobby::default());
     app.insert_resource(PlayerInput::default());
     app.insert_resource(new_renet_client());
@@ -38,6 +42,7 @@ fn main() {
     app.add_system(camera_follow);
     app.add_system(update_target_system);
     app.add_system(client_send_input.with_run_criteria(run_if_client_conected));
+    app.add_system(client_send_player_commands.with_run_criteria(run_if_client_conected));
     app.add_system(client_sync_players.with_run_criteria(run_if_client_conected));
 
     app.add_startup_system(setup_level);
@@ -55,17 +60,37 @@ fn panic_on_error_system(mut renet_error: EventReader<RenetError>) {
     }
 }
 
-fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_input: ResMut<PlayerInput>) {
+fn player_input(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut player_input: ResMut<PlayerInput>,
+    mouse_button_input: Res<Input<MouseButton>>,
+    target_query: Query<&Transform, With<Target>>,
+    mut player_commands: EventWriter<PlayerCommand>,
+) {
     player_input.left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
     player_input.right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
     player_input.up = keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up);
     player_input.down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
+
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        let target_transform = target_query.single();
+        player_commands.send(PlayerCommand::BasicAttack {
+            cast_at: target_transform.translation,
+        });
+    }
 }
 
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(0, input_message);
+    client.send_message(Channel::Input.id(), input_message);
+}
+
+fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
+    for command in player_commands.iter() {
+        let command_message = bincode::serialize(command).unwrap();
+        client.send_message(Channel::Command.id(), command_message);
+    }
 }
 
 fn client_sync_players(
@@ -130,7 +155,6 @@ fn update_target_system(
     let mut target_transform = target_query.single_mut();
     if let Some(ray) = Ray3d::from_screenspace(&windows, &images, camera, camera_transform) {
         if let Some(pos) = ray.intersect_y_plane(1.0) {
-            println!("Pos: {}", pos);
             target_transform.translation = pos;
         }
     }

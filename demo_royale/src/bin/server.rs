@@ -6,17 +6,17 @@ use bevy_rapier3d::{
     prelude::{Collider, LockedAxes, RapierDebugRenderPlugin, RigidBody, Velocity},
 };
 use bevy_renet::{
-    renet::{RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent},
+    renet::{RenetServer, ServerConfig, ServerEvent},
     RenetServerPlugin,
 };
-use demo_royale::{Lobby, Player, PlayerInput, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
+use demo_royale::{connection_config, Channel, Lobby, Player, PlayerCommand, PlayerInput, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
 fn new_renet_server() -> RenetServer {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();
-    let connection_config = RenetConnectionConfig::default();
+    let connection_config = connection_config();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, *PRIVATE_KEY);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
@@ -96,11 +96,16 @@ fn server_update_system(
     }
 
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, 0) {
+        while let Some(message) = server.receive_message(client_id, Channel::Input.id()) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
             if let Some(player_entity) = lobby.players.get(&client_id) {
                 commands.entity(*player_entity).insert(player_input);
             }
+        }
+
+        while let Some(message) = server.receive_message(client_id, Channel::Command.id()) {
+            let command: PlayerCommand = bincode::deserialize(&message).unwrap();
+            println!("Received command from client {}: {:?}", client_id, command);
         }
     }
 }
@@ -122,8 +127,6 @@ fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
         let direction = Vec2::new(x, y).normalize_or_zero();
         velocity.linvel.x = direction.x * PLAYER_MOVE_SPEED;
         velocity.linvel.z = direction.y * PLAYER_MOVE_SPEED;
-
-        println!("Vel: {:?}", velocity);
     }
 }
 

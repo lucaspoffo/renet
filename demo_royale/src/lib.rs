@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use bevy::prelude::*;
-use bevy_renet::renet::NETCODE_KEY_BYTES;
+use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, NETCODE_KEY_BYTES};
 use serde::{Deserialize, Serialize};
 
 pub const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
@@ -26,9 +26,52 @@ pub struct Player {
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
+pub enum PlayerCommand {
+    BasicAttack { cast_at: Vec3 },
+}
+
+pub enum Channel {
+    Input,
+    Command,
+}
+
+#[derive(Debug, Serialize, Deserialize, Component)]
 pub enum ServerMessages {
     PlayerConnected { id: u64 },
     PlayerDisconnected { id: u64 },
+}
+
+impl Channel {
+    pub fn id(&self) -> u8 {
+        match self {
+            Channel::Input => 0,
+            Channel::Command => 1,
+        }
+    }
+
+    pub fn channels_config() -> Vec<ChannelConfig> {
+        vec![
+            ReliableChannelConfig {
+                channel_id: Channel::Input.id(),
+                message_resend_time: Duration::ZERO,
+                ..Default::default()
+            }
+            .into(),
+            ReliableChannelConfig {
+                channel_id: Channel::Command.id(),
+                message_resend_time: Duration::ZERO,
+                ..Default::default()
+            }
+            .into(),
+        ]
+    }
+}
+
+pub fn connection_config() -> RenetConnectionConfig {
+    RenetConnectionConfig {
+        channels_config: Channel::channels_config(),
+        ..Default::default()
+    }
 }
 
 /// set up a simple 3D scene
