@@ -72,3 +72,21 @@ pub trait Channel: std::fmt::Debug {
     fn channel_network_info(&self) -> ChannelNetworkInfo;
     fn error(&self) -> Option<ChannelError>;
 }
+
+impl From<ReliableChannelConfig> for ChannelConfig {
+    fn from(config: ReliableChannelConfig) -> Self {
+        Self::Reliable(config)
+    }
+}
+
+impl From<UnreliableChannelConfig> for ChannelConfig {
+    fn from(config: UnreliableChannelConfig) -> Self {
+        Self::Unreliable(config)
+    }
+}
+
+impl From<BlockChannelConfig> for ChannelConfig {
+    fn from(config: BlockChannelConfig) -> Self {
+        Self::Block(config)
+    }
+}
