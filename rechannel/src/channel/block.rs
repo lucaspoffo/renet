@@ -127,6 +127,7 @@ impl ChunkSender {
         assert!(!self.sending);
 
         self.sending = true;
+        self.num_acked_slices = 0;
         self.num_slices = (data.len() + self.slice_size - 1) / self.slice_size;
 
         self.acked = vec![false; self.num_slices];
@@ -508,9 +509,12 @@ mod tests {
 
     #[test]
     fn block_channel_queue() {
-        let mut channel = BlockChannel::new(BlockChannelConfig::default());
-        let first_message = Bytes::from(vec![1, 1, 1, 1]);
-        let second_message = Bytes::from(vec![2, 2, 2, 2]);
+        let mut channel = BlockChannel::new(BlockChannelConfig {
+            resend_time: Duration::ZERO,
+            ..Default::default()   
+        });
+        let first_message = Bytes::from(vec![3; 2000]);
+        let second_message = Bytes::from(vec![5; 2000]);
         channel.send_message(first_message.clone());
         // Add second message to queue
         channel.send_message(second_message.clone());
@@ -532,6 +536,7 @@ mod tests {
         channel.process_ack(1);
 
         // Check there is no message to send
+        assert!(!channel.sender.sending);
         let block_channel_data = channel.get_messages_to_send(u64::MAX, 2);
         assert!(block_channel_data.is_none());
     }
