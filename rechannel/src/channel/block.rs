@@ -30,7 +30,7 @@ struct PacketSent {
 }
 
 /// Configuration for a block channel, used for sending big and reliable messages,
-/// that are not so frequent. Level initialization as an example.
+/// that are not so frequent. Level initialization as an example. Messages are sent one at a time.
 #[derive(Debug, Clone)]
 pub struct BlockChannelConfig {
     /// Channel identifier, unique between all channels
@@ -44,6 +44,10 @@ pub struct BlockChannelConfig {
     pub sent_packet_buffer_size: usize,
     /// Maximum nuber of bytes that this channel is allowed to write per packet
     pub packet_budget: u64,
+    /// Maximum size that a message can have in this channel, for the block channel this value
+    /// can be above the packet budget
+    pub max_message_size: u64,
+    /// Queue size for the block channel.
     pub message_send_queue_size: usize,
 }
 
@@ -60,6 +64,7 @@ struct ChunkSender {
     resend_timers: Vec<Timer>,
     packets_sent: SequenceBuffer<PacketSent>,
     resend_time: Duration,
+    max_message_size: u64,
     packet_budget: u64,
 }
 
@@ -71,6 +76,7 @@ struct ChunkReceiver {
     num_slices: usize,
     num_received_slices: usize,
     received: Vec<bool>,
+    max_message_size: u64,
     chunk_data: Payload,
 }
 
@@ -93,7 +99,8 @@ impl Default for BlockChannelConfig {
             slice_size: 400,
             resend_time: Duration::from_millis(300),
             sent_packet_buffer_size: 256,
-            packet_budget: 4000,
+            packet_budget: 8 * 1024,
+            max_message_size: 256 * 1024,
             message_send_queue_size: 8,
         }
     }
@@ -110,7 +117,7 @@ impl PacketSent {
 }
 
 impl ChunkSender {
-    fn new(slice_size: usize, sent_packet_buffer_size: usize, resend_time: Duration, packet_budget: u64) -> Self {
+    fn new(slice_size: usize, sent_packet_buffer_size: usize, resend_time: Duration, packet_budget: u64, max_message_size: u64) -> Self {
         Self {
             sending: false,
             chunk_id: 0,
@@ -123,6 +130,7 @@ impl ChunkSender {
             resend_timers: Vec::with_capacity(sent_packet_buffer_size),
             packets_sent: SequenceBuffer::with_capacity(sent_packet_buffer_size),
             resend_time,
+            max_message_size,
             packet_budget,
         }
     }
@@ -223,11 +231,12 @@ impl ChunkSender {
 }
 
 impl ChunkReceiver {
-    fn new(slice_size: usize) -> Self {
+    fn new(slice_size: usize, max_message_size: u64) -> Self {
         Self {
             receiving: false,
             chunk_id: 0,
             slice_size,
+            max_message_size,
             num_slices: 0,
             num_received_slices: 0,
             received: Vec::new(),
@@ -235,11 +244,20 @@ impl ChunkReceiver {
         }
     }
 
-    fn process_slice_message(&mut self, message: &SliceMessage) -> Option<Payload> {
+    fn process_slice_message(&mut self, message: &SliceMessage) -> Result<Option<Payload>, ChannelError> {
         if !self.receiving {
             if message.num_slices == 0 {
                 error!("Cannot initialize block message with zero slices.");
-                return None;
+                return Err(ChannelError::InvalidSliceMessage);
+            }
+
+            let total_size = message.num_slices as u64 * self.slice_size as u64;
+            if total_size > self.max_message_size {
+                error!(
+                    "Cannot initialize block message above the channel limit size, got {}, expected less than {}",
+                    total_size, self.max_message_size
+                );
+                return Err(ChannelError::ReceivedMessageAboveMaxSize);
             }
 
             self.receiving = true;
@@ -255,11 +273,12 @@ impl ChunkReceiver {
         }
 
         if message.chunk_id != self.chunk_id {
-            error!(
+            info!(
                 "Invalid chunk id for SliceMessage, expected {}, got {}.",
                 self.chunk_id, message.chunk_id
             );
-            return None;
+            // Not an error since this could be an old chunk id.
+            return Ok(None);
         }
 
         if message.num_slices != self.num_slices as u32 {
@@ -267,18 +286,19 @@ impl ChunkReceiver {
                 "Invalid number of slices for SliceMessage, got {}, expected {}.",
                 message.num_slices, self.num_slices,
             );
-            return None;
+            return Err(ChannelError::InvalidSliceMessage);
         }
+
         let slice_id = message.slice_id as usize;
         let is_last_slice = slice_id == self.num_slices - 1;
         if is_last_slice {
             if message.data.len() > self.slice_size {
                 error!(
-                    "Invalid last slice_size for SliceMessage, got {}, expected < {}.",
+                    "Invalid last slice_size for SliceMessage, got {}, expected less than {}.",
                     message.data.len(),
                     self.slice_size,
                 );
-                return None;
+                return Err(ChannelError::InvalidSliceMessage);
             }
         } else if message.data.len() != self.slice_size {
             error!(
@@ -286,7 +306,7 @@ impl ChunkReceiver {
                 self.slice_size,
                 message.data.len()
             );
-            return None;
+            return Err(ChannelError::InvalidSliceMessage);
         }
 
         if !self.received[slice_id] {
@@ -316,10 +336,10 @@ impl ChunkReceiver {
             info!("Received all slices for chunk {}.", self.chunk_id);
             let block = mem::take(&mut self.chunk_data);
             self.receiving = false;
-            return Some(block);
+            return Ok(Some(block));
         }
 
-        None
+        Ok(None)
     }
 }
 
@@ -332,8 +352,9 @@ impl BlockChannel {
             config.sent_packet_buffer_size,
             config.resend_time,
             config.packet_budget,
+            config.max_message_size,
         );
-        let receiver = ChunkReceiver::new(config.slice_size);
+        let receiver = ChunkReceiver::new(config.slice_size, config.max_message_size);
 
         Self {
             channel_id: config.channel_id,
@@ -410,11 +431,14 @@ impl Channel for BlockChannel {
 
         for message in messages.iter() {
             match bincode::options().deserialize::<SliceMessage>(message) {
-                Ok(message) => {
-                    if let Some(block) = self.receiver.process_slice_message(&message) {
-                        self.messages_received.push_back(block);
+                Ok(slice_message) => match self.receiver.process_slice_message(&slice_message) {
+                    Ok(Some(message)) => self.messages_received.push_back(message),
+                    Ok(None) => {}
+                    Err(e) => {
+                        self.error = Some(e);
+                        return;
                     }
-                }
+                },
                 Err(e) => {
                     error!("Failed to deserialize slice message in channel {}: {}", self.channel_id, e);
                     self.error = Some(ChannelError::FailedToSerialize);
@@ -433,8 +457,22 @@ impl Channel for BlockChannel {
             return;
         }
 
+        if payload.len() as u64 > self.sender.max_message_size {
+            log::error!(
+                "Tried to send block message with size above the limit, got {} bytes, expected less than {}",
+                payload.len(),
+                self.sender.max_message_size
+            );
+            self.error = Some(ChannelError::SentMessageAboveMaxSize);
+            return;
+        }
+
         if self.sender.sending {
             if self.messages_to_send.len() >= self.message_send_queue_size {
+                log::error!(
+                    "Tried to send block message but the message queue is full, the limit is {} messages.",
+                    self.message_send_queue_size
+                );
                 self.error = Some(ChannelError::SendQueueFull);
                 return;
             }
@@ -469,11 +507,11 @@ mod tests {
     #[test]
     fn split_chunk() {
         const SLICE_SIZE: usize = 10;
-        let mut sender = ChunkSender::new(SLICE_SIZE, 100, Duration::from_millis(100), 30);
+        let mut sender = ChunkSender::new(SLICE_SIZE, 100, Duration::from_millis(100), 30, 5000);
         let message = Bytes::from(vec![255u8; 30]);
         sender.send_message(message.clone());
 
-        let mut receiver = ChunkReceiver::new(SLICE_SIZE);
+        let mut receiver = ChunkReceiver::new(SLICE_SIZE, 5000);
 
         let slice_messages = sender.generate_slice_packets(u64::MAX).unwrap();
         assert_eq!(slice_messages.len(), 2);
@@ -481,12 +519,12 @@ mod tests {
         sender.process_ack(1);
 
         for slice_message in slice_messages.into_iter() {
-            receiver.process_slice_message(&slice_message);
+            receiver.process_slice_message(&slice_message).unwrap();
         }
 
         let last_message = sender.generate_slice_packets(u64::MAX).unwrap();
         let result = receiver.process_slice_message(&last_message[0]);
-        assert_eq!(message, result.unwrap());
+        assert_eq!(message, result.unwrap().unwrap());
     }
 
     #[test]
@@ -582,7 +620,7 @@ mod tests {
             num_slices: 0,
             data: vec![],
         };
-        channel.receiver.process_slice_message(&slice_message);
+        assert!(channel.receiver.process_slice_message(&slice_message).is_err());
         assert!(!channel.receiver.receiving);
     }
 }

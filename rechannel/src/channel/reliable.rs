@@ -48,6 +48,9 @@ pub struct ReliableChannelConfig {
     pub message_receive_queue_size: usize,
     /// Maximum nuber of bytes that this channel is allowed to write per packet
     pub packet_budget: u64,
+    /// Maximum size that a message can have in this channel, for reliable channel this value
+    /// need to be less than the packet budget
+    pub max_message_size: u64,
     /// Delay to wait before resending messages
     pub message_resend_time: Duration,
 }
@@ -98,6 +101,7 @@ impl Default for ReliableChannelConfig {
             message_send_queue_size: 1024,
             message_receive_queue_size: 1024,
             packet_budget: 6000,
+            max_message_size: 3000,
             message_resend_time: Duration::from_millis(200),
         }
     }
@@ -214,6 +218,16 @@ impl Channel for ReliableChannel {
             self.info.messages_received += 1;
             match bincode::options().deserialize::<ReliableMessage>(message) {
                 Ok(message) => {
+                    if message.payload.len() as u64 > self.config.max_message_size {
+                        log::error!(
+                            "Received reliable message with size above the limit, got {} bytes, expected less than {}",
+                            message.payload.len(),
+                            self.config.max_message_size
+                        );
+                        self.error = Some(ChannelError::ReceivedMessageAboveMaxSize);
+                        return;
+                    }
+
                     if !self.messages_received.exists(message.id) {
                         self.messages_received.insert(message.id, message);
                     }
@@ -255,7 +269,12 @@ impl Channel for ReliableChannel {
         }
 
         if payload.len() as u64 > self.config.packet_budget {
-            self.error = Some(ChannelError::MessageAbovePacketBudget);
+            log::error!(
+                "Tried to send reliable message with size above the limit, got {} bytes, expected less than {}",
+                payload.len(),
+                self.config.max_message_size
+            );
+            self.error = Some(ChannelError::SentMessageAboveMaxSize);
             return;
         }
 

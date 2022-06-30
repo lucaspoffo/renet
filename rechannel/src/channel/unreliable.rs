@@ -19,7 +19,8 @@ pub struct UnreliableChannelConfig {
     pub channel_id: u8,
     /// Maximum nuber of bytes that this channel is allowed to write per packet
     pub packet_budget: u64,
-    /// Maximum size that a message can have in this channel
+    /// Maximum size that a message can have in this channel, for unreliable channel this value
+    /// need to be less than the packet budget
     pub max_message_size: u64,
     /// Allowed numbers of messages in the send queue for this channel
     pub message_send_queue_size: usize,
@@ -41,7 +42,7 @@ impl Default for UnreliableChannelConfig {
         Self {
             channel_id: 1,
             packet_budget: 6000,
-            max_message_size: 1200,
+            max_message_size: 3000,
             message_send_queue_size: 256,
             message_receive_queue_size: 256,
         }
@@ -50,6 +51,8 @@ impl Default for UnreliableChannelConfig {
 
 impl UnreliableChannel {
     pub fn new(config: UnreliableChannelConfig) -> Self {
+        assert!(config.max_message_size < config.packet_budget);
+
         Self {
             messages_to_send: VecDeque::with_capacity(config.message_send_queue_size),
             messages_received: VecDeque::with_capacity(config.message_receive_queue_size),
@@ -102,9 +105,18 @@ impl Channel for UnreliableChannel {
         }
 
         while let Some(message) = messages.pop() {
+            if message.len() as u64 > self.config.max_message_size {
+                log::error!(
+                    "Received unreliable message with size above the limit, got {} bytes, expected less than {}",
+                    message.len(),
+                    self.config.max_message_size
+                );
+                self.error = Some(ChannelError::ReceivedMessageAboveMaxSize);
+                return;
+            }
             if self.messages_received.len() == self.config.message_receive_queue_size {
                 log::warn!(
-                    "Received message was dropped in unreliable channel {}, reached maximum number of messages {} ",
+                    "Received message was dropped in unreliable channel {}, reached maximum number of messages {}",
                     self.config.channel_id,
                     self.config.message_receive_queue_size
                 );
@@ -123,12 +135,13 @@ impl Channel for UnreliableChannel {
             return;
         }
 
-        if payload.len() as u64 > self.config.packet_budget {
-            // In the case of the on unreliable channel,
-            // if there is no budget, the message is dropped.
-            // So, should we ignore this?
-            // If so, we should still return here and warn the user.
-            self.error = Some(ChannelError::MessageAbovePacketBudget);
+        if payload.len() as u64 > self.config.max_message_size {
+            log::error!(
+                "Tried to send unreliable message with size above the limit, got {} bytes, expected less than {}",
+                payload.len(),
+                self.config.max_message_size
+            );
+            self.error = Some(ChannelError::SentMessageAboveMaxSize);
             return;
         }
 

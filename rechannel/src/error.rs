@@ -26,9 +26,12 @@ pub enum ChannelError {
     SendQueueFull,
     /// Error occurred during (de)serialization
     FailedToSerialize,
-    /// Tried to send a message that is above the packet budget. This would result in a message
-    /// that would never be sent.
-    MessageAbovePacketBudget,
+    /// Tried to send a message that is above the channel max message size.
+    SentMessageAboveMaxSize,
+    /// Received a message above above the channel max message size.
+    ReceivedMessageAboveMaxSize,
+    /// Received an invalid slice message in a block channel.
+    InvalidSliceMessage,
 }
 
 impl fmt::Display for ChannelError {
@@ -39,7 +42,9 @@ impl fmt::Display for ChannelError {
             ReliableChannelOutOfSync => write!(fmt, "out of sync"),
             SendQueueFull => write!(fmt, "send queue was full"),
             FailedToSerialize => write!(fmt, "failed to serialize or deserialize"),
-            MessageAbovePacketBudget => write!(fmt, "sent message above the channel packet budget"),
+            SentMessageAboveMaxSize => write!(fmt, "sent message above the channel max message size"),
+            ReceivedMessageAboveMaxSize => write!(fmt, "received message above the channel max message size"),
+            InvalidSliceMessage => write!(fmt, "received an invalid slice message in a block channel"),
         }
     }
 }
