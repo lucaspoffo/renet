@@ -205,9 +205,9 @@ impl RenetServer {
             self.events.push_back(ServerEvent::ClientDisconnected(client_id));
             if reason != DisconnectionReason::DisconnectedByClient {
                 match disconnect_packet(reason) {
-                    Err(e) => error!("failed to serialize disconnect packet: {}", e),
+                    Err(e) => error!("Failed to serialize disconnect packet: {}", e),
                     Ok(packet) => match self.netcode_server.generate_payload_packet(client_id, &packet) {
-                        Err(e) => error!("failed to encrypt disconnect packet: {}", e),
+                        Err(e) => error!("Failed to encrypt disconnect packet: {}", e),
                         Ok((addr, payload)) => {
                             for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
                                 self.socket.send_to(payload, addr)?;
@@ -268,7 +268,7 @@ impl RenetServer {
                     Ok((addr, payload)) => {
                         send_to(current_time, &self.socket, &mut self.clients_packet_info, payload, addr)?;
                     }
-                    Err(e) => error!("failed to encrypt payload packet: {}", e),
+                    Err(e) => error!("Failed to encrypt payload packet: {}", e),
                 }
             }
         }

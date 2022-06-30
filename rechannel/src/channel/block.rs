@@ -44,7 +44,6 @@ pub struct BlockChannelConfig {
     pub sent_packet_buffer_size: usize,
     /// Maximum nuber of bytes that this channel is allowed to write per packet
     pub packet_budget: u64,
-    // TODO: remove queue, add can_send() -> bool
     pub message_send_queue_size: usize,
 }
 
@@ -238,6 +237,11 @@ impl ChunkReceiver {
 
     fn process_slice_message(&mut self, message: &SliceMessage) -> Option<Payload> {
         if !self.receiving {
+            if message.num_slices == 0 {
+                error!("Cannot initialize block message with zero slices.");
+                return None;
+            }
+
             self.receiving = true;
             self.num_slices = message.num_slices as usize;
             self.chunk_id = message.chunk_id;
@@ -567,5 +571,18 @@ mod tests {
 
         channel.process_ack(2);
         assert!(!channel.sender.sending);
+    }
+
+    #[test]
+    fn initialize_block_with_zero_slices() {
+        let mut channel = BlockChannel::new(Default::default());
+        let slice_message = SliceMessage {
+            chunk_id: 0,
+            slice_id: 0,
+            num_slices: 0,
+            data: vec![],
+        };
+        channel.receiver.process_slice_message(&slice_message);
+        assert!(!channel.receiver.receiving);
     }
 }
