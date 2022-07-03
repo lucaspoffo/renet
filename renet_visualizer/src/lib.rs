@@ -63,6 +63,18 @@ impl Default for RenetVisualizerStyle {
     }
 }
 
+impl<const N: usize> Default for RenetClientVisualizer<N> {
+    fn default() -> Self {
+        RenetClientVisualizer::new(RenetVisualizerStyle::default())
+    }
+}
+
+impl<const N: usize> Default for RenetServerVisualizer<N> {
+    fn default() -> Self {
+        RenetServerVisualizer::new(RenetVisualizerStyle::default())
+    }
+}
+
 impl<const N: usize> RenetClientVisualizer<N> {
     pub fn new(style: RenetVisualizerStyle) -> Self {
         Self {
