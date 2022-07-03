@@ -1,6 +1,10 @@
 use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
 
-use bevy::prelude::*;
+use bevy::{
+    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    prelude::*,
+};
+use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_renet::{
     renet::{ConnectToken, RenetClient, RenetError},
     run_if_client_conected, RenetClientPlugin,
@@ -8,6 +12,7 @@ use bevy_renet::{
 use demo_royale::{
     connection_config, setup_level, Channel, Lobby, PlayerCommand, PlayerInput, Ray3d, ServerMessages, PRIVATE_KEY, PROTOCOL_ID,
 };
+use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
 #[derive(Component)]
@@ -31,12 +36,16 @@ fn main() {
     app.add_plugins(DefaultPlugins);
     app.add_plugin(RenetClientPlugin);
     app.add_plugin(LookTransformPlugin);
+    app.add_plugin(FrameTimeDiagnosticsPlugin::default());
+    app.add_plugin(LogDiagnosticsPlugin::default());
+    app.add_plugin(EguiPlugin);
 
     app.add_event::<PlayerCommand>();
 
     app.insert_resource(Lobby::default());
     app.insert_resource(PlayerInput::default());
     app.insert_resource(new_renet_client());
+    app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
 
     app.add_system(player_input);
     app.add_system(camera_follow);
@@ -44,6 +53,7 @@ fn main() {
     app.add_system(client_send_input.with_run_criteria(run_if_client_conected));
     app.add_system(client_send_player_commands.with_run_criteria(run_if_client_conected));
     app.add_system(client_sync_players.with_run_criteria(run_if_client_conected));
+    app.add_system(update_visulizer_system);
 
     app.add_startup_system(setup_level);
     app.add_startup_system(setup_camera);
@@ -57,6 +67,22 @@ fn main() {
 fn panic_on_error_system(mut renet_error: EventReader<RenetError>) {
     for e in renet_error.iter() {
         panic!("{}", e);
+    }
+}
+
+fn update_visulizer_system(
+    mut egui_context: ResMut<EguiContext>,
+    mut visualizer: ResMut<RenetClientVisualizer<200>>,
+    client: Res<RenetClient>,
+    mut show_visualizer: Local<bool>,
+    keyboard_input: Res<Input<KeyCode>>,
+) {
+    visualizer.add_network_info(client.network_info());
+    if keyboard_input.just_pressed(KeyCode::F1) {
+        *show_visualizer = !*show_visualizer;
+    }
+    if *show_visualizer {
+        visualizer.show_window(egui_context.ctx_mut());
     }
 }
 

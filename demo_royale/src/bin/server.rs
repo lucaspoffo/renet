@@ -1,6 +1,10 @@
 use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
 
-use bevy::prelude::*;
+use bevy::{
+    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    prelude::*,
+};
+use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_rapier3d::{
     plugin::{NoUserData, RapierPhysicsPlugin},
     prelude::{Collider, LockedAxes, RapierDebugRenderPlugin, RigidBody, Velocity},
@@ -10,6 +14,7 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use demo_royale::{connection_config, Channel, Lobby, Player, PlayerCommand, PlayerInput, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
+use renet_visualizer::RenetServerVisualizer;
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
@@ -29,13 +34,18 @@ fn main() {
     app.add_plugin(RenetServerPlugin);
     app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
     app.add_plugin(RapierDebugRenderPlugin::default());
+    app.add_plugin(FrameTimeDiagnosticsPlugin::default());
+    app.add_plugin(LogDiagnosticsPlugin::default());
+    app.add_plugin(EguiPlugin);
 
     app.insert_resource(Lobby::default());
     app.insert_resource(new_renet_server());
+    app.insert_resource(RenetServerVisualizer::<200>::default());
 
     app.add_system(server_update_system);
     app.add_system(server_sync_players);
     app.add_system(move_players_system);
+    app.add_system(update_visulizer_system);
 
     app.add_startup_system(setup_level);
     app.add_startup_system(setup_simple_camera);
@@ -50,11 +60,14 @@ fn server_update_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut lobby: ResMut<Lobby>,
     mut server: ResMut<RenetServer>,
+    mut visualizer: ResMut<RenetServerVisualizer<200>>,
 ) {
     for event in server_events.iter() {
         match event {
             ServerEvent::ClientConnected(id, _) => {
                 println!("Player {} connected.", id);
+                visualizer.add_client(*id);
+
                 // Spawn player cube
                 let player_entity = commands
                     .spawn_bundle(PbrBundle {
@@ -85,6 +98,7 @@ fn server_update_system(
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
+                visualizer.add_client(*id);
                 if let Some(player_entity) = lobby.players.remove(id) {
                     commands.entity(player_entity).despawn();
                 }
@@ -108,6 +122,15 @@ fn server_update_system(
             println!("Received command from client {}: {:?}", client_id, command);
         }
     }
+}
+
+fn update_visulizer_system(
+    mut egui_context: ResMut<EguiContext>,
+    mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    server: Res<RenetServer>,
+) {
+    visualizer.update(&server);
+    visualizer.show_window(egui_context.ctx_mut());
 }
 
 fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(&Transform, &Player)>) {
