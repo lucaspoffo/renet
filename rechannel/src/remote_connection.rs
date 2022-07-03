@@ -337,6 +337,10 @@ impl RemoteConnection {
             }
         }
 
+        if packets_sent == 0 {
+            return;
+        }
+
         let packet_loss = packets_dropped as f32 / packets_sent as f32;
         if self.packet_loss == 0.0 || self.packet_loss < f32::EPSILON {
             self.packet_loss = packet_loss;
