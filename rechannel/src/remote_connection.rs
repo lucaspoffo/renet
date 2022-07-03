@@ -326,8 +326,10 @@ impl RemoteConnection {
         let base_sequence = self.sent_buffer.sequence().wrapping_sub(sample_size as u16);
 
         let mut packets_dropped = 0;
+        let mut packets_sent = 0;
         for i in 0..sample_size {
             if let Some(sent_packet) = self.sent_buffer.get(base_sequence.wrapping_add(i as u16)) {
+                packets_sent += 1;
                 let secs_since_sent = (self.current_time - sent_packet.time).as_secs_f32();
                 if !sent_packet.ack && secs_since_sent > self.rtt * 1.5 {
                     packets_dropped += 1;
@@ -335,11 +337,60 @@ impl RemoteConnection {
             }
         }
 
-        let packet_loss = packets_dropped as f32 / sample_size as f32;
+        let packet_loss = packets_dropped as f32 / packets_sent as f32;
         if self.packet_loss == 0.0 || self.packet_loss < f32::EPSILON {
             self.packet_loss = packet_loss;
         } else {
             self.packet_loss += (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::packet::AckData;
+
+    use super::*;
+
+    #[test]
+    fn round_time_trip() {
+        let mut connection = RemoteConnection::new(Duration::ZERO, ConnectionConfig::default());
+
+        let message: Bytes = vec![1, 2, 3].into();
+        let mut ack_data = AckData { ack: 0, ack_bits: 1 };
+        for _ in 0..16 {
+            connection.send_message(1, message.clone());
+            assert!(!connection.get_packets_to_send().unwrap().is_empty());
+
+            connection.advance_time(Duration::from_millis(100));
+            connection.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+
+            ack_data.ack += 1;
+        }
+
+        assert_eq!(connection.rtt(), 100.);
+    }
+
+    #[test]
+    fn packet_loss() {
+        let mut connection = RemoteConnection::new(Duration::ZERO, ConnectionConfig::default());
+
+        let message: Bytes = vec![1, 2, 3].into();
+        let mut ack_data = AckData { ack: 0, ack_bits: 1 };
+        for i in 0..32 {
+            connection.send_message(1, message.clone());
+            assert!(!connection.get_packets_to_send().unwrap().is_empty());
+
+            // 50% packet loss
+            if i % 2 == 0 {
+                connection.update_acket_packets(ack_data.ack, ack_data.ack_bits);
+            }
+            connection.advance_time(Duration::from_millis(100));
+
+            ack_data.ack += 1;
+        }
+
+        connection.update_packet_loss();
+        assert_eq!(connection.packet_loss(), 0.5);
     }
 }
