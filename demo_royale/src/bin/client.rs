@@ -10,13 +10,27 @@ use bevy_renet::{
     run_if_client_conected, RenetClientPlugin,
 };
 use demo_royale::{
-    connection_config, setup_level, Channel, Lobby, PlayerCommand, PlayerInput, Ray3d, ServerMessages, PRIVATE_KEY, PROTOCOL_ID,
+    connection_config, setup_level, Channel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerMessages, PRIVATE_KEY, PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
 #[derive(Component)]
 struct ControlledPlayer;
+
+#[derive(Default)]
+struct PlayerNetMapping(HashMap<Entity, Entity>);
+
+#[derive(Debug)]
+struct PlayerInfo {
+    client_entity: Entity,
+    server_entity: Entity,
+}
+
+#[derive(Debug, Default)]
+struct ClientLobby {
+    players: HashMap<u64, PlayerInfo>,
+}
 
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
@@ -42,10 +56,11 @@ fn main() {
 
     app.add_event::<PlayerCommand>();
 
-    app.insert_resource(Lobby::default());
+    app.insert_resource(ClientLobby::default());
     app.insert_resource(PlayerInput::default());
     app.insert_resource(new_renet_client());
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
+    app.insert_resource(PlayerNetMapping::default());
 
     app.add_system(player_input);
     app.add_system(camera_follow);
@@ -124,45 +139,60 @@ fn client_sync_players(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut client: ResMut<RenetClient>,
-    mut lobby: ResMut<Lobby>,
+    mut lobby: ResMut<ClientLobby>,
+    mut player_net_mapping: ResMut<PlayerNetMapping>,
 ) {
     let client_id = client.client_id();
     while let Some(message) = client.receive_message(0) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
-            ServerMessages::PlayerConnected { id } => {
+            ServerMessages::PlayerCreate { id, translation, entity } => {
                 println!("Player {} connected.", id);
-                let mut player_entity = commands.spawn_bundle(PbrBundle {
+                let mut client_entity = commands.spawn_bundle(PbrBundle {
                     mesh: meshes.add(Mesh::from(shape::Capsule::default())),
                     material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-                    transform: Transform::from_xyz(0.0, 0., 0.0),
+                    transform: Transform::from_xyz(translation[0], translation[1], translation[2]),
                     ..Default::default()
                 });
 
                 if client_id == id {
-                    player_entity.insert(ControlledPlayer);
+                    client_entity.insert(ControlledPlayer);
                 }
 
-                lobby.players.insert(id, player_entity.id());
+                let player_info = PlayerInfo {
+                    server_entity: entity,
+                    client_entity: client_entity.id(),
+                };
+                lobby.players.insert(id, player_info);
+                player_net_mapping.0.insert(entity, client_entity.id());
             }
-            ServerMessages::PlayerDisconnected { id } => {
+            ServerMessages::PlayerRemove { id } => {
                 println!("Player {} disconnected.", id);
-                if let Some(player_entity) = lobby.players.remove(&id) {
-                    commands.entity(player_entity).despawn();
+                if let Some(PlayerInfo {
+                    server_entity,
+                    client_entity,
+                }) = lobby.players.remove(&id)
+                {
+                    commands.entity(client_entity).despawn();
+                    player_net_mapping.0.remove(&server_entity);
                 }
             }
         }
     }
 
     while let Some(message) = client.receive_message(1) {
-        let players: HashMap<u64, [f32; 3]> = bincode::deserialize(&message).unwrap();
-        for (player_id, translation) in players.iter() {
-            if let Some(player_entity) = lobby.players.get(player_id) {
+        let frame: NetworkFrame = bincode::deserialize(&message).unwrap();
+        if frame.players.translations.len() != frame.players.entities.len() {
+            continue;
+        }
+        for i in 0..frame.players.entities.len() {
+            if let Some(client_entity) = player_net_mapping.0.get(&frame.players.entities[i]) {
+                let translation = frame.players.translations[i].into();
                 let transform = Transform {
-                    translation: (*translation).into(),
+                    translation,
                     ..Default::default()
                 };
-                commands.entity(*player_entity).insert(transform);
+                commands.entity(*client_entity).insert(transform);
             }
         }
     }

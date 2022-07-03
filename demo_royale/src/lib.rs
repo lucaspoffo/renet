@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, NETCODE_KEY_BYTES};
@@ -13,11 +13,6 @@ pub struct PlayerInput {
     pub down: bool,
     pub left: bool,
     pub right: bool,
-}
-
-#[derive(Debug, Default)]
-pub struct Lobby {
-    pub players: HashMap<u64, Entity>,
 }
 
 #[derive(Debug, Component)]
@@ -37,8 +32,19 @@ pub enum Channel {
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 pub enum ServerMessages {
-    PlayerConnected { id: u64 },
-    PlayerDisconnected { id: u64 },
+    PlayerCreate { entity: Entity, id: u64, translation: [f32; 3] },
+    PlayerRemove { id: u64 },
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct NetworkedPlayers {
+    pub entities: Vec<Entity>,
+    pub translations: Vec<[f32; 3]>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct NetworkFrame {
+    pub players: NetworkedPlayers,
 }
 
 impl Channel {

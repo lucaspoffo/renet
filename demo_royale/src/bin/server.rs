@@ -13,8 +13,13 @@ use bevy_renet::{
     renet::{RenetServer, ServerConfig, ServerEvent},
     RenetServerPlugin,
 };
-use demo_royale::{connection_config, Channel, Lobby, Player, PlayerCommand, PlayerInput, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
+use demo_royale::{connection_config, Channel, NetworkFrame, Player, PlayerCommand, PlayerInput, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
 use renet_visualizer::RenetServerVisualizer;
+
+#[derive(Debug, Default)]
+pub struct ServerLobby {
+    pub players: HashMap<u64, Entity>,
+}
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
@@ -38,7 +43,7 @@ fn main() {
     app.add_plugin(LogDiagnosticsPlugin::default());
     app.add_plugin(EguiPlugin);
 
-    app.insert_resource(Lobby::default());
+    app.insert_resource(ServerLobby::default());
     app.insert_resource(new_renet_server());
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
@@ -53,14 +58,16 @@ fn main() {
     app.run();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn server_update_system(
     mut server_events: EventReader<ServerEvent>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut lobby: ResMut<Lobby>,
+    mut lobby: ResMut<ServerLobby>,
     mut server: ResMut<RenetServer>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    players: Query<(Entity, &Player, &Transform)>,
 ) {
     for event in server_events.iter() {
         match event {
@@ -68,12 +75,25 @@ fn server_update_system(
                 println!("Player {} connected.", id);
                 visualizer.add_client(*id);
 
-                // Spawn player cube
+                // Initialize other players for this new client
+                for (entity, player, transform) in players.iter() {
+                    let translation: [f32; 3] = transform.translation.into();
+                    let message = bincode::serialize(&ServerMessages::PlayerCreate {
+                        id: player.id,
+                        entity,
+                        translation,
+                    })
+                    .unwrap();
+                    server.send_message(*id, 0, message);
+                }
+
+                // Spawn new player
+                let transform = Transform::from_xyz(0.0, 0.51, 0.0);
                 let player_entity = commands
                     .spawn_bundle(PbrBundle {
                         mesh: meshes.add(Mesh::from(shape::Capsule::default())),
                         material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-                        transform: Transform::from_xyz(0.0, 0.51, 0.0),
+                        transform,
                         ..Default::default()
                     })
                     .insert(RigidBody::Dynamic)
@@ -84,16 +104,15 @@ fn server_update_system(
                     .insert(Player { id: *id })
                     .id();
 
-                // We could send an InitState with all the players id and positions for the client
-                // but this is easier to do.
-                for &player_id in lobby.players.keys() {
-                    let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(*id, 0, message);
-                }
-
                 lobby.players.insert(*id, player_entity);
 
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *id }).unwrap();
+                let translation: [f32; 3] = transform.translation.into();
+                let message = bincode::serialize(&ServerMessages::PlayerCreate {
+                    id: *id,
+                    entity: player_entity,
+                    translation,
+                })
+                .unwrap();
                 server.broadcast_message(0, message);
             }
             ServerEvent::ClientDisconnected(id) => {
@@ -103,7 +122,7 @@ fn server_update_system(
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *id }).unwrap();
                 server.broadcast_message(0, message);
             }
         }
@@ -133,13 +152,14 @@ fn update_visulizer_system(
     visualizer.show_window(egui_context.ctx_mut());
 }
 
-fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(&Transform, &Player)>) {
-    let mut players: HashMap<u64, [f32; 3]> = HashMap::new();
-    for (transform, player) in query.iter() {
-        players.insert(player.id, transform.translation.into());
+fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(Entity, &Transform), With<Player>>) {
+    let mut frame = NetworkFrame::default();
+    for (entity, transform) in query.iter() {
+        frame.players.entities.push(entity);
+        frame.players.translations.push(transform.translation.into());
     }
 
-    let sync_message = bincode::serialize(&players).unwrap();
+    let sync_message = bincode::serialize(&frame).unwrap();
     server.broadcast_message(1, sync_message);
 }
 
