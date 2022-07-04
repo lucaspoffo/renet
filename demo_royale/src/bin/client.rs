@@ -122,15 +122,16 @@ fn player_input(
 }
 
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
-    let input_message = bincode::serialize(&*player_input).unwrap();
+    let command = PlayerCommand::Input(*player_input);
+    let input_message = bincode::serialize(&command).unwrap();
 
-    client.send_message(Channel::Input.id(), input_message);
+    client.send_message(Channel::ReliableCritical.id(), input_message);
 }
 
 fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
     for command in player_commands.iter() {
         let command_message = bincode::serialize(command).unwrap();
-        client.send_message(Channel::Command.id(), command_message);
+        client.send_message(Channel::ReliableCritical.id(), command_message);
     }
 }
 
@@ -143,7 +144,7 @@ fn client_sync_players(
     mut player_net_mapping: ResMut<PlayerNetMapping>,
 ) {
     let client_id = client.client_id();
-    while let Some(message) = client.receive_message(0) {
+    while let Some(message) = client.receive_message(Channel::Reliable.id()) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
             ServerMessages::PlayerCreate { id, translation, entity } => {
@@ -180,7 +181,7 @@ fn client_sync_players(
         }
     }
 
-    while let Some(message) = client.receive_message(1) {
+    while let Some(message) = client.receive_message(Channel::Unreliable.id()) {
         let frame: NetworkFrame = bincode::deserialize(&message).unwrap();
         if frame.players.translations.len() != frame.players.entities.len() {
             continue;

@@ -84,7 +84,7 @@ fn server_update_system(
                         translation,
                     })
                     .unwrap();
-                    server.send_message(*id, 0, message);
+                    server.send_message(*id, Channel::Reliable.id(), message);
                 }
 
                 // Spawn new player
@@ -113,7 +113,7 @@ fn server_update_system(
                     translation,
                 })
                 .unwrap();
-                server.broadcast_message(0, message);
+                server.broadcast_message(Channel::Reliable.id(), message);
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
@@ -123,22 +123,24 @@ fn server_update_system(
                 }
 
                 let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *id }).unwrap();
-                server.broadcast_message(0, message);
+                server.broadcast_message(Channel::Reliable.id(), message);
             }
         }
     }
 
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, Channel::Input.id()) {
-            let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
-            if let Some(player_entity) = lobby.players.get(&client_id) {
-                commands.entity(*player_entity).insert(player_input);
-            }
-        }
-
-        while let Some(message) = server.receive_message(client_id, Channel::Command.id()) {
+        while let Some(message) = server.receive_message(client_id, Channel::ReliableCritical.id()) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
-            println!("Received command from client {}: {:?}", client_id, command);
+            match command {
+                PlayerCommand::Input(input) => {
+                    if let Some(player_entity) = lobby.players.get(&client_id) {
+                        commands.entity(*player_entity).insert(input);
+                    }
+                }
+                PlayerCommand::BasicAttack { cast_at } => {
+                    println!("Received basic attack from client {}: {:?}", client_id, cast_at);
+                }
+            }
         }
     }
 }
@@ -160,7 +162,7 @@ fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(Entity, &T
     }
 
     let sync_message = bincode::serialize(&frame).unwrap();
-    server.broadcast_message(1, sync_message);
+    server.broadcast_message(Channel::Unreliable.id(), sync_message);
 }
 
 fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {

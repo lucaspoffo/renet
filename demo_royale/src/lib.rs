@@ -1,13 +1,18 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, NETCODE_KEY_BYTES};
+use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, UnreliableChannelConfig, NETCODE_KEY_BYTES};
 use serde::{Deserialize, Serialize};
 
 pub const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
 pub const PROTOCOL_ID: u64 = 7;
 
-#[derive(Debug, Default, Serialize, Deserialize, Component)]
+#[derive(Debug, Component)]
+pub struct Player {
+    pub id: u64,
+}
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component)]
 pub struct PlayerInput {
     pub up: bool,
     pub down: bool,
@@ -15,19 +20,16 @@ pub struct PlayerInput {
     pub right: bool,
 }
 
-#[derive(Debug, Component)]
-pub struct Player {
-    pub id: u64,
-}
-
 #[derive(Debug, Serialize, Deserialize, Component)]
 pub enum PlayerCommand {
+    Input(PlayerInput),
     BasicAttack { cast_at: Vec3 },
 }
 
 pub enum Channel {
-    Input,
-    Command,
+    Reliable,
+    ReliableCritical,
+    Unreliable,
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
@@ -50,22 +52,28 @@ pub struct NetworkFrame {
 impl Channel {
     pub fn id(&self) -> u8 {
         match self {
-            Channel::Input => 0,
-            Channel::Command => 1,
+            Channel::Reliable => 0,
+            Channel::ReliableCritical => 1,
+            Channel::Unreliable => 2,
         }
     }
 
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
             ReliableChannelConfig {
-                channel_id: Channel::Input.id(),
-                message_resend_time: Duration::ZERO,
+                channel_id: Channel::Reliable.id(),
+                message_resend_time: Duration::from_millis(200),
                 ..Default::default()
             }
             .into(),
             ReliableChannelConfig {
-                channel_id: Channel::Command.id(),
+                channel_id: Channel::ReliableCritical.id(),
                 message_resend_time: Duration::ZERO,
+                ..Default::default()
+            }
+            .into(),
+            UnreliableChannelConfig {
+                channel_id: Channel::Unreliable.id(),
                 ..Default::default()
             }
             .into(),
