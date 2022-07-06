@@ -1,6 +1,6 @@
 use crate::channel::{Channel, ChannelConfig, ChannelNetworkInfo};
 use crate::error::{DisconnectionReason, RechannelError};
-use crate::packet::{HeartBeat, Normal, Packet, Payload};
+use crate::packet::{Packet, Payload};
 
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
@@ -201,30 +201,38 @@ impl RemoteConnection {
         let packet: Packet = bincode::options().deserialize(packet)?;
 
         let channels_packet_data = match packet {
-            Packet::Normal(Normal {
+            Packet::Normal {
                 sequence,
                 ack_data,
                 channels_packet_data,
-            }) => {
+            } => {
                 self.received_buffer.insert(sequence, ());
                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
                 channels_packet_data
             }
-            Packet::Fragment(fragment) => {
-                if self.received_buffer.get_mut(fragment.sequence).is_none() {
-                    self.received_buffer.insert(fragment.sequence, ());
+            Packet::Fragment {
+                sequence,
+                ack_data,
+                fragment_data,
+            } => {
+                if self.received_buffer.get_mut(sequence).is_none() {
+                    self.received_buffer.insert(sequence, ());
                 }
 
-                self.update_acket_packets(fragment.ack_data.ack, fragment.ack_data.ack_bits);
+                self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
 
-                self.reassembly_buffer
-                    .handle_fragment(fragment, self.config.max_packet_size, &self.config.fragment_config)?
+                self.reassembly_buffer.handle_fragment(
+                    sequence,
+                    fragment_data,
+                    self.config.max_packet_size,
+                    &self.config.fragment_config,
+                )?
             }
-            Packet::Heartbeat(HeartBeat { ack_data }) => {
+            Packet::Heartbeat { ack_data } => {
                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
                 return Ok(());
             }
-            Packet::Disconnect(reason) => {
+            Packet::Disconnect { reason } => {
                 self.state = ConnectionState::Disconnected { reason };
                 return Ok(());
             }
@@ -274,11 +282,11 @@ impl RemoteConnection {
             let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above as u64 {
                 build_fragments(channels_packet_data, sequence, ack_data, &self.config.fragment_config)?
             } else {
-                let packet = Packet::Normal(Normal {
+                let packet = Packet::Normal {
                     sequence,
                     ack_data,
                     channels_packet_data,
-                });
+                };
                 let packet = bincode::options().serialize(&packet)?;
                 vec![packet]
             };
@@ -287,7 +295,7 @@ impl RemoteConnection {
             return Ok(packets);
         } else if self.heartbeat_timer.is_finished() {
             let ack_data = self.received_buffer.ack_data();
-            let packet = Packet::Heartbeat(HeartBeat { ack_data });
+            let packet = Packet::Heartbeat { ack_data };
             let packet = bincode::options().serialize(&packet)?;
 
             self.heartbeat_timer.reset();

@@ -1,4 +1,4 @@
-use crate::packet::{AckData, ChannelPacketData, Fragment, Packet, Payload};
+use crate::packet::{AckData, ChannelPacketData, FragmentData, Packet, Payload};
 use crate::sequence_buffer::SequenceBuffer;
 
 use bincode::Options;
@@ -113,18 +113,16 @@ impl ReassemblyFragment {
 impl SequenceBuffer<ReassemblyFragment> {
     pub fn handle_fragment(
         &mut self,
-        fragment: Fragment,
+        sequence: u16,
+        fragment_data: FragmentData,
         max_packet_size: u64,
         config: &FragmentConfig,
     ) -> Result<Vec<ChannelPacketData>, FragmentError> {
-        let Fragment {
-            sequence,
+        let FragmentData {
+            fragment_id,
             num_fragments,
             payload,
-            fragment_id,
-            ..
-        } = fragment;
-
+        } = fragment_data;
         let reassembly_fragment = self
             .get_or_insert_with(sequence, || ReassemblyFragment::new(sequence, num_fragments, config.fragment_size))
             .ok_or(FragmentError::OldSequence { sequence })?;
@@ -209,13 +207,15 @@ pub(crate) fn build_fragments(
 
     let mut fragments = Vec::with_capacity(num_fragments);
     for (id, chunk) in payload.chunks(config.fragment_size).enumerate() {
-        let fragment = Packet::Fragment(Fragment {
-            fragment_id: id as u8,
+        let fragment = Packet::Fragment {
             sequence,
-            num_fragments: num_fragments as u8,
             ack_data,
-            payload: chunk.into(),
-        });
+            fragment_data: FragmentData {
+                fragment_id: id as u8,
+                num_fragments: num_fragments as u8,
+                payload: chunk.into(),
+            },
+        };
         let fragment = bincode::options().serialize(&fragment)?;
         fragments.push(fragment);
     }
@@ -236,35 +236,36 @@ mod tests {
             channel_id: 0,
             messages: vec![vec![7u8; 1000], vec![255u8; 1000], vec![33u8; 1000]],
         }];
+        let sequence = 0;
 
-        let fragments = build_fragments(messages.clone(), 0, ack_data, &config).unwrap();
+        let fragments = build_fragments(messages.clone(), sequence, ack_data, &config).unwrap();
         let mut fragments_reassembly: SequenceBuffer<ReassemblyFragment> = SequenceBuffer::with_capacity(256);
         assert_eq!(3, fragments.len());
 
-        let fragments: Vec<Fragment> = fragments
+        let fragments: Vec<FragmentData> = fragments
             .iter()
             .map(|payload| {
                 let fragment: Packet = bincode::options().deserialize(payload).unwrap();
                 match fragment {
-                    Packet::Fragment(f) => f,
+                    Packet::Fragment { fragment_data, .. } => fragment_data,
                     _ => panic!(),
                 }
             })
             .collect();
 
-        let result = fragments_reassembly.handle_fragment(fragments[0].clone(), 250_000, &config);
+        let result = fragments_reassembly.handle_fragment(sequence, fragments[0].clone(), 250_000, &config);
         match result {
             Ok(payloads) => assert!(payloads.is_empty()),
             _ => unreachable!(),
         }
 
-        let result = fragments_reassembly.handle_fragment(fragments[1].clone(), 250_000, &config);
+        let result = fragments_reassembly.handle_fragment(sequence, fragments[1].clone(), 250_000, &config);
         match result {
             Ok(payloads) => assert!(payloads.is_empty()),
             _ => unreachable!(),
         }
 
-        let result = fragments_reassembly.handle_fragment(fragments[2].clone(), 250_000, &config);
+        let result = fragments_reassembly.handle_fragment(sequence, fragments[2].clone(), 250_000, &config);
         let result = result.unwrap();
 
         assert_eq!(messages.len(), result.len());

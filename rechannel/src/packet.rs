@@ -19,55 +19,29 @@ pub(crate) struct AckData {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Packet {
-    Normal(Normal),
-    Fragment(Fragment),
-    Heartbeat(HeartBeat),
-    Disconnect(DisconnectionReason),
+    Normal {
+        sequence: u16,
+        ack_data: AckData,
+        channels_packet_data: Vec<ChannelPacketData>,
+    },
+    Fragment {
+        sequence: u16,
+        ack_data: AckData,
+        fragment_data: FragmentData,
+    },
+    Heartbeat {
+        ack_data: AckData,
+    },
+    Disconnect {
+        reason: DisconnectionReason,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Normal {
-    pub sequence: u16,
-    pub ack_data: AckData,
-    pub channels_packet_data: Vec<ChannelPacketData>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Fragment {
-    pub ack_data: AckData,
-    pub sequence: u16,
+pub(crate) struct FragmentData {
     pub fragment_id: u8,
     pub num_fragments: u8,
     pub payload: Payload,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct HeartBeat {
-    pub ack_data: AckData,
-}
-
-impl From<Normal> for Packet {
-    fn from(value: Normal) -> Self {
-        Self::Normal(value)
-    }
-}
-
-impl From<Fragment> for Packet {
-    fn from(value: Fragment) -> Self {
-        Self::Fragment(value)
-    }
-}
-
-impl From<HeartBeat> for Packet {
-    fn from(value: HeartBeat) -> Self {
-        Self::Heartbeat(value)
-    }
-}
-
-impl From<DisconnectionReason> for Packet {
-    fn from(value: DisconnectionReason) -> Self {
-        Self::Disconnect(value)
-    }
 }
 
 impl std::fmt::Debug for AckData {
@@ -81,7 +55,7 @@ impl std::fmt::Debug for AckData {
 
 /// Given a disconnect reason, serialize a disconnect packet to be sent.
 pub fn disconnect_packet(reason: DisconnectionReason) -> Result<Payload, bincode::Error> {
-    let packet = Packet::Disconnect(reason);
+    let packet = Packet::Disconnect { reason };
     let packet = bincode::options().serialize(&packet)?;
     Ok(packet)
 }
