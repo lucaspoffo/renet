@@ -14,6 +14,7 @@ pub struct Player {
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component)]
 pub struct PlayerInput {
+    pub most_recent_tick: Option<u32>,
     pub up: bool,
     pub down: bool,
     pub left: bool,
@@ -46,6 +47,7 @@ pub struct NetworkedPlayers {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NetworkFrame {
+    pub tick: u32,
     pub players: NetworkedPlayers,
 }
 

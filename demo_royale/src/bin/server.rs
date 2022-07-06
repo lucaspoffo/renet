@@ -21,6 +21,13 @@ pub struct ServerLobby {
     pub players: HashMap<u64, Entity>,
 }
 
+#[derive(Debug, Default)]
+struct NetworkTick(u32);
+
+// Clients last received ticks
+#[derive(Debug, Default)]
+struct ClientTicks(HashMap<u64, Option<u32>>);
+
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
 fn new_renet_server() -> RenetServer {
@@ -44,6 +51,8 @@ fn main() {
     app.add_plugin(EguiPlugin);
 
     app.insert_resource(ServerLobby::default());
+    app.insert_resource(NetworkTick(0));
+    app.insert_resource(ClientTicks::default());
     app.insert_resource(new_renet_server());
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
@@ -67,6 +76,7 @@ fn server_update_system(
     mut lobby: ResMut<ServerLobby>,
     mut server: ResMut<RenetServer>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    mut client_ticks: ResMut<ClientTicks>,
     players: Query<(Entity, &Player, &Transform)>,
 ) {
     for event in server_events.iter() {
@@ -117,7 +127,8 @@ fn server_update_system(
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
-                visualizer.add_client(*id);
+                visualizer.remove_client(*id);
+                client_ticks.0.remove(id);
                 if let Some(player_entity) = lobby.players.remove(id) {
                     commands.entity(player_entity).despawn();
                 }
@@ -133,6 +144,7 @@ fn server_update_system(
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
                 PlayerCommand::Input(input) => {
+                    client_ticks.0.insert(client_id, input.most_recent_tick);
                     if let Some(player_entity) = lobby.players.get(&client_id) {
                         commands.entity(*player_entity).insert(input);
                     }
@@ -154,13 +166,15 @@ fn update_visulizer_system(
     visualizer.show_window(egui_context.ctx_mut());
 }
 
-fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(Entity, &Transform), With<Player>>) {
+fn server_sync_players(mut tick: ResMut<NetworkTick>, mut server: ResMut<RenetServer>, query: Query<(Entity, &Transform), With<Player>>) {
     let mut frame = NetworkFrame::default();
     for (entity, transform) in query.iter() {
         frame.players.entities.push(entity);
         frame.players.translations.push(transform.translation.into());
     }
 
+    frame.tick = tick.0;
+    tick.0 += 1;
     let sync_message = bincode::serialize(&frame).unwrap();
     server.broadcast_message(Channel::Unreliable.id(), sync_message);
 }

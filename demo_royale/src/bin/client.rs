@@ -32,6 +32,9 @@ struct ClientLobby {
     players: HashMap<u64, PlayerInfo>,
 }
 
+#[derive(Debug)]
+struct MostRecentTick(Option<u32>);
+
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -58,6 +61,7 @@ fn main() {
 
     app.insert_resource(ClientLobby::default());
     app.insert_resource(PlayerInput::default());
+    app.insert_resource(MostRecentTick(None));
     app.insert_resource(new_renet_client());
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
     app.insert_resource(PlayerNetMapping::default());
@@ -107,11 +111,13 @@ fn player_input(
     mouse_button_input: Res<Input<MouseButton>>,
     target_query: Query<&Transform, With<Target>>,
     mut player_commands: EventWriter<PlayerCommand>,
+    most_recent_tick: Res<MostRecentTick>,
 ) {
     player_input.left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
     player_input.right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
     player_input.up = keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up);
     player_input.down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
+    player_input.most_recent_tick = most_recent_tick.0;
 
     if mouse_button_input.just_pressed(MouseButton::Left) {
         let target_transform = target_query.single();
@@ -142,6 +148,7 @@ fn client_sync_players(
     mut client: ResMut<RenetClient>,
     mut lobby: ResMut<ClientLobby>,
     mut player_net_mapping: ResMut<PlayerNetMapping>,
+    mut most_recent_tick: ResMut<MostRecentTick>,
 ) {
     let client_id = client.client_id();
     while let Some(message) = client.receive_message(Channel::Reliable.id()) {
@@ -183,6 +190,11 @@ fn client_sync_players(
 
     while let Some(message) = client.receive_message(Channel::Unreliable.id()) {
         let frame: NetworkFrame = bincode::deserialize(&message).unwrap();
+        match most_recent_tick.0 {
+            None => most_recent_tick.0 = Some(frame.tick),
+            Some(tick) if tick < frame.tick => most_recent_tick.0 = Some(frame.tick),
+            _ => {}
+        }
         if frame.players.translations.len() != frame.players.entities.len() {
             continue;
         }
