@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 pub type Payload = Vec<u8>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ChannelPacketData {
-    pub(crate) messages: Vec<Payload>,
-    pub(crate) channel_id: u8,
+pub(crate) struct ChannelPacketData {
+    pub messages: Vec<Payload>,
+    pub channel_id: u8,
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize)]

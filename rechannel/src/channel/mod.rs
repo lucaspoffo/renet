@@ -61,7 +61,7 @@ impl ChannelConfig {
     }
 }
 
-pub trait Channel: std::fmt::Debug {
+pub(crate) trait Channel: std::fmt::Debug {
     fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Option<ChannelPacketData>;
     fn advance_time(&mut self, duration: Duration);
     fn process_messages(&mut self, messages: Vec<Payload>);
