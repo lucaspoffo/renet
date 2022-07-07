@@ -10,7 +10,8 @@ use bevy_renet::{
     run_if_client_conected, RenetClientPlugin,
 };
 use demo_royale::{
-    connection_config, setup_level, Channel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerMessages, PRIVATE_KEY, PROTOCOL_ID,
+    client_connection_config, setup_level, ClientChannel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerChannel, ServerMessages,
+    PRIVATE_KEY, PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -38,7 +39,7 @@ struct MostRecentTick(Option<u32>);
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let connection_config = connection_config();
+    let connection_config = client_connection_config();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     // This connect token should come from another system, NOT generated from the client.
@@ -128,16 +129,15 @@ fn player_input(
 }
 
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
-    let command = PlayerCommand::Input(*player_input);
-    let input_message = bincode::serialize(&command).unwrap();
+    let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(Channel::ReliableCritical.id(), input_message);
+    client.send_message(ClientChannel::Input.id(), input_message);
 }
 
 fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
     for command in player_commands.iter() {
         let command_message = bincode::serialize(command).unwrap();
-        client.send_message(Channel::ReliableCritical.id(), command_message);
+        client.send_message(ClientChannel::Command.id(), command_message);
     }
 }
 
@@ -151,7 +151,7 @@ fn client_sync_players(
     mut most_recent_tick: ResMut<MostRecentTick>,
 ) {
     let client_id = client.client_id();
-    while let Some(message) = client.receive_message(Channel::Reliable.id()) {
+    while let Some(message) = client.receive_message(ServerChannel::ServerMessages.id()) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
             ServerMessages::PlayerCreate { id, translation, entity } => {
@@ -188,7 +188,7 @@ fn client_sync_players(
         }
     }
 
-    while let Some(message) = client.receive_message(Channel::Unreliable.id()) {
+    while let Some(message) = client.receive_message(ServerChannel::NetworkFrame.id()) {
         let frame: NetworkFrame = bincode::deserialize(&message).unwrap();
         match most_recent_tick.0 {
             None => most_recent_tick.0 = Some(frame.tick),

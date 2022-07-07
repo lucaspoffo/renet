@@ -23,14 +23,17 @@ pub struct PlayerInput {
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 pub enum PlayerCommand {
-    Input(PlayerInput),
     BasicAttack { cast_at: Vec3 },
 }
 
-pub enum Channel {
-    Reliable,
-    ReliableCritical,
-    Unreliable,
+pub enum ClientChannel {
+    Input,
+    Command,
+}
+
+pub enum ServerChannel {
+    ServerMessages,
+    NetworkFrame,
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
@@ -51,31 +54,25 @@ pub struct NetworkFrame {
     pub players: NetworkedPlayers,
 }
 
-impl Channel {
+impl ClientChannel {
     pub fn id(&self) -> u8 {
         match self {
-            Channel::Reliable => 0,
-            Channel::ReliableCritical => 1,
-            Channel::Unreliable => 2,
+            Self::Input => 0,
+            Self::Command => 1,
         }
     }
 
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
             ReliableChannelConfig {
-                channel_id: Channel::Reliable.id(),
-                message_resend_time: Duration::from_millis(200),
-                ..Default::default()
-            }
-            .into(),
-            ReliableChannelConfig {
-                channel_id: Channel::ReliableCritical.id(),
+                channel_id: Self::Input.id(),
                 message_resend_time: Duration::ZERO,
                 ..Default::default()
             }
             .into(),
-            UnreliableChannelConfig {
-                channel_id: Channel::Unreliable.id(),
+            ReliableChannelConfig {
+                channel_id: Self::Command.id(),
+                message_resend_time: Duration::ZERO,
                 ..Default::default()
             }
             .into(),
@@ -83,9 +80,43 @@ impl Channel {
     }
 }
 
-pub fn connection_config() -> RenetConnectionConfig {
+impl ServerChannel {
+    pub fn id(&self) -> u8 {
+        match self {
+            Self::NetworkFrame => 0,
+            Self::ServerMessages => 1,
+        }
+    }
+
+    pub fn channels_config() -> Vec<ChannelConfig> {
+        vec![
+            UnreliableChannelConfig {
+                channel_id: Self::NetworkFrame.id(),
+                ..Default::default()
+            }
+            .into(),
+            ReliableChannelConfig {
+                channel_id: Self::ServerMessages.id(),
+                message_resend_time: Duration::from_millis(200),
+                ..Default::default()
+            }
+            .into(),
+        ]
+    }
+}
+
+pub fn client_connection_config() -> RenetConnectionConfig {
     RenetConnectionConfig {
-        channels_config: Channel::channels_config(),
+        send_channels_config: ClientChannel::channels_config(),
+        receive_channels_config: ServerChannel::channels_config(),
+        ..Default::default()
+    }
+}
+
+pub fn server_connection_config() -> RenetConnectionConfig {
+    RenetConnectionConfig {
+        send_channels_config: ServerChannel::channels_config(),
+        receive_channels_config: ClientChannel::channels_config(),
         ..Default::default()
     }
 }
