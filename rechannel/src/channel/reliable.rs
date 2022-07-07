@@ -464,7 +464,7 @@ mod tests {
         send_channel.send_message(message.clone());
         let second_channel_data = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
 
-        send_channel.send_message(message.clone());
+        send_channel.send_message(message);
         assert!(matches!(send_channel.error(), Some(ChannelError::ReliableChannelOutOfSync)));
 
         receive_channel.process_messages(first_channel_data.messages);
