@@ -5,7 +5,7 @@ use crate::{
 };
 
 use log::debug;
-use rechannel::{channel::ChannelNetworkInfo, error::RechannelError, remote_connection::RemoteConnection, Bytes};
+use rechannel::{error::RechannelError, remote_connection::RemoteConnection, Bytes};
 use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES};
 
 use std::net::UdpSocket;
@@ -113,10 +113,6 @@ impl RenetClient {
             rtt: self.reliable_connection.rtt(),
             packet_loss: self.reliable_connection.packet_loss(),
         }
-    }
-
-    pub fn channels_network_info(&self) -> Vec<(u8, ChannelNetworkInfo)> {
-        self.reliable_connection.channels_network_info()
     }
 
     /// Send packets to the server.
