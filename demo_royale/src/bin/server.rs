@@ -13,7 +13,10 @@ use bevy_renet::{
     renet::{RenetServer, ServerConfig, ServerEvent},
     RenetServerPlugin,
 };
-use demo_royale::{connection_config, Channel, NetworkFrame, Player, PlayerCommand, PlayerInput, ServerMessages, PRIVATE_KEY, PROTOCOL_ID};
+use demo_royale::{
+    server_connection_config, ClientChannel, NetworkFrame, Player, PlayerCommand, PlayerInput, ServerChannel, ServerMessages, PRIVATE_KEY,
+    PROTOCOL_ID,
+};
 use renet_visualizer::RenetServerVisualizer;
 
 #[derive(Debug, Default)]
@@ -33,7 +36,7 @@ const PLAYER_MOVE_SPEED: f32 = 5.0;
 fn new_renet_server() -> RenetServer {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();
-    let connection_config = connection_config();
+    let connection_config = server_connection_config();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, *PRIVATE_KEY);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
@@ -94,7 +97,7 @@ fn server_update_system(
                         translation,
                     })
                     .unwrap();
-                    server.send_message(*id, Channel::Reliable.id(), message);
+                    server.send_message(*id, ServerChannel::ServerMessages.id(), message);
                 }
 
                 // Spawn new player
@@ -123,7 +126,7 @@ fn server_update_system(
                     translation,
                 })
                 .unwrap();
-                server.broadcast_message(Channel::Reliable.id(), message);
+                server.broadcast_message(ServerChannel::ServerMessages.id(), message);
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
@@ -134,24 +137,25 @@ fn server_update_system(
                 }
 
                 let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *id }).unwrap();
-                server.broadcast_message(Channel::Reliable.id(), message);
+                server.broadcast_message(ServerChannel::ServerMessages.id(), message);
             }
         }
     }
 
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, Channel::ReliableCritical.id()) {
+        while let Some(message) = server.receive_message(client_id, ClientChannel::Command.id()) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
-                PlayerCommand::Input(input) => {
-                    client_ticks.0.insert(client_id, input.most_recent_tick);
-                    if let Some(player_entity) = lobby.players.get(&client_id) {
-                        commands.entity(*player_entity).insert(input);
-                    }
-                }
                 PlayerCommand::BasicAttack { cast_at } => {
                     println!("Received basic attack from client {}: {:?}", client_id, cast_at);
                 }
+            }
+        }
+        while let Some(message) = server.receive_message(client_id, ClientChannel::Input.id()) {
+            let input: PlayerInput = bincode::deserialize(&message).unwrap();
+            client_ticks.0.insert(client_id, input.most_recent_tick);
+            if let Some(player_entity) = lobby.players.get(&client_id) {
+                commands.entity(*player_entity).insert(input);
             }
         }
     }
@@ -176,7 +180,7 @@ fn server_sync_players(mut tick: ResMut<NetworkTick>, mut server: ResMut<RenetSe
     frame.tick = tick.0;
     tick.0 += 1;
     let sync_message = bincode::serialize(&frame).unwrap();
-    server.broadcast_message(Channel::Unreliable.id(), sync_message);
+    server.broadcast_message(ServerChannel::NetworkFrame.id(), sync_message);
 }
 
 fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
