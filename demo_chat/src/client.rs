@@ -366,7 +366,8 @@ fn create_renet_client(username: String, server_addr: SocketAddr, private_key: &
     let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let socket = UdpSocket::bind(client_addr).unwrap();
     let connection_config = RenetConnectionConfig {
-        channels_config: channels_config(),
+        send_channels_config: channels_config(),
+        receive_channels_config: channels_config(),
         ..Default::default()
     };
 

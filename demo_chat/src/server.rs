@@ -23,7 +23,8 @@ impl ChatServer {
     pub fn new(addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES], host_username: String) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
         let connection_config = RenetConnectionConfig {
-            channels_config: channels_config(),
+            send_channels_config: channels_config(),
+            receive_channels_config: channels_config(),
             ..Default::default()
         };
         let server_config = ServerConfig::new(64, 0, addr, *private_key);
