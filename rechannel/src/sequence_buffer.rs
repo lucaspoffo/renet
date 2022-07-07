@@ -9,11 +9,17 @@ pub(crate) struct SequenceBuffer<T> {
 
 impl<T: Clone> SequenceBuffer<T> {
     pub fn with_capacity(size: usize) -> Self {
+        assert!(size > 0, "tried to initialize SequenceBuffer with 0 size");
+
         Self {
             sequence: 0,
             entry_sequences: vec![None; size].into_boxed_slice(),
             entries: vec![None; size].into_boxed_slice(),
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.entries.len()
     }
 
     pub fn get_mut(&mut self, sequence: u16) -> Option<&mut T> {
@@ -130,12 +136,12 @@ impl<T: Clone> SequenceBuffer<T> {
 // Since sequences can wrap we need to check when this when checking greater
 // Ocurring the cutover in the middle of u16
 #[inline]
-fn sequence_greater_than(s1: u16, s2: u16) -> bool {
+pub fn sequence_greater_than(s1: u16, s2: u16) -> bool {
     ((s1 > s2) && (s1 - s2 <= 32768)) || ((s1 < s2) && (s2 - s1 > 32768))
 }
 
 #[inline]
-fn sequence_less_than(s1: u16, s2: u16) -> bool {
+pub fn sequence_less_than(s1: u16, s2: u16) -> bool {
     sequence_greater_than(s2, s1)
 }
 

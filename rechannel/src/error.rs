@@ -13,8 +13,10 @@ pub enum DisconnectionReason {
     DisconnectedByClient,
     /// Channel with given Id was not found
     InvalidChannelId(u8),
-    /// Error occurred in a channel
-    ChannelError { channel_id: u8, error: ChannelError },
+    /// Error occurred in a send channel
+    SendChannelError { channel_id: u8, error: ChannelError },
+    /// Error occurred in a receive channel
+    ReceiveChannelError { channel_id: u8, error: ChannelError },
 }
 
 /// Possibles errors that can occur in a channel.
@@ -25,6 +27,7 @@ pub enum ChannelError {
     /// The channel send queue has reach it's maximum
     SendQueueFull,
     /// Error occurred during (de)serialization
+    // TODO: rename to SerializationFailure
     FailedToSerialize,
     /// Tried to send a message that is above the channel max message size.
     SentMessageAboveMaxSize,
@@ -57,7 +60,8 @@ impl fmt::Display for DisconnectionReason {
             DisconnectedByServer => write!(fmt, "connection terminated by server"),
             DisconnectedByClient => write!(fmt, "connection terminated by client"),
             InvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
-            ChannelError { channel_id, error } => write!(fmt, "channel {} with error: {}", channel_id, error),
+            SendChannelError { channel_id, error } => write!(fmt, "send channel {} with error: {}", channel_id, error),
+            ReceiveChannelError { channel_id, error } => write!(fmt, "receive channel {} with error: {}", channel_id, error),
         }
     }
 }

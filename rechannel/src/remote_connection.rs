@@ -1,4 +1,4 @@
-use crate::channel::{Channel, ChannelConfig, ChannelNetworkInfo};
+use crate::channel::{ChannelConfig, ReceiveChannel, SendChannel};
 use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::{Packet, Payload};
 
@@ -34,14 +34,16 @@ pub struct ConnectionConfig {
     pub packet_loss_smoothing_factor: f32,
     pub heartbeat_time: Duration,
     pub fragment_config: FragmentConfig,
-    pub channels_config: Vec<ChannelConfig>,
+    pub send_channels_config: Vec<ChannelConfig>,
+    pub receive_channels_config: Vec<ChannelConfig>,
 }
 
 #[derive(Debug)]
 pub struct RemoteConnection {
     state: ConnectionState,
     sequence: u16,
-    channels: HashMap<u8, Box<dyn Channel + Send + Sync + 'static>>,
+    send_channels: HashMap<u8, Box<dyn SendChannel + Send + Sync + 'static>>,
+    receive_channels: HashMap<u8, Box<dyn ReceiveChannel + Send + Sync + 'static>>,
     heartbeat_timer: Timer,
     config: ConnectionConfig,
     reassembly_buffer: SequenceBuffer<ReassemblyFragment>,
@@ -61,6 +63,12 @@ impl SentPacket {
 
 impl Default for ConnectionConfig {
     fn default() -> Self {
+        let channels = vec![
+            ChannelConfig::Reliable(Default::default()),
+            ChannelConfig::Unreliable(Default::default()),
+            ChannelConfig::Block(Default::default()),
+        ];
+
         Self {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
@@ -69,11 +77,8 @@ impl Default for ConnectionConfig {
             packet_loss_smoothing_factor: 0.1,
             heartbeat_time: Duration::from_millis(100),
             fragment_config: FragmentConfig::default(),
-            channels_config: vec![
-                ChannelConfig::Reliable(Default::default()),
-                ChannelConfig::Unreliable(Default::default()),
-                ChannelConfig::Block(Default::default()),
-            ],
+            send_channels_config: channels.clone(),
+            receive_channels_config: channels,
         }
     }
 }
@@ -85,17 +90,26 @@ impl RemoteConnection {
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
         let received_buffer = SequenceBuffer::with_capacity(config.received_packets_buffer_size);
 
-        let mut channels = HashMap::new();
-        for channel_config in config.channels_config.iter() {
-            let channel = channel_config.new_channel();
+        let mut send_channels = HashMap::new();
+        for channel_config in config.send_channels_config.iter() {
+            let (send_channel, _) = channel_config.new_channels();
             let channel_id = channel_config.channel_id();
-            let old_channel = channels.insert(channel_id, channel);
-            assert!(old_channel.is_none(), "already exists channel with id {}", channel_id);
+            let old_channel = send_channels.insert(channel_id, send_channel);
+            assert!(old_channel.is_none(), "already exists send channel with id {}", channel_id);
+        }
+
+        let mut receive_channels = HashMap::new();
+        for channel_config in config.send_channels_config.iter() {
+            let (_, receive_channel) = channel_config.new_channels();
+            let channel_id = channel_config.channel_id();
+            let old_channel = receive_channels.insert(channel_id, receive_channel);
+            assert!(old_channel.is_none(), "already exists receive channel with id {}", channel_id);
         }
 
         Self {
             state: ConnectionState::Connected,
-            channels,
+            send_channels,
+            receive_channels,
             heartbeat_timer,
             sequence: 0,
             reassembly_buffer,
@@ -115,13 +129,6 @@ impl RemoteConnection {
 
     pub fn packet_loss(&self) -> f32 {
         self.packet_loss
-    }
-
-    pub fn channels_network_info(&self) -> Vec<(u8, ChannelNetworkInfo)> {
-        self.channels
-            .iter()
-            .map(|(channel_id, channel)| (*channel_id, channel.channel_network_info()))
-            .collect()
     }
 
     pub fn is_connected(&self) -> bool {
@@ -147,24 +154,24 @@ impl RemoteConnection {
     }
 
     pub fn can_send_message(&self, channel_id: u8) -> bool {
-        let channel = self.channels.get(&channel_id).expect("invalid channel id");
+        let channel = self.send_channels.get(&channel_id).expect("invalid channel id");
         channel.can_send_message()
     }
 
     pub fn send_message(&mut self, channel_id: u8, message: Bytes) {
-        let channel = self.channels.get_mut(&channel_id).expect("invalid channel id");
+        let channel = self.send_channels.get_mut(&channel_id).expect("invalid channel id");
         channel.send_message(message);
     }
 
     pub fn receive_message(&mut self, channel_id: u8) -> Option<Payload> {
-        let channel = self.channels.get_mut(&channel_id).expect("invalid channel id");
+        let channel = self.receive_channels.get_mut(&channel_id).expect("invalid channel id");
         channel.receive_message()
     }
 
     pub fn advance_time(&mut self, duration: Duration) {
         self.current_time += duration;
         self.heartbeat_timer.advance(duration);
-        for channel in self.channels.values_mut() {
+        for channel in self.send_channels.values_mut() {
             channel.advance_time(duration);
         }
     }
@@ -174,16 +181,24 @@ impl RemoteConnection {
             return Err(RechannelError::ClientDisconnected(reason));
         }
 
-        for (&channel_id, channel) in self.channels.iter() {
-            if let Some(error) = channel.error() {
-                let reason = DisconnectionReason::ChannelError { channel_id, error };
+        for (&channel_id, send_channel) in self.send_channels.iter() {
+            if let Some(error) = send_channel.error() {
+                let reason = DisconnectionReason::SendChannelError { channel_id, error };
+                self.state = ConnectionState::Disconnected { reason };
+                return Err(RechannelError::ClientDisconnected(reason));
+            }
+        }
+
+        for (&channel_id, receive_channel) in self.receive_channels.iter() {
+            if let Some(error) = receive_channel.error() {
+                let reason = DisconnectionReason::ReceiveChannelError { channel_id, error };
                 self.state = ConnectionState::Disconnected { reason };
                 return Err(RechannelError::ClientDisconnected(reason));
             }
         }
 
         for ack in self.acks.drain(..) {
-            for channel in self.channels.values_mut() {
+            for channel in self.send_channels.values_mut() {
                 channel.process_ack(ack);
             }
         }
@@ -239,7 +254,7 @@ impl RemoteConnection {
         };
 
         for channel_packet_data in channels_packet_data.into_iter() {
-            let channel = match self.channels.get_mut(&channel_packet_data.channel_id) {
+            let receive_channel = match self.receive_channels.get_mut(&channel_packet_data.channel_id) {
                 Some(c) => c,
                 None => {
                     let reason = DisconnectionReason::InvalidChannelId(channel_packet_data.channel_id);
@@ -248,7 +263,7 @@ impl RemoteConnection {
                 }
             };
 
-            channel.process_messages(channel_packet_data.messages);
+            receive_channel.process_messages(channel_packet_data.messages);
         }
 
         Ok(())
@@ -264,8 +279,8 @@ impl RemoteConnection {
         const HEADER_SIZE: u64 = 20;
         let mut available_bytes = self.config.max_packet_size - HEADER_SIZE;
         let mut channels_packet_data = vec![];
-        for channel in self.channels.values_mut() {
-            if let Some(channel_packet_data) = channel.get_messages_to_send(available_bytes, sequence) {
+        for send_channel in self.send_channels.values_mut() {
+            if let Some(channel_packet_data) = send_channel.get_messages_to_send(available_bytes, sequence) {
                 available_bytes -= bincode::options().serialized_size(&channel_packet_data)?;
                 channels_packet_data.push(channel_packet_data)
             }

@@ -11,7 +11,11 @@ pub use unreliable::UnreliableChannelConfig;
 use bytes::Bytes;
 
 use crate::{
-    channel::{block::BlockChannel, reliable::ReliableChannel, unreliable::UnreliableChannel},
+    channel::{
+        block::{ReceiveBlockChannel, SendBlockChannel},
+        reliable::{ReceiveReliableChannel, SendReliableChannel},
+        unreliable::{ReceiveUnreliableChannel, SendUnreliableChannel},
+    },
     error::ChannelError,
     packet::{ChannelPacketData, Payload},
 };
@@ -24,31 +28,28 @@ pub enum ChannelConfig {
     Block(BlockChannelConfig),
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct ChannelNetworkInfo {
-    pub messages_sent: u64,
-    pub messages_received: u64,
-    pub bytes_sent: u64,
-    pub bytes_received: u64,
-}
-
-impl ChannelNetworkInfo {
-    pub fn reset(&mut self) {
-        self.messages_received = 0;
-        self.messages_sent = 0;
-        self.bytes_received = 0;
-        self.bytes_sent = 0;
-    }
-}
-
 impl ChannelConfig {
-    pub(crate) fn new_channel(&self) -> Box<dyn Channel + Send + Sync + 'static> {
+    pub(crate) fn new_channels(
+        &self,
+    ) -> (
+        Box<dyn SendChannel + Send + Sync + 'static>,
+        Box<dyn ReceiveChannel + Send + Sync + 'static>,
+    ) {
         use ChannelConfig::*;
 
         match self {
-            Reliable(config) => Box::new(ReliableChannel::new(config.clone())),
-            Unreliable(config) => Box::new(UnreliableChannel::new(config.clone())),
-            Block(config) => Box::new(BlockChannel::new(config.clone())),
+            Unreliable(config) => (
+                Box::new(SendUnreliableChannel::new(config.clone())),
+                Box::new(ReceiveUnreliableChannel::new(config.clone())),
+            ),
+            Reliable(config) => (
+                Box::new(SendReliableChannel::new(config.clone())),
+                Box::new(ReceiveReliableChannel::new(config.clone())),
+            ),
+            Block(config) => (
+                Box::new(SendBlockChannel::new(config.clone())),
+                Box::new(ReceiveBlockChannel::new(config.clone())),
+            ),
         }
     }
 
@@ -61,15 +62,20 @@ impl ChannelConfig {
     }
 }
 
-pub(crate) trait Channel: std::fmt::Debug {
+pub(crate) trait SendChannel: std::fmt::Debug {
     fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Option<ChannelPacketData>;
-    fn advance_time(&mut self, duration: Duration);
-    fn process_messages(&mut self, messages: Vec<Payload>);
     fn process_ack(&mut self, ack: u16);
+    // TODO: maybe the timer should check with current_time to see if is completed instead of advancing it by the delta every tick
+    // So we would pass the current_time in the get_messages_to_send
+    fn advance_time(&mut self, duration: Duration);
     fn send_message(&mut self, payload: Bytes);
-    fn receive_message(&mut self) -> Option<Payload>;
     fn can_send_message(&self) -> bool;
-    fn channel_network_info(&self) -> ChannelNetworkInfo;
+    fn error(&self) -> Option<ChannelError>;
+}
+
+pub(crate) trait ReceiveChannel: std::fmt::Debug {
+    fn process_messages(&mut self, messages: Vec<Payload>);
+    fn receive_message(&mut self) -> Option<Payload>;
     fn error(&self) -> Option<ChannelError>;
 }
 

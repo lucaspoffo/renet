@@ -1,4 +1,3 @@
-use crate::channel::ChannelNetworkInfo;
 use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, RemoteConnection};
@@ -57,13 +56,6 @@ impl<C: ClientId> RechannelServer<C> {
         match self.connections.get(&connection_id) {
             Some(connection) => connection.packet_loss(),
             None => 0.0,
-        }
-    }
-
-    pub fn channels_network_info(&self, connection_id: C) -> Vec<(u8, ChannelNetworkInfo)> {
-        match self.connections.get(&connection_id) {
-            Some(connection) => connection.channels_network_info(),
-            None => Vec::with_capacity(0),
         }
     }
 

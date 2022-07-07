@@ -1,8 +1,7 @@
 use crate::{
-    channel::Channel,
     error::ChannelError,
     packet::{ChannelPacketData, Payload},
-    sequence_buffer::SequenceBuffer,
+    sequence_buffer::{sequence_greater_than, sequence_less_than, SequenceBuffer},
     timer::Timer,
 };
 
@@ -12,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
-use super::ChannelNetworkInfo;
+use super::{ReceiveChannel, SendChannel};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct ReliableMessage {
@@ -56,17 +55,26 @@ pub struct ReliableChannelConfig {
 }
 
 #[derive(Debug)]
-pub(crate) struct ReliableChannel {
-    config: ReliableChannelConfig,
+pub(crate) struct SendReliableChannel {
+    channel_id: u8,
+    packet_budget: u64,
+    max_message_size: u64,
+    message_resend_time: Duration,
     packets_sent: SequenceBuffer<PacketSent>,
     messages_send: SequenceBuffer<ReliableMessageSent>,
-    messages_received: SequenceBuffer<ReliableMessage>,
     send_message_id: u16,
-    received_message_id: u16,
     num_messages_sent: u64,
-    num_messages_received: u64,
     oldest_unacked_message_id: u16,
-    info: ChannelNetworkInfo,
+    error: Option<ChannelError>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ReceiveReliableChannel {
+    channel_id: u8,
+    max_message_size: u64,
+    messages_received: SequenceBuffer<ReliableMessage>,
+    received_message_id: u16,
+    num_messages_received: u64,
     error: Option<ChannelError>,
 }
 
@@ -107,59 +115,42 @@ impl Default for ReliableChannelConfig {
     }
 }
 
-impl ReliableChannel {
-    pub fn new(config: ReliableChannelConfig) -> Self {
-        Self {
-            packets_sent: SequenceBuffer::with_capacity(config.sent_packet_buffer_size),
-            messages_send: SequenceBuffer::with_capacity(config.message_send_queue_size),
-            messages_received: SequenceBuffer::with_capacity(config.message_receive_queue_size),
-            send_message_id: 0,
-            received_message_id: 0,
-            num_messages_received: 0,
-            num_messages_sent: 0,
-            oldest_unacked_message_id: 0,
-            config,
-            info: ChannelNetworkInfo::default(),
-            error: None,
-        }
-    }
-
+impl SendReliableChannel {
     pub fn has_messages_to_send(&self) -> bool {
         self.oldest_unacked_message_id != self.send_message_id
     }
+}
 
-    fn update_oldest_message_ack(&mut self) {
-        let stop_id = self.messages_send.sequence();
+impl SendReliableChannel {
+    pub fn new(config: ReliableChannelConfig) -> Self {
+        assert!(config.max_message_size <= config.packet_budget);
 
-        while self.oldest_unacked_message_id != stop_id && !self.messages_send.exists(self.oldest_unacked_message_id) {
-            self.oldest_unacked_message_id = self.oldest_unacked_message_id.wrapping_add(1);
+        Self {
+            channel_id: config.channel_id,
+            packet_budget: config.packet_budget,
+            max_message_size: config.max_message_size,
+            send_message_id: 0,
+            oldest_unacked_message_id: 0,
+            packets_sent: SequenceBuffer::with_capacity(config.sent_packet_buffer_size),
+            messages_send: SequenceBuffer::with_capacity(config.message_send_queue_size),
+            message_resend_time: config.message_resend_time,
+            num_messages_sent: 0,
+            error: None,
         }
     }
 }
 
-impl Channel for ReliableChannel {
-    fn advance_time(&mut self, duration: Duration) {
-        self.info.reset();
-        let message_limit = self.config.message_send_queue_size;
-        for i in 0..message_limit {
-            let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
-            if let Some(message) = self.messages_send.get_mut(message_id) {
-                message.resend_timer.advance(duration);
-            }
-        }
-    }
-
+impl SendChannel for SendReliableChannel {
     fn get_messages_to_send(&mut self, mut available_bytes: u64, sequence: u16) -> Option<ChannelPacketData> {
         if !self.has_messages_to_send() || self.error.is_some() {
             return None;
         }
 
-        available_bytes = available_bytes.min(self.config.packet_budget);
+        available_bytes = available_bytes.min(self.packet_budget);
         let mut messages: Vec<Payload> = vec![];
         let mut message_ids: Vec<u16> = vec![];
-        let message_limit = self.config.message_send_queue_size;
 
-        for i in 0..message_limit {
+        for i in 0..self.messages_send.size() {
             let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
             let message_send = self.messages_send.get_mut(message_id);
             if let Some(message_send) = message_send {
@@ -170,7 +161,7 @@ impl Channel for ReliableChannel {
                 let serialized_size = match bincode::options().serialized_size(&message_send.reliable_message) {
                     Ok(size) => size as u64,
                     Err(e) => {
-                        log::error!("Failed to get message size in channel {}: {}", self.config.channel_id, e);
+                        log::error!("Failed to get message size in channel {}: {}", self.channel_id, e);
                         self.error = Some(ChannelError::FailedToSerialize);
                         return None;
                     }
@@ -180,12 +171,10 @@ impl Channel for ReliableChannel {
                     available_bytes -= serialized_size;
                     message_send.resend_timer.reset();
                     message_ids.push(message_id);
-                    self.info.messages_sent += 1;
-                    self.info.bytes_sent += serialized_size;
                     let message = match bincode::options().serialize(&message_send.reliable_message) {
                         Ok(message) => message,
                         Err(e) => {
-                            log::error!("Failed to serialize message in channel {}: {}", self.config.channel_id, e);
+                            log::error!("Failed to serialize message in channel {}: {}", self.channel_id, e);
                             self.error = Some(ChannelError::FailedToSerialize);
                             return None;
                         }
@@ -203,42 +192,9 @@ impl Channel for ReliableChannel {
         self.packets_sent.insert(sequence, packet_sent);
 
         Some(ChannelPacketData {
-            channel_id: self.config.channel_id,
+            channel_id: self.channel_id,
             messages,
         })
-    }
-
-    fn process_messages(&mut self, messages: Vec<Payload>) {
-        if self.error.is_some() {
-            return;
-        }
-
-        for message in messages.iter() {
-            self.info.bytes_received += message.len() as u64;
-            self.info.messages_received += 1;
-            match bincode::options().deserialize::<ReliableMessage>(message) {
-                Ok(message) => {
-                    if message.payload.len() as u64 > self.config.max_message_size {
-                        log::error!(
-                            "Received reliable message with size above the limit, got {} bytes, expected less than {}",
-                            message.payload.len(),
-                            self.config.max_message_size
-                        );
-                        self.error = Some(ChannelError::ReceivedMessageAboveMaxSize);
-                        return;
-                    }
-
-                    if !self.messages_received.exists(message.id) {
-                        self.messages_received.insert(message.id, message);
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to deserialize reliable message {}: {}", self.config.channel_id, e);
-                    self.error = Some(ChannelError::FailedToSerialize);
-                    return;
-                }
-            }
-        }
     }
 
     fn process_ack(&mut self, ack: u16) {
@@ -253,7 +209,22 @@ impl Channel for ReliableChannel {
                     self.messages_send.remove(message_id);
                 }
             }
-            self.update_oldest_message_ack();
+
+            // Update oldest message ack
+            let stop_id = self.messages_send.sequence();
+
+            while self.oldest_unacked_message_id != stop_id && !self.messages_send.exists(self.oldest_unacked_message_id) {
+                self.oldest_unacked_message_id = self.oldest_unacked_message_id.wrapping_add(1);
+            }
+        }
+    }
+
+    fn advance_time(&mut self, duration: Duration) {
+        for i in 0..self.messages_send.size() {
+            let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
+            if let Some(message) = self.messages_send.get_mut(message_id) {
+                message.resend_timer.advance(duration);
+            }
         }
     }
 
@@ -268,11 +239,11 @@ impl Channel for ReliableChannel {
             return;
         }
 
-        if payload.len() as u64 > self.config.packet_budget {
+        if payload.len() as u64 > self.max_message_size {
             log::error!(
                 "Tried to send reliable message with size above the limit, got {} bytes, expected less than {}",
                 payload.len(),
-                self.config.max_message_size
+                self.max_message_size
             );
             self.error = Some(ChannelError::SentMessageAboveMaxSize);
             return;
@@ -281,10 +252,77 @@ impl Channel for ReliableChannel {
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
         let reliable_message = ReliableMessage::new(message_id, payload);
-        let entry = ReliableMessageSent::new(reliable_message, self.config.message_resend_time);
+        let entry = ReliableMessageSent::new(reliable_message, self.message_resend_time);
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
+    }
+
+    fn can_send_message(&self) -> bool {
+        self.messages_send.available(self.send_message_id)
+    }
+
+    fn error(&self) -> Option<ChannelError> {
+        self.error
+    }
+}
+
+impl ReceiveReliableChannel {
+    pub fn new(config: ReliableChannelConfig) -> Self {
+        assert!(config.max_message_size <= config.packet_budget);
+
+        Self {
+            channel_id: config.channel_id,
+            max_message_size: config.max_message_size,
+            received_message_id: 0,
+            num_messages_received: 0,
+            messages_received: SequenceBuffer::with_capacity(config.message_receive_queue_size),
+            error: None,
+        }
+    }
+}
+
+impl ReceiveChannel for ReceiveReliableChannel {
+    fn process_messages(&mut self, messages: Vec<Payload>) {
+        if self.error.is_some() {
+            return;
+        }
+
+        for message in messages.iter() {
+            match bincode::options().deserialize::<ReliableMessage>(message) {
+                Ok(message) => {
+                    if message.payload.len() as u64 > self.max_message_size {
+                        log::error!(
+                            "Received reliable message with size above the limit, got {} bytes, expected less than {}",
+                            message.payload.len(),
+                            self.max_message_size
+                        );
+                        self.error = Some(ChannelError::ReceivedMessageAboveMaxSize);
+                        return;
+                    }
+
+                    if sequence_less_than(message.id, self.received_message_id) {
+                        // Discard old message
+                        continue;
+                    }
+
+                    let max_message_id = self.received_message_id + self.messages_received.size() as u16 - 1;
+                    if sequence_greater_than(message.id, max_message_id) {
+                        // Out of messages to add
+                        self.error = Some(ChannelError::ReliableChannelOutOfSync);
+                    }
+
+                    if !self.messages_received.exists(message.id) {
+                        self.messages_received.insert(message.id, message);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to deserialize reliable message {}: {}", self.channel_id, e);
+                    self.error = Some(ChannelError::FailedToSerialize);
+                    return;
+                }
+            }
+        }
     }
 
     fn receive_message(&mut self) -> Option<Payload> {
@@ -302,14 +340,6 @@ impl Channel for ReliableChannel {
         self.num_messages_received += 1;
 
         self.messages_received.remove(received_message_id).map(|m| m.payload.to_vec())
-    }
-
-    fn can_send_message(&self) -> bool {
-        self.messages_send.available(self.send_message_id)
-    }
-
-    fn channel_network_info(&self) -> ChannelNetworkInfo {
-        self.info
     }
 
     fn error(&self) -> Option<ChannelError> {
@@ -344,75 +374,46 @@ mod tests {
     }
 
     #[test]
-    fn send_message() {
+    fn send_receive_message() {
         let config = ReliableChannelConfig::default();
-        let mut channel: ReliableChannel = ReliableChannel::new(config);
+        let mut send_channel = SendReliableChannel::new(config.clone());
+        let mut receive_channel = ReceiveReliableChannel::new(config);
         let sequence = 0;
 
-        assert!(!channel.has_messages_to_send());
-        assert_eq!(channel.num_messages_sent, 0);
+        assert!(!send_channel.has_messages_to_send());
+        assert_eq!(send_channel.num_messages_sent, 0);
 
-        channel.send_message(TestMessages::Second(0).serialize());
-        assert_eq!(channel.num_messages_sent, 1);
-        assert!(channel.receive_message().is_none());
+        let message = TestMessages::Second(0).serialize();
 
-        let channel_data = channel.get_messages_to_send(u64::MAX, sequence).unwrap();
+        send_channel.send_message(message.clone());
+        assert_eq!(send_channel.num_messages_sent, 1);
+        assert!(receive_channel.receive_message().is_none());
 
+        let channel_data = send_channel.get_messages_to_send(u64::MAX, sequence).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
-        assert_eq!(
-            channel_data,
-            ChannelPacketData {
-                channel_id: 0,
-                messages: vec![bincode::options()
-                    .serialize(&ReliableMessage::new(0, TestMessages::Second(0).serialize()))
-                    .unwrap()]
-            }
-        );
-        assert!(channel.has_messages_to_send());
 
-        channel.process_ack(sequence);
-        assert!(!channel.has_messages_to_send());
-    }
+        receive_channel.process_messages(channel_data.messages);
+        let received_message = receive_channel.receive_message().unwrap();
+        assert_eq!(received_message, message);
 
-    #[test]
-    fn receive_message() {
-        let config = ReliableChannelConfig::default();
-        let mut channel: ReliableChannel = ReliableChannel::new(config);
-
-        let messages = vec![
-            bincode::options()
-                .serialize(&ReliableMessage::new(0, TestMessages::First.serialize()))
-                .unwrap(),
-            bincode::options()
-                .serialize(&ReliableMessage::new(1, TestMessages::Second(0).serialize()))
-                .unwrap(),
-        ];
-
-        channel.process_messages(messages);
-
-        let message = channel.receive_message().unwrap();
-        assert_eq!(message, TestMessages::First.serialize());
-
-        let message = channel.receive_message().unwrap();
-        assert_eq!(message, TestMessages::Second(0).serialize());
-
-        assert_eq!(channel.num_messages_received, 2);
+        assert!(send_channel.has_messages_to_send());
+        send_channel.process_ack(sequence);
+        assert!(!send_channel.has_messages_to_send());
     }
 
     #[test]
     fn over_budget() {
-        let first_message = TestMessages::Third(0);
-        let second_message = TestMessages::Third(1);
+        let first_message = TestMessages::Third(0).serialize();
+        let second_message = TestMessages::Third(1).serialize();
 
-        let message = ReliableMessage::new(0, first_message.serialize());
+        let message = ReliableMessage::new(0, first_message.clone());
+        let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
 
         let config = ReliableChannelConfig::default();
-        let mut channel: ReliableChannel = ReliableChannel::new(config);
+        let mut channel = SendReliableChannel::new(config);
 
-        channel.send_message(first_message.serialize());
-        channel.send_message(second_message.serialize());
-
-        let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
+        channel.send_message(first_message);
+        channel.send_message(second_message);
 
         let channel_data = channel.get_messages_to_send(message_size, 0).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
@@ -425,11 +426,12 @@ mod tests {
 
     #[test]
     fn resend_message() {
+        let message_resend_time = Duration::from_millis(100);
         let config = ReliableChannelConfig {
-            message_resend_time: Duration::from_millis(100),
+            message_resend_time,
             ..Default::default()
         };
-        let mut channel: ReliableChannel = ReliableChannel::new(config);
+        let mut channel = SendReliableChannel::new(config);
 
         channel.send_message(TestMessages::First.serialize());
 
@@ -437,7 +439,7 @@ mod tests {
         assert_eq!(channel_data.messages.len(), 1);
 
         assert!(channel.get_messages_to_send(u64::MAX, 1).is_none());
-        channel.advance_time(Duration::from_millis(100));
+        channel.advance_time(message_resend_time);
 
         let channel_data = channel.get_messages_to_send(u64::MAX, 2).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
@@ -445,14 +447,28 @@ mod tests {
 
     #[test]
     fn out_of_sync() {
-        let config = ReliableChannelConfig {
-            message_send_queue_size: 1,
+        let send_config = ReliableChannelConfig {
+            message_send_queue_size: 2,
             ..Default::default()
         };
-        let mut channel: ReliableChannel = ReliableChannel::new(config);
+        let receive_config = ReliableChannelConfig {
+            message_receive_queue_size: 1,
+            ..Default::default()
+        };
+        let mut send_channel = SendReliableChannel::new(send_config);
+        let mut receive_channel = ReceiveReliableChannel::new(receive_config);
+        let message = TestMessages::Second(0).serialize();
 
-        channel.send_message(TestMessages::Second(0).serialize());
-        channel.send_message(TestMessages::Second(0).serialize());
-        assert!(matches!(channel.error(), Some(ChannelError::ReliableChannelOutOfSync)));
+        send_channel.send_message(message.clone());
+        let first_channel_data = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
+        send_channel.send_message(message.clone());
+        let second_channel_data = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
+
+        send_channel.send_message(message.clone());
+        assert!(matches!(send_channel.error(), Some(ChannelError::ReliableChannelOutOfSync)));
+
+        receive_channel.process_messages(first_channel_data.messages);
+        receive_channel.process_messages(second_channel_data.messages);
+        assert!(matches!(receive_channel.error(), Some(ChannelError::ReliableChannelOutOfSync)));
     }
 }
