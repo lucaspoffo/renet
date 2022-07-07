@@ -11,7 +11,7 @@ use std::{
 };
 
 use log::error;
-use rechannel::{channel::ChannelNetworkInfo, disconnect_packet, error::DisconnectionReason, server::RechannelServer};
+use rechannel::{disconnect_packet, error::DisconnectionReason, server::RechannelServer};
 use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 /// A server that can establish authenticated connections with multiple clients.
@@ -128,10 +128,6 @@ impl RenetServer {
         for client_id in self.netcode_server.clients_id() {
             self.disconnect(client_id);
         }
-    }
-
-    pub fn channels_network_info(&self, client_id: u64) -> Vec<(u8, ChannelNetworkInfo)> {
-        self.reliable_server.channels_network_info(client_id)
     }
 
     /// Returns the client's network info if the client exits.

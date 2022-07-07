@@ -24,12 +24,20 @@ pub struct RenetConnectionConfig {
     pub bandwidth_smoothing_factor: f32,
     /// Value which specifies at which interval a heartbeat should be sent, if no other packet was sent in the meantime.
     pub heartbeat_time: Duration,
-    /// Per-channel configuration.
-    pub channels_config: Vec<ChannelConfig>,
+    /// Channels configuration that this client/server will use to send messages.
+    pub send_channels_config: Vec<ChannelConfig>,
+    /// Channels configuration that this client/server will use to receive messages.
+    pub receive_channels_config: Vec<ChannelConfig>,
 }
 
 impl Default for RenetConnectionConfig {
     fn default() -> Self {
+        let channels_config = vec![
+            ChannelConfig::Reliable(Default::default()),
+            ChannelConfig::Unreliable(Default::default()),
+            ChannelConfig::Block(Default::default()),
+        ];
+
         Self {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
@@ -39,11 +47,8 @@ impl Default for RenetConnectionConfig {
             packet_loss_smoothing_factor: 0.1,
             bandwidth_smoothing_factor: 0.1,
             heartbeat_time: Duration::from_millis(100),
-            channels_config: vec![
-                ChannelConfig::Reliable(Default::default()),
-                ChannelConfig::Unreliable(Default::default()),
-                ChannelConfig::Block(Default::default()),
-            ],
+            send_channels_config: channels_config.clone(),
+            receive_channels_config: channels_config,
         }
     }
 }
@@ -63,7 +68,8 @@ impl RenetConnectionConfig {
             rtt_smoothing_factor: self.rtt_smoothing_factor,
             packet_loss_smoothing_factor: self.packet_loss_smoothing_factor,
             heartbeat_time: self.heartbeat_time,
-            channels_config: self.channels_config.clone(),
+            send_channels_config: self.send_channels_config.clone(),
+            receive_channels_config: self.receive_channels_config.clone(),
             fragment_config,
         }
     }
