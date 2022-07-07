@@ -308,7 +308,7 @@ impl ReceiveChannel for ReceiveReliableChannel {
 
                     let max_message_id = self.received_message_id + self.messages_received.size() as u16 - 1;
                     if sequence_greater_than(message.id, max_message_id) {
-                        // Out of messages to add
+                        // Out of space to to add messages
                         self.error = Some(ChannelError::ReliableChannelOutOfSync);
                     }
 
@@ -317,7 +317,7 @@ impl ReceiveChannel for ReceiveReliableChannel {
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to deserialize reliable message {}: {}", self.channel_id, e);
+                    log::error!("Failed to deserialize reliable message in channel {}: {}", self.channel_id, e);
                     self.error = Some(ChannelError::FailedToSerialize);
                     return;
                 }

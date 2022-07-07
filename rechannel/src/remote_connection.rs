@@ -99,7 +99,7 @@ impl RemoteConnection {
         }
 
         let mut receive_channels = HashMap::new();
-        for channel_config in config.send_channels_config.iter() {
+        for channel_config in config.receive_channels_config.iter() {
             let (_, receive_channel) = channel_config.new_channels();
             let channel_id = channel_config.channel_id();
             let old_channel = receive_channels.insert(channel_id, receive_channel);
