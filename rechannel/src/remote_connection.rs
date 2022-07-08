@@ -85,7 +85,7 @@ impl Default for ConnectionConfig {
 
 impl RemoteConnection {
     pub fn new(current_time: Duration, config: ConnectionConfig) -> Self {
-        let heartbeat_timer = Timer::new(config.heartbeat_time);
+        let heartbeat_timer = Timer::new(current_time, config.heartbeat_time);
         let reassembly_buffer = SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
         let received_buffer = SequenceBuffer::with_capacity(config.received_packets_buffer_size);
@@ -160,7 +160,7 @@ impl RemoteConnection {
 
     pub fn send_message(&mut self, channel_id: u8, message: Bytes) {
         let channel = self.send_channels.get_mut(&channel_id).expect("invalid channel id");
-        channel.send_message(message);
+        channel.send_message(message, self.current_time);
     }
 
     pub fn receive_message(&mut self, channel_id: u8) -> Option<Payload> {
@@ -170,10 +170,6 @@ impl RemoteConnection {
 
     pub fn advance_time(&mut self, duration: Duration) {
         self.current_time += duration;
-        self.heartbeat_timer.advance(duration);
-        for channel in self.send_channels.values_mut() {
-            channel.advance_time(duration);
-        }
     }
 
     pub fn update(&mut self) -> Result<(), RechannelError> {
@@ -280,7 +276,7 @@ impl RemoteConnection {
         let mut available_bytes = self.config.max_packet_size - HEADER_SIZE;
         let mut channels_packet_data = vec![];
         for send_channel in self.send_channels.values_mut() {
-            if let Some(channel_packet_data) = send_channel.get_messages_to_send(available_bytes, sequence) {
+            if let Some(channel_packet_data) = send_channel.get_messages_to_send(available_bytes, sequence, self.current_time) {
                 available_bytes -= bincode::options().serialized_size(&channel_packet_data)?;
                 channels_packet_data.push(channel_packet_data)
             }
@@ -306,14 +302,14 @@ impl RemoteConnection {
                 vec![packet]
             };
 
-            self.heartbeat_timer.reset();
+            self.heartbeat_timer.reset(self.current_time);
             return Ok(packets);
-        } else if self.heartbeat_timer.is_finished() {
+        } else if self.heartbeat_timer.is_finished(self.current_time) {
             let ack_data = self.received_buffer.ack_data();
             let packet = Packet::Heartbeat { ack_data };
             let packet = bincode::options().serialize(&packet)?;
 
-            self.heartbeat_timer.reset();
+            self.heartbeat_timer.reset(self.current_time);
             return Ok(vec![packet]);
         }
 

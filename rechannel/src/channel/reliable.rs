@@ -85,8 +85,8 @@ impl ReliableMessage {
 }
 
 impl ReliableMessageSent {
-    pub fn new(reliable_message: ReliableMessage, resend_time: Duration) -> Self {
-        let mut resend_timer = Timer::new(resend_time);
+    pub fn new(reliable_message: ReliableMessage, resend_time: Duration, current_time: Duration) -> Self {
+        let mut resend_timer = Timer::new(current_time, resend_time);
         resend_timer.finish();
         Self {
             reliable_message,
@@ -141,7 +141,7 @@ impl SendReliableChannel {
 }
 
 impl SendChannel for SendReliableChannel {
-    fn get_messages_to_send(&mut self, mut available_bytes: u64, sequence: u16) -> Option<ChannelPacketData> {
+    fn get_messages_to_send(&mut self, mut available_bytes: u64, sequence: u16, current_time: Duration) -> Option<ChannelPacketData> {
         if !self.has_messages_to_send() || self.error.is_some() {
             return None;
         }
@@ -154,7 +154,7 @@ impl SendChannel for SendReliableChannel {
             let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
             let message_send = self.messages_send.get_mut(message_id);
             if let Some(message_send) = message_send {
-                if !message_send.resend_timer.is_finished() {
+                if !message_send.resend_timer.is_finished(current_time) {
                     continue;
                 }
 
@@ -169,7 +169,7 @@ impl SendChannel for SendReliableChannel {
 
                 if serialized_size <= available_bytes {
                     available_bytes -= serialized_size;
-                    message_send.resend_timer.reset();
+                    message_send.resend_timer.reset(current_time);
                     message_ids.push(message_id);
                     let message = match bincode::options().serialize(&message_send.reliable_message) {
                         Ok(message) => message,
@@ -219,16 +219,7 @@ impl SendChannel for SendReliableChannel {
         }
     }
 
-    fn advance_time(&mut self, duration: Duration) {
-        for i in 0..self.messages_send.size() {
-            let message_id = self.oldest_unacked_message_id.wrapping_add(i as u16);
-            if let Some(message) = self.messages_send.get_mut(message_id) {
-                message.resend_timer.advance(duration);
-            }
-        }
-    }
-
-    fn send_message(&mut self, payload: Bytes) {
+    fn send_message(&mut self, payload: Bytes, current_time: Duration) {
         if self.error.is_some() {
             return;
         }
@@ -252,7 +243,7 @@ impl SendChannel for SendReliableChannel {
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
         let reliable_message = ReliableMessage::new(message_id, payload);
-        let entry = ReliableMessageSent::new(reliable_message, self.message_resend_time);
+        let entry = ReliableMessageSent::new(reliable_message, self.message_resend_time, current_time);
         self.messages_send.insert(message_id, entry);
 
         self.num_messages_sent += 1;
@@ -375,6 +366,7 @@ mod tests {
 
     #[test]
     fn send_receive_message() {
+        let current_time = Duration::ZERO;
         let config = ReliableChannelConfig::default();
         let mut send_channel = SendReliableChannel::new(config.clone());
         let mut receive_channel = ReceiveReliableChannel::new(config);
@@ -385,11 +377,11 @@ mod tests {
 
         let message = TestMessages::Second(0).serialize();
 
-        send_channel.send_message(message.clone());
+        send_channel.send_message(message.clone(), current_time);
         assert_eq!(send_channel.num_messages_sent, 1);
         assert!(receive_channel.receive_message().is_none());
 
-        let channel_data = send_channel.get_messages_to_send(u64::MAX, sequence).unwrap();
+        let channel_data = send_channel.get_messages_to_send(u64::MAX, sequence, current_time).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
 
         receive_channel.process_messages(channel_data.messages);
@@ -403,29 +395,31 @@ mod tests {
 
     #[test]
     fn over_budget() {
+        let current_time = Duration::ZERO;
+        let config = ReliableChannelConfig::default();
+        let mut channel = SendReliableChannel::new(config);
+
         let first_message = TestMessages::Third(0).serialize();
         let second_message = TestMessages::Third(1).serialize();
 
         let message = ReliableMessage::new(0, first_message.clone());
         let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
 
-        let config = ReliableChannelConfig::default();
-        let mut channel = SendReliableChannel::new(config);
+        channel.send_message(first_message, current_time);
+        channel.send_message(second_message, current_time);
 
-        channel.send_message(first_message);
-        channel.send_message(second_message);
-
-        let channel_data = channel.get_messages_to_send(message_size, 0).unwrap();
+        let channel_data = channel.get_messages_to_send(message_size, 0, current_time).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
 
         channel.process_ack(0);
 
-        let channel_data = channel.get_messages_to_send(message_size, 1).unwrap();
+        let channel_data = channel.get_messages_to_send(message_size, 1, current_time).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
     }
 
     #[test]
     fn resend_message() {
+        let mut current_time = Duration::ZERO;
         let message_resend_time = Duration::from_millis(100);
         let config = ReliableChannelConfig {
             message_resend_time,
@@ -433,20 +427,22 @@ mod tests {
         };
         let mut channel = SendReliableChannel::new(config);
 
-        channel.send_message(TestMessages::First.serialize());
+        channel.send_message(TestMessages::First.serialize(), current_time);
 
-        let channel_data = channel.get_messages_to_send(u64::MAX, 0).unwrap();
+        let channel_data = channel.get_messages_to_send(u64::MAX, 0, current_time).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
 
-        assert!(channel.get_messages_to_send(u64::MAX, 1).is_none());
-        channel.advance_time(message_resend_time);
+        assert!(channel.get_messages_to_send(u64::MAX, 1, current_time).is_none());
+        // Advance time
+        current_time += message_resend_time;
 
-        let channel_data = channel.get_messages_to_send(u64::MAX, 2).unwrap();
+        let channel_data = channel.get_messages_to_send(u64::MAX, 2, current_time).unwrap();
         assert_eq!(channel_data.messages.len(), 1);
     }
 
     #[test]
     fn out_of_sync() {
+        let current_time = Duration::ZERO;
         let send_config = ReliableChannelConfig {
             message_send_queue_size: 2,
             ..Default::default()
@@ -459,12 +455,12 @@ mod tests {
         let mut receive_channel = ReceiveReliableChannel::new(receive_config);
         let message = TestMessages::Second(0).serialize();
 
-        send_channel.send_message(message.clone());
-        let first_channel_data = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
-        send_channel.send_message(message.clone());
-        let second_channel_data = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
+        send_channel.send_message(message.clone(), current_time);
+        let first_channel_data = send_channel.get_messages_to_send(u64::MAX, 0, current_time).unwrap();
+        send_channel.send_message(message.clone(), current_time);
+        let second_channel_data = send_channel.get_messages_to_send(u64::MAX, 0, current_time).unwrap();
 
-        send_channel.send_message(message);
+        send_channel.send_message(message, current_time);
         assert!(matches!(send_channel.error(), Some(ChannelError::ReliableChannelOutOfSync)));
 
         receive_channel.process_messages(first_channel_data.messages);

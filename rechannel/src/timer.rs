@@ -3,30 +3,29 @@ use std::time::Duration;
 #[derive(Debug, Clone, Default)]
 pub struct Timer {
     duration: Duration,
-    elapsed: Duration,
+    start_time: Duration,
+    force_finish: bool,
 }
 
 impl Timer {
-    pub fn new(duration: Duration) -> Self {
+    pub fn new(start_time: Duration, duration: Duration) -> Self {
         Timer {
-            elapsed: Duration::ZERO,
             duration,
+            start_time,
+            force_finish: false,
         }
     }
 
-    pub fn reset(&mut self) {
-        self.elapsed = Duration::ZERO;
-    }
-
-    pub fn advance(&mut self, duration: Duration) {
-        self.elapsed += duration;
+    pub fn reset(&mut self, current_time: Duration) {
+        self.start_time = current_time;
+        self.force_finish = false;
     }
 
     pub fn finish(&mut self) {
-        self.elapsed = self.duration;
+        self.force_finish = true;
     }
 
-    pub fn is_finished(&self) -> bool {
-        self.elapsed >= self.duration
+    pub fn is_finished(&self, current_time: Duration) -> bool {
+        self.force_finish || (current_time - self.start_time >= self.duration)
     }
 }

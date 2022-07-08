@@ -144,7 +144,7 @@ impl SendBlockChannel {
         }
     }
 
-    fn generate_slice_packets(&mut self, mut available_bytes: u64) -> Result<Vec<SliceMessage>, bincode::Error> {
+    fn generate_slice_packets(&mut self, mut available_bytes: u64, current_time: Duration) -> Result<Vec<SliceMessage>, bincode::Error> {
         let mut slice_messages: Vec<SliceMessage> = vec![];
         match &mut self.sending {
             Sending::No => Ok(slice_messages),
@@ -165,7 +165,7 @@ impl SendBlockChannel {
                         continue;
                     }
                     let resend_timer = &mut resend_timers[slice_id];
-                    if !resend_timer.is_finished() {
+                    if !resend_timer.is_finished(current_time) {
                         continue;
                     }
 
@@ -189,7 +189,7 @@ impl SendBlockChannel {
                     }
 
                     available_bytes -= message_size;
-                    resend_timer.reset();
+                    resend_timer.reset(current_time);
 
                     info!(
                         "Generated SliceMessage {} from chunk_id {}. ({}/{})",
@@ -207,14 +207,14 @@ impl SendBlockChannel {
 }
 
 impl SendChannel for SendBlockChannel {
-    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Option<ChannelPacketData> {
+    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16, current_time: Duration) -> Option<ChannelPacketData> {
         if let Sending::No = self.sending {
             if let Some(message) = self.messages_to_send.pop_front() {
-                self.send_message(message);
+                self.send_message(message, current_time);
             }
         }
 
-        let slice_messages: Vec<SliceMessage> = match self.generate_slice_packets(available_bytes) {
+        let slice_messages: Vec<SliceMessage> = match self.generate_slice_packets(available_bytes, current_time) {
             Ok(messages) => messages,
             Err(e) => {
                 log::error!("Failed serialize message in block channel {}: {}", self.channel_id, e);
@@ -289,15 +289,7 @@ impl SendChannel for SendBlockChannel {
         }
     }
 
-    fn advance_time(&mut self, duration: Duration) {
-        if let Sending::Yes { resend_timers, .. } = &mut self.sending {
-            for timer in resend_timers.iter_mut() {
-                timer.advance(duration);
-            }
-        }
-    }
-
-    fn send_message(&mut self, payload: Bytes) {
+    fn send_message(&mut self, payload: Bytes, current_time: Duration) {
         if self.error.is_some() {
             return;
         }
@@ -326,7 +318,7 @@ impl SendChannel for SendBlockChannel {
         }
 
         let num_slices = (payload.len() + self.slice_size - 1) / self.slice_size;
-        let mut resend_timer = Timer::new(self.resend_time);
+        let mut resend_timer = Timer::new(current_time, self.resend_time);
         resend_timer.finish();
         let mut resend_timers = Vec::with_capacity(num_slices);
         resend_timers.resize(num_slices, resend_timer);
@@ -517,6 +509,7 @@ mod tests {
 
     #[test]
     fn split_chunk() {
+        let current_time = Duration::ZERO;
         const SLICE_SIZE: usize = 10;
         let config = BlockChannelConfig {
             slice_size: SLICE_SIZE,
@@ -526,9 +519,9 @@ mod tests {
         let mut send_channel = SendBlockChannel::new(config.clone());
         let mut receive_channel = ReceiveBlockChannel::new(config);
         let message = Bytes::from(vec![255u8; 30]);
-        send_channel.send_message(message.clone());
+        send_channel.send_message(message.clone(), Duration::ZERO);
 
-        let slice_messages = send_channel.generate_slice_packets(u64::MAX).unwrap();
+        let slice_messages = send_channel.generate_slice_packets(u64::MAX, current_time).unwrap();
         assert_eq!(slice_messages.len(), 2);
         send_channel.process_ack(0);
         send_channel.process_ack(1);
@@ -537,7 +530,7 @@ mod tests {
             receive_channel.process_slice_message(&slice_message).unwrap();
         }
 
-        let last_message = send_channel.generate_slice_packets(u64::MAX).unwrap();
+        let last_message = send_channel.generate_slice_packets(u64::MAX, current_time).unwrap();
         let result = receive_channel.process_slice_message(&last_message[0]);
         assert_eq!(message, result.unwrap().unwrap());
     }
@@ -550,11 +543,11 @@ mod tests {
 
         let payload = Bytes::from(vec![7u8; 102400]);
 
-        send_channel.send_message(payload.clone());
+        send_channel.send_message(payload.clone(), Duration::ZERO);
         let mut sequence = 0;
 
         loop {
-            let channel_data = send_channel.get_messages_to_send(1600, sequence);
+            let channel_data = send_channel.get_messages_to_send(1600, sequence, Duration::ZERO);
             match channel_data {
                 None => break,
                 Some(data) => {
@@ -571,6 +564,7 @@ mod tests {
 
     #[test]
     fn block_channel_queue() {
+        let current_time = Duration::ZERO;
         let config = BlockChannelConfig {
             resend_time: Duration::ZERO,
             ..Default::default()
@@ -580,11 +574,11 @@ mod tests {
 
         let first_message = Bytes::from(vec![3; 2000]);
         let second_message = Bytes::from(vec![5; 2000]);
-        send_channel.send_message(first_message.clone());
-        send_channel.send_message(second_message.clone());
+        send_channel.send_message(first_message.clone(), current_time);
+        send_channel.send_message(second_message.clone(), current_time);
 
         // First message
-        let block_channel_data = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
+        let block_channel_data = send_channel.get_messages_to_send(u64::MAX, 0, current_time).unwrap();
         assert!(!block_channel_data.messages.is_empty());
         receive_channel.process_messages(block_channel_data.messages);
         let received_first_message = receive_channel.receive_message().unwrap();
@@ -592,7 +586,7 @@ mod tests {
         send_channel.process_ack(0);
 
         // Second message
-        let block_channel_data = send_channel.get_messages_to_send(u64::MAX, 1).unwrap();
+        let block_channel_data = send_channel.get_messages_to_send(u64::MAX, 1, current_time).unwrap();
         assert!(!block_channel_data.messages.is_empty());
         receive_channel.process_messages(block_channel_data.messages);
         let received_second_message = receive_channel.receive_message().unwrap();
@@ -605,6 +599,7 @@ mod tests {
 
     #[test]
     fn acking_packet_with_old_chunk_id() {
+        let current_time = Duration::ZERO;
         let config = BlockChannelConfig {
             resend_time: Duration::ZERO,
             ..Default::default()
@@ -612,14 +607,14 @@ mod tests {
         let mut send_channel = SendBlockChannel::new(config);
         let first_message = Bytes::from(vec![5; 400 * 3]);
         let second_message = Bytes::from(vec![3; 400]);
-        send_channel.send_message(first_message);
-        send_channel.send_message(second_message);
+        send_channel.send_message(first_message, current_time);
+        send_channel.send_message(second_message, current_time);
 
-        let _ = send_channel.get_messages_to_send(u64::MAX, 0).unwrap();
-        let _ = send_channel.get_messages_to_send(u64::MAX, 1).unwrap();
+        let _ = send_channel.get_messages_to_send(u64::MAX, 0, current_time).unwrap();
+        let _ = send_channel.get_messages_to_send(u64::MAX, 1, current_time).unwrap();
 
         send_channel.process_ack(0);
-        let _ = send_channel.get_messages_to_send(u64::MAX, 2).unwrap();
+        let _ = send_channel.get_messages_to_send(u64::MAX, 2, current_time).unwrap();
 
         send_channel.process_ack(1);
         assert!(matches!(send_channel.sending, Sending::Yes { .. }));

@@ -74,7 +74,7 @@ impl SendUnreliableChannel {
 }
 
 impl SendChannel for SendUnreliableChannel {
-    fn get_messages_to_send(&mut self, mut available_bytes: u64, _sequence: u16) -> Option<ChannelPacketData> {
+    fn get_messages_to_send(&mut self, mut available_bytes: u64, _sequence: u16, _current_time: Duration) -> Option<ChannelPacketData> {
         if self.error.is_some() {
             return None;
         }
@@ -104,9 +104,7 @@ impl SendChannel for SendUnreliableChannel {
 
     fn process_ack(&mut self, _ack: u16) {}
 
-    fn advance_time(&mut self, _duration: Duration) {}
-
-    fn send_message(&mut self, payload: Bytes) {
+    fn send_message(&mut self, payload: Bytes, _current_time: Duration) {
         if self.error.is_some() {
             return;
         }

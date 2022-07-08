@@ -63,12 +63,9 @@ impl ChannelConfig {
 }
 
 pub(crate) trait SendChannel: std::fmt::Debug {
-    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16) -> Option<ChannelPacketData>;
+    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16, current_time: Duration) -> Option<ChannelPacketData>;
+    fn send_message(&mut self, payload: Bytes, current_time: Duration);
     fn process_ack(&mut self, ack: u16);
-    // TODO: maybe the timer should check with current_time to see if is completed instead of advancing it by the delta every tick
-    // So we would pass the current_time in the get_messages_to_send
-    fn advance_time(&mut self, duration: Duration);
-    fn send_message(&mut self, payload: Bytes);
     fn can_send_message(&self) -> bool;
     fn error(&self) -> Option<ChannelError>;
 }
