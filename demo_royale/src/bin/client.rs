@@ -20,7 +20,7 @@ use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugi
 struct ControlledPlayer;
 
 #[derive(Default)]
-struct PlayerNetMapping(HashMap<Entity, Entity>);
+struct NetworkMapping(HashMap<Entity, Entity>);
 
 #[derive(Debug)]
 struct PlayerInfo {
@@ -65,7 +65,7 @@ fn main() {
     app.insert_resource(MostRecentTick(None));
     app.insert_resource(new_renet_client());
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
-    app.insert_resource(PlayerNetMapping::default());
+    app.insert_resource(NetworkMapping::default());
 
     app.add_system(player_input);
     app.add_system(camera_follow);
@@ -147,7 +147,7 @@ fn client_sync_players(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut client: ResMut<RenetClient>,
     mut lobby: ResMut<ClientLobby>,
-    mut player_net_mapping: ResMut<PlayerNetMapping>,
+    mut network_mapping: ResMut<NetworkMapping>,
     mut most_recent_tick: ResMut<MostRecentTick>,
 ) {
     let client_id = client.client_id();
@@ -172,7 +172,7 @@ fn client_sync_players(
                     client_entity: client_entity.id(),
                 };
                 lobby.players.insert(id, player_info);
-                player_net_mapping.0.insert(entity, client_entity.id());
+                network_mapping.0.insert(entity, client_entity.id());
             }
             ServerMessages::PlayerRemove { id } => {
                 println!("Player {} disconnected.", id);
@@ -182,7 +182,24 @@ fn client_sync_players(
                 }) = lobby.players.remove(&id)
                 {
                     commands.entity(client_entity).despawn();
-                    player_net_mapping.0.remove(&server_entity);
+                    network_mapping.0.remove(&server_entity);
+                }
+            }
+            ServerMessages::SpawnProjectile { entity, translation } => {
+                let projectile_entity = commands.spawn_bundle(PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Icosphere {
+                        radius: 0.1,
+                        subdivisions: 5,
+                    })),
+                    material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+                    transform: Transform::from_translation(translation.into()),
+                    ..Default::default()
+                });
+                network_mapping.0.insert(entity, projectile_entity.id());
+            }
+            ServerMessages::DespawnProjectile { entity } => {
+                if let Some(entity) = network_mapping.0.remove(&entity) {
+                    commands.entity(entity).despawn();
                 }
             }
         }
@@ -193,19 +210,28 @@ fn client_sync_players(
         match most_recent_tick.0 {
             None => most_recent_tick.0 = Some(frame.tick),
             Some(tick) if tick < frame.tick => most_recent_tick.0 = Some(frame.tick),
-            _ => {}
+            _ => continue,
         }
-        if frame.players.translations.len() != frame.players.entities.len() {
-            continue;
-        }
+
         for i in 0..frame.players.entities.len() {
-            if let Some(client_entity) = player_net_mapping.0.get(&frame.players.entities[i]) {
+            if let Some(entity) = network_mapping.0.get(&frame.players.entities[i]) {
                 let translation = frame.players.translations[i].into();
                 let transform = Transform {
                     translation,
                     ..Default::default()
                 };
-                commands.entity(*client_entity).insert(transform);
+                commands.entity(*entity).insert(transform);
+            }
+        }
+
+        for i in 0..frame.projectiles.entities.len() {
+            if let Some(entity) = network_mapping.0.get(&frame.projectiles.entities[i]) {
+                let translation = frame.projectiles.translations[i].into();
+                let transform = Transform {
+                    translation,
+                    ..Default::default()
+                };
+                commands.entity(*entity).insert(transform);
             }
         }
     }

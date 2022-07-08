@@ -14,8 +14,8 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use demo_royale::{
-    server_connection_config, ClientChannel, NetworkFrame, Player, PlayerCommand, PlayerInput, ServerChannel, ServerMessages, PRIVATE_KEY,
-    PROTOCOL_ID,
+    server_connection_config, spawn_fireball, ClientChannel, NetworkFrame, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
+    ServerMessages, PRIVATE_KEY, PROTOCOL_ID,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -60,8 +60,9 @@ fn main() {
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
     app.add_system(server_update_system);
-    app.add_system(server_sync_players);
+    app.add_system(server_network_sync);
     app.add_system(move_players_system);
+    app.add_system(update_projectiles_system);
     app.add_system(update_visulizer_system);
 
     app.add_startup_system(setup_level);
@@ -146,8 +147,26 @@ fn server_update_system(
         while let Some(message) = server.receive_message(client_id, ClientChannel::Command.id()) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
-                PlayerCommand::BasicAttack { cast_at } => {
+                PlayerCommand::BasicAttack { mut cast_at } => {
                     println!("Received basic attack from client {}: {:?}", client_id, cast_at);
+
+                    if let Some(player_entity) = lobby.players.get(&client_id) {
+                        if let Ok((_, _, player_transform)) = players.get(*player_entity) {
+                            cast_at[1] = player_transform.translation[1];
+
+                            let direction = (cast_at - player_transform.translation).normalize_or_zero();
+                            let mut translation = player_transform.translation + (direction * 0.7);
+                            translation[1] = 1.0;
+
+                            let fireball_entity = spawn_fireball(&mut commands, &mut meshes, &mut materials, translation, direction);
+                            let message = ServerMessages::SpawnProjectile {
+                                entity: fireball_entity,
+                                translation: translation.into(),
+                            };
+                            let message = bincode::serialize(&message).unwrap();
+                            server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+                        }
+                    }
                 }
             }
         }
@@ -161,6 +180,24 @@ fn server_update_system(
     }
 }
 
+fn update_projectiles_system(
+    mut commands: Commands,
+    mut server: ResMut<RenetServer>,
+    mut projectiles: Query<(Entity, &mut Projectile)>,
+    time: Res<Time>,
+) {
+    for (entity, mut projectile) in projectiles.iter_mut() {
+        projectile.duration.tick(time.delta());
+        if projectile.duration.finished() {
+            commands.entity(entity).despawn();
+            let message = ServerMessages::DespawnProjectile { entity };
+            let message = bincode::serialize(&message).unwrap();
+
+            server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+        }
+    }
+}
+
 fn update_visulizer_system(
     mut egui_context: ResMut<EguiContext>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
@@ -170,11 +207,21 @@ fn update_visulizer_system(
     visualizer.show_window(egui_context.ctx_mut());
 }
 
-fn server_sync_players(mut tick: ResMut<NetworkTick>, mut server: ResMut<RenetServer>, query: Query<(Entity, &Transform), With<Player>>) {
+fn server_network_sync(
+    mut tick: ResMut<NetworkTick>,
+    mut server: ResMut<RenetServer>,
+    players: Query<(Entity, &Transform), With<Player>>,
+    projectiles: Query<(Entity, &Transform), With<Projectile>>,
+) {
     let mut frame = NetworkFrame::default();
-    for (entity, transform) in query.iter() {
+    for (entity, transform) in players.iter() {
         frame.players.entities.push(entity);
         frame.players.translations.push(transform.translation.into());
+    }
+
+    for (entity, transform) in projectiles.iter() {
+        frame.projectiles.entities.push(entity);
+        frame.projectiles.translations.push(transform.translation.into());
     }
 
     frame.tick = tick.0;

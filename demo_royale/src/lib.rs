@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
+use bevy_rapier3d::prelude::*;
 use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, UnreliableChannelConfig, NETCODE_KEY_BYTES};
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +41,8 @@ pub enum ServerChannel {
 pub enum ServerMessages {
     PlayerCreate { entity: Entity, id: u64, translation: [f32; 3] },
     PlayerRemove { id: u64 },
+    SpawnProjectile { entity: Entity, translation: [f32; 3] },
+    DespawnProjectile { entity: Entity },
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -49,9 +52,16 @@ pub struct NetworkedPlayers {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
+pub struct NetworkedProjectiles {
+    pub entities: Vec<Entity>,
+    pub translations: Vec<[f32; 3]>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NetworkFrame {
     pub tick: u32,
     pub players: NetworkedPlayers,
+    pub projectiles: NetworkedProjectiles,
 }
 
 impl ClientChannel {
@@ -139,6 +149,41 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
         ..Default::default()
     });
+}
+
+#[derive(Debug, Component)]
+pub struct Projectile {
+    pub duration: Timer,
+}
+
+pub fn spawn_fireball(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    translation: Vec3,
+    mut direction: Vec3,
+) -> Entity {
+    if !direction.is_normalized() {
+        direction = Vec3::X;
+    }
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Icosphere {
+                radius: 0.1,
+                subdivisions: 5,
+            })),
+            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+            transform: Transform::from_translation(translation),
+            ..Default::default()
+        })
+        .insert(RigidBody::Dynamic)
+        .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
+        .insert(Collider::ball(0.1))
+        .insert(Velocity::linear(direction * 10.))
+        .insert(Projectile {
+            duration: Timer::from_seconds(1.5, false),
+        })
+        .id()
 }
 
 /// A 3D ray, with an origin and direction. The direction is guaranteed to be normalized.
