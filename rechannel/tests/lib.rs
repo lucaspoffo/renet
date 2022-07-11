@@ -8,6 +8,7 @@ use rechannel::{
 
 use bincode::{self, Options};
 use serde::{Deserialize, Serialize};
+use rand::prelude::*;
 
 use std::time::Duration;
 
@@ -148,7 +149,7 @@ struct TestUsage {
 
 impl Default for TestUsage {
     fn default() -> Self {
-        Self { value: vec![255; 400] }
+        Self { value: vec![255; 2500] }
     }
 }
 
@@ -158,6 +159,7 @@ use std::collections::HashMap;
 fn test_usage() {
     // TODO: we can't distinguish the log between the clients
     init_log();
+    let mut rng = rand::thread_rng();
     let mut server = RechannelServer::new(Duration::ZERO, ConnectionConfig::default());
 
     let mut clients_status: HashMap<usize, ClientStatus> = HashMap::new();
@@ -173,9 +175,7 @@ fn test_usage() {
         server.add_connection(&i);
     }
 
-    let mut count: u64 = 0;
     loop {
-        count += 1;
         for (connection_id, status) in clients_status.iter_mut() {
             status.connection.update().unwrap();
             if status.connection.receive_message(0).is_some() {
@@ -195,12 +195,16 @@ fn test_usage() {
             let client_packets = status.connection.get_packets_to_send().unwrap();
             let server_packets = server.get_packets_to_send(connection_id).unwrap();
 
-            // 66% packet loss emulation
-            if count % 3 == 0 {
-                for packet in client_packets.iter() {
+            for packet in client_packets.iter() {
+                // 10% packet loss emulation
+                if rng.gen::<f64>() < 0.9 {
                     server.process_packet_from(packet, connection_id).unwrap();
                 }
-                for packet in server_packets.iter() {
+            }
+
+            for packet in server_packets.iter() {
+                // 10% packet loss emulation
+                if rng.gen::<f64>() < 0.9 {
                     status.connection.process_packet(packet).unwrap();
                 }
             }

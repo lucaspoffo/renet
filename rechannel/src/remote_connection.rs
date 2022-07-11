@@ -226,18 +226,22 @@ impl RemoteConnection {
                 ack_data,
                 fragment_data,
             } => {
-                if self.received_buffer.get_mut(sequence).is_none() {
-                    self.received_buffer.insert(sequence, ());
-                }
-
                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
 
-                self.reassembly_buffer.handle_fragment(
+                let packet = self.reassembly_buffer.handle_fragment(
                     sequence,
                     fragment_data,
                     self.config.max_packet_size,
                     &self.config.fragment_config,
-                )?
+                )?;
+                match packet {
+                    None => return Ok(()),
+                    Some(packet) => {
+                        // Only consider the packet received when the fragment is completed
+                        self.received_buffer.insert(sequence, ());
+                        packet
+                    }
+                }
             }
             Packet::Heartbeat { ack_data } => {
                 self.update_acket_packets(ack_data.ack, ack_data.ack_bits);
@@ -317,8 +321,7 @@ impl RemoteConnection {
         Ok(vec![])
     }
 
-    fn update_acket_packets(&mut self, ack: u16, ack_bits: u32) {
-        let mut ack_bits = ack_bits;
+    fn update_acket_packets(&mut self, ack: u16, mut ack_bits: u32) {
         for i in 0..32 {
             if ack_bits & 1 != 0 {
                 let ack_sequence = ack.wrapping_sub(i);
@@ -326,6 +329,8 @@ impl RemoteConnection {
                     if !sent_packet.ack {
                         self.acks.push(ack_sequence);
                         sent_packet.ack = true;
+
+                        // Update RTT
                         let rtt = (self.current_time - sent_packet.time).as_secs_f32() * 1000.;
 
                         if self.rtt == 0.0 || self.rtt < f32::EPSILON {
@@ -415,5 +420,25 @@ mod tests {
 
         connection.update_packet_loss();
         assert_eq!(connection.packet_loss(), 0.5);
+    }
+
+    #[test]
+    fn confirm_only_completed_fragmented_packet() {
+        let config = ConnectionConfig::default();
+        let mut connection = RemoteConnection::new(Duration::ZERO, config);
+        let message = vec![7u8; 2500];
+        connection.send_message(0, message.clone().into());
+
+        let packets = connection.get_packets_to_send().unwrap();
+        assert!(packets.len() > 1);
+        for packet in packets.iter() {
+            assert!(!connection.received_buffer.exists(0));
+            connection.process_packet(packet).unwrap();
+        }
+        // After all fragments are received it should be considered received
+        assert!(connection.received_buffer.exists(0));
+
+        let received_message = connection.receive_message(0).unwrap();
+        assert_eq!(message, received_message);
     }
 }

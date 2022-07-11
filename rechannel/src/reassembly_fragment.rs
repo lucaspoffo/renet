@@ -117,7 +117,7 @@ impl SequenceBuffer<ReassemblyFragment> {
         fragment_data: FragmentData,
         max_packet_size: u64,
         config: &FragmentConfig,
-    ) -> Result<Vec<ChannelPacketData>, FragmentError> {
+    ) -> Result<Option<Vec<ChannelPacketData>>, FragmentError> {
         let FragmentData {
             fragment_id,
             num_fragments,
@@ -187,10 +187,10 @@ impl SequenceBuffer<ReassemblyFragment> {
             let messages: Vec<ChannelPacketData> = bincode::options().deserialize(&reassembly_fragment.buffer)?;
 
             log::trace!("Completed the reassembly of packet {}.", reassembly_fragment.sequence);
-            return Ok(messages);
+            return Ok(Some(messages));
         }
 
-        Ok(vec![])
+        Ok(None)
     }
 }
 
@@ -255,18 +255,18 @@ mod tests {
 
         let result = fragments_reassembly.handle_fragment(sequence, fragments[0].clone(), 250_000, &config);
         match result {
-            Ok(payloads) => assert!(payloads.is_empty()),
+            Ok(payloads) => assert!(payloads.is_none()),
             _ => unreachable!(),
         }
 
         let result = fragments_reassembly.handle_fragment(sequence, fragments[1].clone(), 250_000, &config);
         match result {
-            Ok(payloads) => assert!(payloads.is_empty()),
+            Ok(payloads) => assert!(payloads.is_none()),
             _ => unreachable!(),
         }
 
         let result = fragments_reassembly.handle_fragment(sequence, fragments[2].clone(), 250_000, &config);
-        let result = result.unwrap();
+        let result = result.unwrap().unwrap();
 
         assert_eq!(messages.len(), result.len());
 
