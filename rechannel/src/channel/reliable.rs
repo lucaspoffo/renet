@@ -297,7 +297,7 @@ impl ReceiveChannel for ReceiveReliableChannel {
                         continue;
                     }
 
-                    let max_message_id = self.received_message_id + self.messages_received.size() as u16 - 1;
+                    let max_message_id = self.received_message_id.wrapping_add(self.messages_received.size() as u16 - 1);
                     if sequence_greater_than(message.id, max_message_id) {
                         // Out of space to to add messages
                         self.error = Some(ChannelError::ReliableChannelOutOfSync);

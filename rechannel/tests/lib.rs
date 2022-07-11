@@ -7,8 +7,8 @@ use rechannel::{
 };
 
 use bincode::{self, Options};
-use serde::{Deserialize, Serialize};
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
