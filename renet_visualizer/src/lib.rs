@@ -125,7 +125,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
             &self.style,
             "Received Kbps",
             TextFormat::Normal,
-            TopValue::MaxValue { multiplicated: 1.0 },
+            TopValue::MaxValue { multiplicated: 1.5 },
             self.received_bandwidth_kbps.as_vec(),
         );
     }
@@ -137,7 +137,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
             &self.style,
             "Sent Kbps",
             TextFormat::Normal,
-            TopValue::MaxValue { multiplicated: 1.0 },
+            TopValue::MaxValue { multiplicated: 1.5 },
             self.sent_bandwidth_kbps.as_vec(),
         );
     }

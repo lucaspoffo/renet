@@ -59,7 +59,7 @@ impl<const N: usize> CircularBuffer<N, PacketInfo> {
         }
 
         let milli_seconds = (end - start).as_secs_f32() * 1000.0;
-        (bytes_sent * 8) as f32 / milli_seconds
+        bytes_sent as f32 / milli_seconds
     }
 }
 
