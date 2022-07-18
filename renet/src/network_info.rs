@@ -9,7 +9,9 @@ const CIRCULAR_BUFFER_SIZE: usize = 60;
 pub struct NetworkInfo {
     /// Round-trip Time
     pub rtt: f32,
+    /// Sent kilobytes per second.
     pub sent_kbps: f32,
+    /// Received kilobytes per second.
     pub received_kbps: f32,
     pub packet_loss: f32,
 }
@@ -31,7 +33,9 @@ pub struct ClientPacketInfo {
     packets_sent: CircularBuffer<CIRCULAR_BUFFER_SIZE, PacketInfo>,
     packets_received: CircularBuffer<CIRCULAR_BUFFER_SIZE, PacketInfo>,
     bandwidth_smoothing_factor: f32,
+    /// Sent kilobytes per second.
     pub sent_kbps: f32,
+    /// Received kilobytes per second.
     pub received_kbps: f32,
 }
 
