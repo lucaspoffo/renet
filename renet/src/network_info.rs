@@ -9,9 +9,9 @@ const CIRCULAR_BUFFER_SIZE: usize = 60;
 pub struct NetworkInfo {
     /// Round-trip Time
     pub rtt: f32,
-    /// Sent kilobytes per second.
+    /// Sent kilobits per second.
     pub sent_kbps: f32,
-    /// Received kilobytes per second.
+    /// Received kilobits per second.
     pub received_kbps: f32,
     pub packet_loss: f32,
 }
@@ -33,14 +33,14 @@ pub struct ClientPacketInfo {
     packets_sent: CircularBuffer<CIRCULAR_BUFFER_SIZE, PacketInfo>,
     packets_received: CircularBuffer<CIRCULAR_BUFFER_SIZE, PacketInfo>,
     bandwidth_smoothing_factor: f32,
-    /// Sent kilobytes per second.
+    /// Sent kilobits per second.
     pub sent_kbps: f32,
-    /// Received kilobytes per second.
+    /// Received kilobits per second.
     pub received_kbps: f32,
 }
 
 impl<const N: usize> CircularBuffer<N, PacketInfo> {
-    pub fn kilobytes_per_secs(&self) -> f32 {
+    pub fn kilobits_per_second(&self) -> f32 {
         let mut start = Duration::MAX;
         let mut end = Duration::ZERO;
         let mut bytes_sent = 0;
@@ -63,7 +63,7 @@ impl<const N: usize> CircularBuffer<N, PacketInfo> {
         }
 
         let milli_seconds = (end - start).as_secs_f32() * 1000.0;
-        bytes_sent as f32 / milli_seconds
+        (bytes_sent * 8) as f32 / milli_seconds
     }
 }
 
@@ -87,14 +87,14 @@ impl ClientPacketInfo {
     }
 
     pub fn update_metrics(&mut self) {
-        let sent_kbps = self.packets_sent.kilobytes_per_secs();
+        let sent_kbps = self.packets_sent.kilobits_per_second();
         if self.sent_kbps == 0.0 || self.sent_kbps < f32::EPSILON {
             self.sent_kbps = sent_kbps;
         } else {
             self.sent_kbps += (sent_kbps - self.sent_kbps) * self.bandwidth_smoothing_factor;
         }
 
-        let received_kbps = self.packets_received.kilobytes_per_secs();
+        let received_kbps = self.packets_received.kilobits_per_second();
         if self.received_kbps == 0.0 || self.received_kbps < f32::EPSILON {
             self.received_kbps = received_kbps;
         } else {
