@@ -7,7 +7,7 @@ use egui::{
 use renet::{CircularBuffer, NetworkInfo, RenetServer};
 
 /// Egui visualizer for the renet client. Draws graphs with metrics:
-/// RTT, Packet Loss, Kbps Sent/Received.
+/// RTT, Packet Loss, Kbitps Sent/Received.
 ///
 /// N: determines how many values are shown in the graph.
 /// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
@@ -20,7 +20,7 @@ pub struct RenetClientVisualizer<const N: usize> {
 }
 
 /// Egui visualizer for the renet server. Draws graphs for each connected client with metrics:
-/// RTT, Packet Loss, Kbps Sent/Received.
+/// RTT, Packet Loss, Kbitps Sent/Received.
 ///
 /// N: determines how many values are shown in the graph.
 /// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
@@ -118,26 +118,26 @@ impl<const N: usize> RenetClientVisualizer<N> {
             });
     }
 
-    /// Draws only the Received Kbps metric.
+    /// Draws only the Received Kilobits Per Second metric.
     pub fn draw_received_kbps(&self, ui: &mut egui::Ui) {
         show_graph(
             ui,
             &self.style,
-            "Received Kbps",
+            "Received Kbitps",
             TextFormat::Normal,
-            TopValue::MaxValue { multiplicated: 1.0 },
+            TopValue::MaxValue { multiplicated: 1.5 },
             self.received_bandwidth_kbps.as_vec(),
         );
     }
 
-    /// Draws only the Sent Kbps metric.
+    /// Draws only the Sent Kilobits Per Second metric.
     pub fn draw_sent_kbps(&self, ui: &mut egui::Ui) {
         show_graph(
             ui,
             &self.style,
-            "Sent Kbps",
+            "Sent Kbitps",
             TextFormat::Normal,
-            TopValue::MaxValue { multiplicated: 1.0 },
+            TopValue::MaxValue { multiplicated: 1.5 },
             self.sent_bandwidth_kbps.as_vec(),
         );
     }
