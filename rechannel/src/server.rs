@@ -77,15 +77,17 @@ impl<C: ClientId> RechannelServer<C> {
         }
     }
 
-    pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
-        let message = Bytes::from(message);
+    pub fn broadcast_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
+        let channel_id = channel_id.into();
+        let message = message.into();
         for connection in self.connections.values_mut() {
             connection.send_message(channel_id, message.clone());
         }
     }
 
-    pub fn broadcast_message_except(&mut self, except_id: &C, channel_id: u8, message: Vec<u8>) {
-        let message = Bytes::from(message);
+    pub fn broadcast_message_except<I: Into<u8>, B: Into<Bytes>>(&mut self, except_id: &C, channel_id: I, message: B) {
+        let channel_id = channel_id.into();
+        let message = message.into();
         for (connection_id, connection) in self.connections.iter_mut() {
             if except_id == connection_id {
                 continue;
@@ -95,22 +97,21 @@ impl<C: ClientId> RechannelServer<C> {
         }
     }
 
-    pub fn can_send_message(&self, connection_id: &C, channel_id: u8) -> bool {
+    pub fn can_send_message<I: Into<u8>>(&self, connection_id: &C, channel_id: I) -> bool {
         match self.connections.get(connection_id) {
             Some(connection) => connection.can_send_message(channel_id),
             None => false,
         }
     }
 
-    pub fn send_message(&mut self, connection_id: &C, channel_id: u8, message: Vec<u8>) {
-        let message = Bytes::from(message);
+    pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, connection_id: &C, channel_id: I, message: B) {
         match self.connections.get_mut(connection_id) {
             Some(connection) => connection.send_message(channel_id, message),
             None => log::error!("Tried to send message to disconnected client {:?}", connection_id),
         }
     }
 
-    pub fn receive_message(&mut self, connection_id: &C, channel_id: u8) -> Option<Payload> {
+    pub fn receive_message<I: Into<u8>>(&mut self, connection_id: &C, channel_id: I) -> Option<Payload> {
         if let Some(connection) = self.connections.get_mut(connection_id) {
             return connection.receive_message(channel_id);
         }
