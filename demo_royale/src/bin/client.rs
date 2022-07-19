@@ -6,12 +6,12 @@ use bevy::{
 };
 use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_renet::{
-    renet::{ConnectToken, RenetClient, RenetError},
+    renet::{ClientAuthentication, RenetClient, RenetError},
     run_if_client_conected, RenetClientPlugin,
 };
 use demo_royale::{
     client_connection_config, setup_level, ClientChannel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerChannel, ServerMessages,
-    PRIVATE_KEY, PROTOCOL_ID,
+    PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -42,11 +42,14 @@ fn new_renet_client() -> RenetClient {
     let connection_config = client_connection_config();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
-    // This connect token should come from another system, NOT generated from the client.
-    // Usually from a matchmaking system
-    // The client should not have access to the PRIVATE_KEY from the server.
-    let token = ConnectToken::generate(current_time, PROTOCOL_ID, 300, client_id, 15, vec![server_addr], None, PRIVATE_KEY).unwrap();
-    RenetClient::new(current_time, socket, client_id, token, connection_config).unwrap()
+    let authentication = ClientAuthentication::Unsecure {
+        client_id,
+        protocol_id: PROTOCOL_ID,
+        server_addr,
+        user_data: None,
+    };
+
+    RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap()
 }
 
 fn main() {

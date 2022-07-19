@@ -93,7 +93,7 @@ pub fn run_if_client_conected(client: Option<Res<RenetClient>>) -> ShouldRun {
 
 #[cfg(test)]
 mod tests {
-    use renet::{ConnectToken, RenetConnectionConfig, ServerConfig, NETCODE_KEY_BYTES};
+    use crate::renet::{ClientAuthentication, RenetConnectionConfig, ServerAuthentication, ServerConfig};
     use std::{
         error::Error,
         net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
@@ -151,13 +151,12 @@ mod tests {
     const SERVER_PORT: u16 = 4444;
     const SERVER_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     const PROTOCOL_ID: u64 = 7;
-    const GAME_KEY: [u8; NETCODE_KEY_BYTES] = [0; NETCODE_KEY_BYTES];
 
     fn create_server() -> Result<RenetServer, Box<dyn Error>> {
         let server_addr = SocketAddr::new(SERVER_IP, SERVER_PORT);
         RenetServer::new(
             SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?,
-            ServerConfig::new(64, PROTOCOL_ID, server_addr, GAME_KEY),
+            ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure),
             RenetConnectionConfig::default(),
             UdpSocket::bind(server_addr)?,
         )
@@ -168,22 +167,18 @@ mod tests {
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let client_id = current_time.as_millis() as u64;
         let ip = SERVER_IP;
-        let token = ConnectToken::generate(
-            current_time,
-            PROTOCOL_ID,
-            300,
+        let authentication = ClientAuthentication::Unsecure {
             client_id,
-            15,
-            vec![SocketAddr::new(ip, SERVER_PORT)],
-            None,
-            &GAME_KEY,
-        )?;
+            server_addr: SocketAddr::new(ip, SERVER_PORT),
+            protocol_id: PROTOCOL_ID,
+            user_data: None,
+        };
         RenetClient::new(
             current_time,
             UdpSocket::bind((ip, 0))?,
             client_id,
-            token,
             RenetConnectionConfig::default(),
+            authentication,
         )
         .map_err(From::from)
     }

@@ -6,11 +6,29 @@ use crate::{
 
 use log::debug;
 use rechannel::{error::RechannelError, remote_connection::RemoteConnection, Bytes};
-use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES};
+use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
 use std::net::UdpSocket;
 use std::time::Duration;
 use std::{io, net::SocketAddr};
+
+/// Configuration to establishe an secure ou unsecure connection with the server.
+#[allow(clippy::large_enum_variant)]
+pub enum ClientAuthentication {
+    /// Establishes a safe connection with the server using the [ConnectToken].
+    ///
+    /// See also [ServerAuthentication::Secure][crate::ServerAuthentication::Secure]
+    Secure { connect_token: ConnectToken },
+    /// Establishes an unsafe connection with the server, useful for testing and prototyping.
+    ///
+    /// See also [ServerAuthentication::Unsecure][crate::ServerAuthentication::Unsecure]
+    Unsecure {
+        protocol_id: u64,
+        client_id: u64,
+        server_addr: SocketAddr,
+        user_data: Option<[u8; NETCODE_USER_DATA_BYTES]>,
+    },
+}
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
@@ -28,11 +46,30 @@ impl RenetClient {
         current_time: Duration,
         socket: UdpSocket,
         client_id: u64,
-        connect_token: ConnectToken,
         config: RenetConnectionConfig,
-    ) -> Result<Self, std::io::Error> {
+        authentication: ClientAuthentication,
+    ) -> Result<Self, RenetError> {
         socket.set_nonblocking(true)?;
         let reliable_connection = RemoteConnection::new(current_time, config.to_connection_config());
+        let connect_token: ConnectToken = match authentication {
+            ClientAuthentication::Unsecure {
+                server_addr,
+                protocol_id,
+                client_id,
+                user_data,
+            } => ConnectToken::generate(
+                current_time,
+                protocol_id,
+                300,
+                client_id,
+                15,
+                vec![server_addr],
+                user_data.as_ref(),
+                &[0; NETCODE_KEY_BYTES],
+            )?,
+            ClientAuthentication::Secure { connect_token } => connect_token,
+        };
+
         let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
         let client_packet_info = ClientPacketInfo::new(config.bandwidth_smoothing_factor);
 
@@ -50,9 +87,20 @@ impl RenetClient {
     pub fn __test() -> Self {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
         let server_addr = "127.0.0.1:5000".parse().unwrap();
-        let connect_token =
-            ConnectToken::generate(Duration::ZERO, 0, 300, 0, 15, vec![server_addr], None, &[0; NETCODE_KEY_BYTES]).unwrap();
-        Self::new(Duration::ZERO, socket, 0, connect_token, Default::default()).unwrap()
+
+        Self::new(
+            Duration::ZERO,
+            socket,
+            0,
+            Default::default(),
+            ClientAuthentication::Unsecure {
+                client_id: 0,
+                server_addr,
+                user_data: None,
+                protocol_id: 0,
+            },
+        )
+        .unwrap()
     }
 
     pub fn client_id(&self) -> u64 {

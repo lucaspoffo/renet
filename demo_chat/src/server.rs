@@ -5,7 +5,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use renet::{RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_KEY_BYTES};
+use renet::{RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent};
 use renet_visualizer::{RenetServerVisualizer, RenetVisualizerStyle};
 
 use crate::{channels_config, Channels, ClientMessages, Message, ServerMessages, Username};
@@ -20,14 +20,14 @@ pub struct ChatServer {
 }
 
 impl ChatServer {
-    pub fn new(addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES], host_username: String) -> Self {
+    pub fn new(addr: SocketAddr, host_username: String) -> Self {
         let socket = UdpSocket::bind(addr).unwrap();
         let connection_config = RenetConnectionConfig {
             send_channels_config: channels_config(),
             receive_channels_config: channels_config(),
             ..Default::default()
         };
-        let server_config = ServerConfig::new(64, 0, addr, *private_key);
+        let server_config = ServerConfig::new(64, 0, addr, ServerAuthentication::Unsecure);
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
         let mut usernames = HashMap::new();

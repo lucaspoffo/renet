@@ -34,6 +34,20 @@ pub enum ServerEvent {
     ClientDisconnected(u64),
 }
 
+/// Configuration to establish a secure or unsecure connection with the server.
+pub enum ServerAuthentication {
+    /// Establishes a safe connection using a private key for encryption. The private key cannot be
+    /// shared with the client. Connections are stablished using
+    /// [ConnectTokens][crate::ConnectToken].
+    ///
+    /// See also [ClientAuthentication::Secure][crate::ClientAuthentication::Secure]
+    Secure { private_key: [u8; NETCODE_KEY_BYTES] },
+    /// Establishes unsafe connections with clients, useful for testing and prototyping.
+    ///
+    /// See also [ClientAuthentication::Unsecure][crate::ClientAuthentication::Unsecure]
+    Unsecure,
+}
+
 /// Configuration options for the renet server.
 pub struct ServerConfig {
     /// Maximum numbers of clients that can be connected at a time
@@ -43,19 +57,19 @@ pub struct ServerConfig {
     /// So old version would be unable to connect to newer versions.
     pub protocol_id: u64,
     /// Publicly available address that clients will try to connect to. This is
-    /// the address used to generate the ConnectToken.
+    /// the address used to generate the ConnectToken when using the secure authentication.
     pub public_addr: SocketAddr,
-    /// Private key used for encryption in the server
-    pub private_key: [u8; NETCODE_KEY_BYTES],
+    /// Authentication configuration for the server
+    pub authentication: ServerAuthentication,
 }
 
 impl ServerConfig {
-    pub fn new(max_clients: usize, protocol_id: u64, public_addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) -> Self {
+    pub fn new(max_clients: usize, protocol_id: u64, public_addr: SocketAddr, authentication: ServerAuthentication) -> Self {
         Self {
             max_clients,
             protocol_id,
             public_addr,
-            private_key,
+            authentication,
         }
     }
 }
@@ -70,12 +84,19 @@ impl RenetServer {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
         let bandwidth_smoothing_factor = connection_config.bandwidth_smoothing_factor;
         let reliable_server = RechannelServer::new(current_time, connection_config.to_connection_config());
+
+        // For unsecure connections we use an fixed private key.
+        let private_key = match server_config.authentication {
+            ServerAuthentication::Unsecure => [0; NETCODE_KEY_BYTES],
+            ServerAuthentication::Secure { private_key } => private_key,
+        };
+
         let netcode_server = NetcodeServer::new(
             current_time,
             server_config.max_clients,
             server_config.protocol_id,
             server_config.public_addr,
-            server_config.private_key,
+            private_key,
         );
 
         socket.set_nonblocking(true)?;
@@ -94,7 +115,7 @@ impl RenetServer {
     #[doc(hidden)]
     pub fn __test() -> Self {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), [0; NETCODE_KEY_BYTES]);
+        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), ServerAuthentication::Unsecure);
         Self::new(Duration::ZERO, server_config, RenetConnectionConfig::default(), socket).unwrap()
     }
 

@@ -1,5 +1,7 @@
-use renet::{ConnectToken, RenetClient, RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_USER_DATA_BYTES};
-use renetcode::NETCODE_KEY_BYTES;
+use renet::{
+    ClientAuthentication, RenetClient, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
+    NETCODE_USER_DATA_BYTES,
+};
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
@@ -59,13 +61,12 @@ fn main() {
     }
 }
 
-const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
 const PROTOCOL_ID: u64 = 7;
 
 fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
     let connection_config = RenetConnectionConfig::default();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, *PRIVATE_KEY);
+    let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
 
@@ -117,18 +118,13 @@ fn client(server_addr: SocketAddr, username: Username) {
     let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
-    let connect_token = ConnectToken::generate(
-        current_time,
-        PROTOCOL_ID,
-        300,
+    let authentication = ClientAuthentication::Unsecure {
+        server_addr,
         client_id,
-        15,
-        vec![server_addr],
-        Some(&username.to_netcode_user_data()),
-        PRIVATE_KEY,
-    )
-    .unwrap();
-    let mut client = RenetClient::new(current_time, socket, client_id, connect_token, connection_config).unwrap();
+        user_data: Some(username.to_netcode_user_data()),
+        protocol_id: PROTOCOL_ID,
+    };
+    let mut client = RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

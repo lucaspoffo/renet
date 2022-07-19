@@ -28,7 +28,7 @@ mod token;
 pub use client::{DisconnectReason, NetcodeClient};
 pub use error::NetcodeError;
 pub use server::{NetcodeServer, ServerResult};
-pub use token::ConnectToken;
+pub use token::{ConnectToken, TokenGenerationError};
 
 use std::time::Duration;
 

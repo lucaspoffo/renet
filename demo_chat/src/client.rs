@@ -4,7 +4,7 @@ use eframe::{
     epaint::PathShape,
 };
 use log::error;
-use renet::{ConnectToken, NetworkInfo, RenetClient, RenetConnectionConfig, NETCODE_KEY_BYTES};
+use renet::{ClientAuthentication, NetworkInfo, RenetClient, RenetConnectionConfig};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 
 use std::{
@@ -33,7 +33,6 @@ pub struct ChatApp {
     state: AppState,
     username: String,
     server_addr: String,
-    private_key: String,
     connection_error: Option<String>,
     text_input: String,
     last_updated: Instant,
@@ -52,7 +51,6 @@ impl Default for ChatApp {
             state: AppState::MainScreen,
             username: String::new(),
             server_addr: "127.0.0.1:5000".to_string(),
-            private_key: "an example very very secret key.".to_string(),
             connection_error: None,
             text_input: String::new(),
             last_updated: Instant::now(),
@@ -76,7 +74,6 @@ impl ChatApp {
             server_addr,
             state,
             connection_error,
-            private_key,
             ..
         } = self;
 
@@ -92,12 +89,6 @@ impl ChatApp {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label("Private Key:");
-                            ui.text_edit_singleline(private_key);
-                            private_key.truncate(NETCODE_KEY_BYTES);
-                        });
-
-                        ui.horizontal(|ui| {
                             ui.label("Server Addr:");
                             ui.text_edit_singleline(server_addr);
                         });
@@ -107,20 +98,14 @@ impl ChatApp {
                                 match server_addr.parse::<SocketAddr>() {
                                     Err(_) => *connection_error = Some("Failed to parse server address".to_string()),
                                     Ok(server_addr) => {
-                                        let mut key: [u8; NETCODE_KEY_BYTES] = [0; NETCODE_KEY_BYTES];
-                                        if private_key.as_bytes().len() != NETCODE_KEY_BYTES {
-                                            *connection_error = Some("Private key must have 32 bytes.".to_string());
-                                        } else {
-                                            key.copy_from_slice(private_key.as_bytes());
-                                            let client = create_renet_client(username.clone(), server_addr, &key);
+                                        let client = create_renet_client(username.clone(), server_addr);
 
-                                            *state = AppState::ClientChat {
-                                                visualizer: Box::new(RenetClientVisualizer::new(RenetVisualizerStyle::default())),
-                                                client: Box::new(client),
-                                                messages: vec![],
-                                                usernames: HashMap::new(),
-                                            };
-                                        }
+                                        *state = AppState::ClientChat {
+                                            visualizer: Box::new(RenetClientVisualizer::new(RenetVisualizerStyle::default())),
+                                            client: Box::new(client),
+                                            messages: vec![],
+                                            usernames: HashMap::new(),
+                                        };
                                     }
                                 }
                             }
@@ -129,16 +114,10 @@ impl ChatApp {
                                 match server_addr.parse::<SocketAddr>() {
                                     Err(_) => *connection_error = Some("Failed to parse server address".to_string()),
                                     Ok(server_addr) => {
-                                        let mut key: [u8; NETCODE_KEY_BYTES] = [0; NETCODE_KEY_BYTES];
-                                        if private_key.as_bytes().len() != NETCODE_KEY_BYTES {
-                                            *connection_error = Some("Private key must have 32 bytes.".to_string());
-                                        } else {
-                                            key.copy_from_slice(private_key.as_bytes());
-                                            let server = ChatServer::new(server_addr, &key, username.clone());
-                                            *state = AppState::HostChat {
-                                                chat_server: Box::new(server),
-                                            };
-                                        }
+                                        let server = ChatServer::new(server_addr, username.clone());
+                                        *state = AppState::HostChat {
+                                            chat_server: Box::new(server),
+                                        };
                                     }
                                 }
                             }
@@ -362,7 +341,7 @@ impl ChatApp {
     }
 }
 
-fn create_renet_client(username: String, server_addr: SocketAddr, private_key: &[u8; NETCODE_KEY_BYTES]) -> RenetClient {
+fn create_renet_client(username: String, server_addr: SocketAddr) -> RenetClient {
     let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let socket = UdpSocket::bind(client_addr).unwrap();
     let connection_config = RenetConnectionConfig {
@@ -374,20 +353,14 @@ fn create_renet_client(username: String, server_addr: SocketAddr, private_key: &
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     // Use current time as client_id
     let client_id = current_time.as_millis() as u64;
-    let user_data = Username(username).to_netcode_user_data();
-    let connect_token = ConnectToken::generate(
-        current_time,
-        0,
-        300,
+    let authentication = ClientAuthentication::Unsecure {
+        protocol_id: 0,
+        user_data: Some(Username(username).to_netcode_user_data()),
         client_id,
-        15,
-        vec![server_addr],
-        Some(&user_data),
-        private_key,
-    )
-    .unwrap();
+        server_addr,
+    };
 
-    RenetClient::new(current_time, socket, client_id, connect_token, connection_config).unwrap()
+    RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap()
 }
 
 fn draw_network_info(ui: &mut Ui, network_info: &NetworkInfo) {

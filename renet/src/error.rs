@@ -30,6 +30,12 @@ impl From<renetcode::NetcodeError> for RenetError {
     }
 }
 
+impl From<renetcode::TokenGenerationError> for RenetError {
+    fn from(inner: renetcode::TokenGenerationError) -> Self {
+        RenetError::Netcode(renetcode::NetcodeError::TokenGenerationError(inner))
+    }
+}
+
 impl From<rechannel::error::RechannelError> for RenetError {
     fn from(inner: rechannel::error::RechannelError) -> Self {
         RenetError::Rechannel(inner)

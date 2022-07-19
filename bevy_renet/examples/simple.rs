@@ -1,16 +1,16 @@
 use bevy::prelude::*;
 use bevy_renet::{
-    renet::{ConnectToken, RenetClient, RenetConnectionConfig, RenetServer, ServerConfig, ServerEvent, NETCODE_KEY_BYTES},
+    renet::{
+        ClientAuthentication, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
+    },
     run_if_client_conected, RenetClientPlugin, RenetServerPlugin,
 };
-use renet::RenetError;
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
 
 use serde::{Deserialize, Serialize};
 
-const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
 const PROTOCOL_ID: u64 = 7;
 
 const PLAYER_MOVE_SPEED: f32 = 1.0;
@@ -45,18 +45,20 @@ fn new_renet_client() -> RenetClient {
     let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
-    // This connect token should come from another system, NOT generated from the client.
-    // Usually from a matchmaking system
-    // The client should not have access to the PRIVATE_KEY from the server.
-    let token = ConnectToken::generate(current_time, PROTOCOL_ID, 300, client_id, 15, vec![server_addr], None, PRIVATE_KEY).unwrap();
-    RenetClient::new(current_time, socket, client_id, token, connection_config).unwrap()
+    let authentication = ClientAuthentication::Unsecure {
+        client_id,
+        protocol_id: PROTOCOL_ID,
+        server_addr,
+        user_data: None,
+    };
+    RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap()
 }
 
 fn new_renet_server() -> RenetServer {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();
     let connection_config = RenetConnectionConfig::default();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, *PRIVATE_KEY);
+    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
 }
