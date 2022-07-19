@@ -154,17 +154,17 @@ impl RemoteConnection {
     }
 
     pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
-        let channel = self.send_channels.get(&channel_id).expect("invalid channel id");
+        let channel = self.send_channels.get(&channel_id.into()).expect("invalid channel id");
         channel.can_send_message()
     }
 
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
         let channel = self.send_channels.get_mut(&channel_id.into()).expect("invalid channel id");
-        channel.send_message(message, self.current_time);
+        channel.send_message(message.into(), self.current_time);
     }
 
     pub fn receive_message<I: Into<u8>>(&mut self, channel_id: I) -> Option<Payload> {
-        let channel = self.receive_channels.get_mut(&channel_id).expect("invalid channel id");
+        let channel = self.receive_channels.get_mut(&channel_id.into()).expect("invalid channel id");
         channel.receive_message()
     }
 
@@ -427,7 +427,7 @@ mod tests {
         let config = ConnectionConfig::default();
         let mut connection = RemoteConnection::new(Duration::ZERO, config);
         let message = vec![7u8; 2500];
-        connection.send_message(0, message.clone().into());
+        connection.send_message(0, message.clone());
 
         let packets = connection.get_packets_to_send().unwrap();
         assert!(packets.len() > 1);

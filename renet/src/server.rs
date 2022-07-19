@@ -11,7 +11,7 @@ use std::{
 };
 
 use log::error;
-use rechannel::{disconnect_packet, error::DisconnectionReason, server::RechannelServer};
+use rechannel::{disconnect_packet, error::DisconnectionReason, server::RechannelServer, Bytes};
 use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 /// A server that can establish authenticated connections with multiple clients.
@@ -223,27 +223,27 @@ impl RenetServer {
     }
 
     /// Receive a message from a client over a channel.
-    pub fn receive_message(&mut self, client_id: u64, channel_id: u8) -> Option<Vec<u8>> {
+    pub fn receive_message<I: Into<u8>>(&mut self, client_id: u64, channel_id: I) -> Option<Vec<u8>> {
         self.reliable_server.receive_message(&client_id, channel_id)
     }
 
     /// Verifies if a message can be sent to a client over a channel.
-    pub fn can_send_message(&self, client_id: u64, channel_id: u8) -> bool {
+    pub fn can_send_message<I: Into<u8>>(&self, client_id: u64, channel_id: I) -> bool {
         self.reliable_server.can_send_message(&client_id, channel_id)
     }
 
     /// Send a message to a client over a channel.
-    pub fn send_message(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) {
+    pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, client_id: u64, channel_id: I, message: B) {
         self.reliable_server.send_message(&client_id, channel_id, message);
     }
 
     /// Send a message to all client, except the specified one, over a channel.
-    pub fn broadcast_message_except(&mut self, client_id: u64, channel_id: u8, message: Vec<u8>) {
+    pub fn broadcast_message_except<I: Into<u8>, B: Into<Bytes>>(&mut self, client_id: u64, channel_id: I, message: B) {
         self.reliable_server.broadcast_message_except(&client_id, channel_id, message)
     }
 
     /// Send a message to all client over a channel.
-    pub fn broadcast_message(&mut self, channel_id: u8, message: Vec<u8>) {
+    pub fn broadcast_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
         self.reliable_server.broadcast_message(channel_id, message);
     }
 
