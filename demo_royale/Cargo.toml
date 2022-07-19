@@ -16,7 +16,7 @@ name = "server"
 path = "src/bin/server.rs"
 
 [dependencies]
-bevy_rapier3d = "0.14.1"
+bevy_rapier3d = "0.15.0"
 bevy = { version = "0.7.0", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_pbr", "x11"] }
 bevy_renet = { path = "../bevy_renet" }
 serde = { version = "1.0", features = [ "derive" ] }
