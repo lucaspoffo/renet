@@ -18,6 +18,10 @@ pub struct RechannelServer<C: ClientId> {
 
 impl<C: ClientId> RechannelServer<C> {
     pub fn new(current_time: Duration, connection_config: ConnectionConfig) -> Self {
+        connection_config
+            .fragment_config
+            .assert_can_fragment_packet_with_size(connection_config.max_packet_size);
+
         Self {
             current_time,
             connections: HashMap::new(),

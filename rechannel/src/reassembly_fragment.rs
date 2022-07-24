@@ -95,6 +95,24 @@ impl Default for FragmentConfig {
     }
 }
 
+impl FragmentConfig {
+    /// Asserts that the configuration can fragment packets with the given size.
+    pub(crate) fn assert_can_fragment_packet_with_size(&self, packet_size: u64) {
+        let max_fragments = self.num_fragments(packet_size);
+        assert!(
+            max_fragments <= 256,
+            "Invalid fragmentation configuration: limit for fragments allowed is 256, got {}. \
+            Reduce the max packet size or increase the fragment size",
+            max_fragments
+        );
+    }
+
+    fn num_fragments(&self, packet_size: u64) -> u64 {
+        let not_exact_division = u64::from(packet_size % self.fragment_size as u64 != 0);
+        (packet_size / self.fragment_size as u64) + not_exact_division
+    }
+}
+
 impl ReassemblyFragment {
     pub fn new(sequence: u16, num_fragments_total: u8, fragment_size: usize) -> Self {
         let len = num_fragments_total as usize * fragment_size;
@@ -127,12 +145,7 @@ impl SequenceBuffer<ReassemblyFragment> {
             .get_or_insert_with(sequence, || ReassemblyFragment::new(sequence, num_fragments, config.fragment_size))
             .ok_or(FragmentError::OldSequence { sequence })?;
 
-        let max_fragments = (max_packet_size / config.fragment_size as u64) + 1;
-        assert!(
-            max_fragments <= 255,
-            "Limit for fragments allowed is 255, got {}, reduce the max packet size or increase the fragment size",
-            max_fragments
-        );
+        let max_fragments = config.num_fragments(max_packet_size);
 
         if reassembly_fragment.num_fragments_total as u64 > max_fragments {
             return Err(FragmentError::ExceededMaxFragmentCount {

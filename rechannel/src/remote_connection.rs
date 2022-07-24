@@ -85,6 +85,8 @@ impl Default for ConnectionConfig {
 
 impl RemoteConnection {
     pub fn new(current_time: Duration, config: ConnectionConfig) -> Self {
+        config.fragment_config.assert_can_fragment_packet_with_size(config.max_packet_size);
+
         let heartbeat_timer = Timer::new(current_time, config.heartbeat_time);
         let reassembly_buffer = SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
@@ -294,7 +296,7 @@ impl RemoteConnection {
             let sent_packet = SentPacket::new(self.current_time);
             self.sent_buffer.insert(sequence, sent_packet);
 
-            let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above as u64 {
+            let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above {
                 build_fragments(channels_packet_data, sequence, ack_data, &self.config.fragment_config)?
             } else {
                 let packet = Packet::Normal {
