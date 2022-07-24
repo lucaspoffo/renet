@@ -5,17 +5,14 @@ use bevy::{
     prelude::*,
 };
 use bevy_egui::{EguiContext, EguiPlugin};
-use bevy_rapier3d::{
-    plugin::{NoUserData, RapierPhysicsPlugin},
-    prelude::{Collider, LockedAxes, RapierDebugRenderPlugin, RigidBody, Velocity},
-};
+use bevy_rapier3d::prelude::*;
 use bevy_renet::{
     renet::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent},
     RenetServerPlugin,
 };
 use demo_bevy::{
-    server_connection_config, spawn_fireball, ClientChannel, NetworkFrame, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
-    ServerMessages, PROTOCOL_ID,
+    server_connection_config, setup_level, spawn_fireball, ClientChannel, NetworkFrame, Player, PlayerCommand, PlayerInput, Projectile,
+    ServerChannel, ServerMessages, PROTOCOL_ID,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -64,6 +61,8 @@ fn main() {
     app.add_system(move_players_system);
     app.add_system(update_projectiles_system);
     app.add_system(update_visulizer_system);
+    app.add_system(despawn_projectile_system);
+    app.add_system_to_stage(CoreStage::PostUpdate, projectile_on_removal_system);
 
     app.add_startup_system(setup_level);
     app.add_startup_system(setup_simple_camera);
@@ -180,20 +179,11 @@ fn server_update_system(
     }
 }
 
-fn update_projectiles_system(
-    mut commands: Commands,
-    mut server: ResMut<RenetServer>,
-    mut projectiles: Query<(Entity, &mut Projectile)>,
-    time: Res<Time>,
-) {
+fn update_projectiles_system(mut commands: Commands, mut projectiles: Query<(Entity, &mut Projectile)>, time: Res<Time>) {
     for (entity, mut projectile) in projectiles.iter_mut() {
         projectile.duration.tick(time.delta());
         if projectile.duration.finished() {
             commands.entity(entity).despawn();
-            let message = ServerMessages::DespawnProjectile { entity };
-            let message = bincode::serialize(&message).unwrap();
-
-            server.broadcast_message(ServerChannel::ServerMessages.id(), message);
         }
     }
 }
@@ -243,25 +233,28 @@ pub fn setup_simple_camera(mut commands: Commands) {
     });
 }
 
-/// set up a simple 3D scene
-pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    // plane
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Box::new(10., 1., 10.))),
-            material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
-            transform: Transform::from_xyz(0.0, -1.0, 0.0),
-            ..Default::default()
-        })
-        .insert(Collider::cuboid(5., 0.5, 5.));
-    // light
-    commands.spawn_bundle(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
-            ..Default::default()
-        },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..Default::default()
-    });
+fn despawn_projectile_system(
+    mut commands: Commands,
+    mut collision_events: EventReader<CollisionEvent>,
+    projectile_query: Query<Option<&Projectile>>,
+) {
+    for collision_event in collision_events.iter() {
+        if let CollisionEvent::Started(entity1, entity2, _) = collision_event {
+            if let Ok(Some(_)) = projectile_query.get(*entity1) {
+                commands.entity(*entity1).despawn();
+            }
+            if let Ok(Some(_)) = projectile_query.get(*entity2) {
+                commands.entity(*entity2).despawn();
+            }
+        }
+    }
+}
+
+fn projectile_on_removal_system(mut server: ResMut<RenetServer>, removed_projectiles: RemovedComponents<Projectile>) {
+    for entity in removed_projectiles.iter() {
+        let message = ServerMessages::DespawnProjectile { entity };
+        let message = bincode::serialize(&message).unwrap();
+
+        server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+    }
 }

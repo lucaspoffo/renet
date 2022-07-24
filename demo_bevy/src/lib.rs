@@ -127,11 +127,14 @@ pub fn server_connection_config() -> RenetConnectionConfig {
 /// set up a simple 3D scene
 pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
-    commands.spawn_bundle(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Box::new(10., 1., 10.))),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
-        ..Default::default()
-    });
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Box::new(10., 1., 10.))),
+            material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+            transform: Transform::from_xyz(0.0, -1.0, 0.0),
+            ..Default::default()
+        })
+        .insert(Collider::cuboid(5., 0.5, 5.));
     // light
     commands.spawn_bundle(PointLightBundle {
         point_light: PointLight {
@@ -173,6 +176,7 @@ pub fn spawn_fireball(
         .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
         .insert(Collider::ball(0.1))
         .insert(Velocity::linear(direction * 10.))
+        .insert(ActiveEvents::COLLISION_EVENTS)
         .insert(Projectile {
             duration: Timer::from_seconds(1.5, false),
         })
