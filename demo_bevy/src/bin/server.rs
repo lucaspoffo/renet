@@ -207,21 +207,16 @@ fn update_visulizer_system(
     visualizer.show_window(egui_context.ctx_mut());
 }
 
+#[allow(clippy::type_complexity)]
 fn server_network_sync(
     mut tick: ResMut<NetworkTick>,
     mut server: ResMut<RenetServer>,
-    players: Query<(Entity, &Transform), With<Player>>,
-    projectiles: Query<(Entity, &Transform), With<Projectile>>,
+    networked_entities: Query<(Entity, &Transform), Or<(With<Player>, With<Projectile>)>>,
 ) {
     let mut frame = NetworkFrame::default();
-    for (entity, transform) in players.iter() {
-        frame.players.entities.push(entity);
-        frame.players.translations.push(transform.translation.into());
-    }
-
-    for (entity, transform) in projectiles.iter() {
-        frame.projectiles.entities.push(entity);
-        frame.projectiles.translations.push(transform.translation.into());
+    for (entity, transform) in networked_entities.iter() {
+        frame.entities.entities.push(entity);
+        frame.entities.translations.push(transform.translation.into());
     }
 
     frame.tick = tick.0;

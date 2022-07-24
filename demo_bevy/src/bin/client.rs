@@ -216,20 +216,9 @@ fn client_sync_players(
             _ => continue,
         }
 
-        for i in 0..frame.players.entities.len() {
-            if let Some(entity) = network_mapping.0.get(&frame.players.entities[i]) {
-                let translation = frame.players.translations[i].into();
-                let transform = Transform {
-                    translation,
-                    ..Default::default()
-                };
-                commands.entity(*entity).insert(transform);
-            }
-        }
-
-        for i in 0..frame.projectiles.entities.len() {
-            if let Some(entity) = network_mapping.0.get(&frame.projectiles.entities[i]) {
-                let translation = frame.projectiles.translations[i].into();
+        for i in 0..frame.entities.entities.len() {
+            if let Some(entity) = network_mapping.0.get(&frame.entities.entities[i]) {
+                let translation = frame.entities.translations[i].into();
                 let transform = Transform {
                     translation,
                     ..Default::default()

@@ -46,13 +46,7 @@ pub enum ServerMessages {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct NetworkedPlayers {
-    pub entities: Vec<Entity>,
-    pub translations: Vec<[f32; 3]>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct NetworkedProjectiles {
+pub struct NetworkedEntities {
     pub entities: Vec<Entity>,
     pub translations: Vec<[f32; 3]>,
 }
@@ -60,8 +54,7 @@ pub struct NetworkedProjectiles {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NetworkFrame {
     pub tick: u32,
-    pub players: NetworkedPlayers,
-    pub projectiles: NetworkedProjectiles,
+    pub entities: NetworkedEntities,
 }
 
 impl ClientChannel {
