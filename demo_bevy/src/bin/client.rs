@@ -9,7 +9,7 @@ use bevy_renet::{
     renet::{ClientAuthentication, RenetClient, RenetError},
     run_if_client_conected, RenetClientPlugin,
 };
-use demo_royale::{
+use demo_bevy::{
     client_connection_config, setup_level, ClientChannel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerChannel, ServerMessages,
     PROTOCOL_ID,
 };

@@ -1,5 +1,5 @@
 [package]
-name = "demo_royale"
+name = "demo_bevy"
 version = "0.1.0"
 edition = "2021"
 
