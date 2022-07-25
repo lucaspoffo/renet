@@ -1,6 +1,8 @@
 # Renet changelog
 
 ## Unreleased
+
+## 0.0.9 - 2022-07-25
 ### Added ⭐
 * Rechannel: added max_message_size configuration for channels. This also fixes an exploit over the block channel,
 it was possible to send a SliceMessage with a high value of number of slices, this would cause the channel to allocate a lot of memory causing out of memories errors. [(commit)](https://github.com/lucaspoffo/renet/commit/774d0eeb1d05356edc29a368561e735b0eb8ab9f)
