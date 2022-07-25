@@ -30,22 +30,22 @@ struct PacketSent {
 }
 
 /// Configuration for a block channel, used for sending big and reliable messages,
-/// that are not so frequent. Level initialization as an example. Messages are sent one at a time.
+/// that are not so frequent, level initialization as an example. Messages are sent one at a time.
 #[derive(Debug, Clone)]
 pub struct BlockChannelConfig {
-    /// Channel identifier, unique between all channels
+    /// Channel identifier, unique between all channels.
     pub channel_id: u8,
-    /// Data is sliced up into fragments of this size (bytes)
+    /// Data is sliced up into fragments of this size (bytes).
     pub slice_size: usize,
-    /// Delay to wait before resending messages
+    /// Delay to wait before resending messages.
     pub resend_time: Duration,
     /// Number of packet entries in the sent packet sequence buffer.
-    /// Consider a few seconds of worth of entries in this buffer, based on your packet send rate
+    /// Consider a few seconds of worth of entries in this buffer, based on your packet send rate.
     pub sent_packet_buffer_size: usize,
-    /// Maximum nuber of bytes that this channel is allowed to write per packet
+    /// Maximum nuber of bytes that this channel is allowed to write per packet.
     pub packet_budget: u64,
     /// Maximum size that a message can have in this channel, for the block channel this value
-    /// can be above the packet budget
+    /// can be above the packet budget.
     pub max_message_size: u64,
     /// Queue size for the block channel.
     pub message_send_queue_size: usize,

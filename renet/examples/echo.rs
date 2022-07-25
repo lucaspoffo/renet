@@ -14,7 +14,7 @@ use std::{
     time::SystemTime,
 };
 
-// Helper struct to pass an username in user data inside the ConnectToken
+// Helper struct to pass an username in the user data
 struct Username(String);
 
 impl Username {

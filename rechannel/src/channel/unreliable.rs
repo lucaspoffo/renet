@@ -10,8 +10,7 @@ use bytes::Bytes;
 use super::{ReceiveChannel, SendChannel};
 
 /// Configuration for a unreliable and unordered channel.
-/// Messages sent in this channel will behave like a udp packet,
-/// can be lost and arrive in an different order that they were sent.
+/// Messages sent in this channel can be lost and arrive in an different order that they were sent.
 #[derive(Debug, Clone)]
 pub struct UnreliableChannelConfig {
     /// Channel identifier, unique between all channels

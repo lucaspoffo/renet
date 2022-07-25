@@ -3,7 +3,7 @@ use std::{error, fmt, io};
 use crate::{token::TokenGenerationError, DisconnectReason, NETCODE_MAX_PAYLOAD_BYTES};
 use aead::Error as CryptoError;
 
-/// All possible netcode errors that can occur.
+/// Errors from the renetcode crate.
 #[derive(Debug)]
 pub enum NetcodeError {
     /// No private keys was available while decrypting.
