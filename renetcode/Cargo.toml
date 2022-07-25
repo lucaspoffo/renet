@@ -13,6 +13,6 @@ edition = "2021"
 [dependencies]
 chacha20poly1305 = "0.9.0"
 # chacha20poly1305 aead does not have this feature available
-aead = { version = "0.4", features = [ "rand_core" ] }
+aead = { version = "0.5", features = [ "rand_core" ] }
 rand_chacha = { version = "0.3.1", features = [ "std" ] }
 rand_core = { version = "0.6.0", features = ["getrandom"] }
