@@ -293,6 +293,20 @@ impl RenetServer {
         Ok(())
     }
 
+    /// Returns the client address if connected.
+    pub fn client_addr(&self, client_id: u64) -> Option<SocketAddr> {
+        self.netcode_server.client_addr(client_id)
+    }
+
+    /// Returns the user data from the connected client.
+    pub fn user_data(&self, client_id: u64) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
+        self.netcode_server.user_data(client_id)
+    }
+
+    pub fn is_client_connected(&self, client_id: u64) -> bool {
+        self.netcode_server.is_client_connected(client_id)
+    }
+
     /// Returns all the connected clients id.
     pub fn clients_id(&self) -> Vec<u64> {
         self.netcode_server.clients_id()

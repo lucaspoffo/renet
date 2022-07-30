@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added ⭐
+* Added function `client_addr`, `user_data`, `is_client_connected` for `RenetServer`, some utilities from `NetcodeServer`.
+
 ## 0.0.9 - 2022-07-25
 ### Added ⭐
 * Rechannel: added max_message_size configuration for channels. This also fixes an exploit over the block channel,
