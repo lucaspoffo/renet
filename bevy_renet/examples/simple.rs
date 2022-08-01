@@ -3,7 +3,7 @@ use bevy_renet::{
     renet::{
         ClientAuthentication, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
     },
-    run_if_client_conected, RenetClientPlugin, RenetServerPlugin,
+    run_if_client_connected, RenetClientPlugin, RenetServerPlugin,
 };
 
 use std::time::SystemTime;
@@ -89,8 +89,8 @@ fn main() {
         app.insert_resource(new_renet_client());
         app.insert_resource(PlayerInput::default());
         app.add_system(player_input);
-        app.add_system(client_send_input.with_run_criteria(run_if_client_conected));
-        app.add_system(client_sync_players.with_run_criteria(run_if_client_conected));
+        app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
+        app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
     }
 
     app.add_startup_system(setup);
@@ -232,7 +232,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
         ..Default::default()
     });
     // camera
-    commands.spawn_bundle(PerspectiveCameraBundle {
+    commands.spawn_bundle(Camera3dBundle {
         transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..Default::default()
     });

@@ -84,7 +84,7 @@ fn has_resource<T: Resource>(resource: Option<Res<T>>) -> ShouldRun {
     }
 }
 
-pub fn run_if_client_conected(client: Option<Res<RenetClient>>) -> ShouldRun {
+pub fn run_if_client_connected(client: Option<Res<RenetClient>>) -> ShouldRun {
     match client {
         Some(client) if client.is_connected() => ShouldRun::Yes,
         _ => ShouldRun::No,

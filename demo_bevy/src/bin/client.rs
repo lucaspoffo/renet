@@ -7,7 +7,7 @@ use bevy::{
 use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_renet::{
     renet::{ClientAuthentication, RenetClient, RenetError},
-    run_if_client_conected, RenetClientPlugin,
+    run_if_client_connected, RenetClientPlugin,
 };
 use demo_bevy::{
     client_connection_config, setup_level, ClientChannel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerChannel, ServerMessages,
@@ -73,9 +73,9 @@ fn main() {
     app.add_system(player_input);
     app.add_system(camera_follow);
     app.add_system(update_target_system);
-    app.add_system(client_send_input.with_run_criteria(run_if_client_conected));
-    app.add_system(client_send_player_commands.with_run_criteria(run_if_client_conected));
-    app.add_system(client_sync_players.with_run_criteria(run_if_client_conected));
+    app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
+    app.add_system(client_send_player_commands.with_run_criteria(run_if_client_connected));
+    app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
     app.add_system(update_visulizer_system);
 
     app.add_startup_system(setup_level);
@@ -234,13 +234,12 @@ struct Target;
 
 fn update_target_system(
     windows: Res<Windows>,
-    images: Res<Assets<Image>>,
     mut target_query: Query<&mut Transform, With<Target>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
 ) {
     let (camera, camera_transform) = camera_query.single();
     let mut target_transform = target_query.single_mut();
-    if let Some(ray) = Ray3d::from_screenspace(&windows, &images, camera, camera_transform) {
+    if let Some(ray) = Ray3d::from_screenspace(&windows, camera, camera_transform) {
         if let Some(pos) = ray.intersect_y_plane(1.0) {
             target_transform.translation = pos;
         }
@@ -256,7 +255,7 @@ fn setup_camera(mut commands: Commands) {
             },
             smoother: Smoother::new(0.9),
         })
-        .insert_bundle(PerspectiveCameraBundle {
+        .insert_bundle(Camera3dBundle {
             transform: Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
             ..default()
         });

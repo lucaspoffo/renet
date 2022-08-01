@@ -227,7 +227,7 @@ fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
 
 pub fn setup_simple_camera(mut commands: Commands) {
     // camera
-    commands.spawn_bundle(PerspectiveCameraBundle {
+    commands.spawn_bundle(Camera3dBundle {
         transform: Transform::from_xyz(-5.5, 5.0, 5.5).looking_at(Vec3::ZERO, Vec3::Y),
         ..Default::default()
     });

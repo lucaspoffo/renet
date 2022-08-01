@@ -195,46 +195,25 @@ impl Ray3d {
         Ray3d { origin, direction }
     }
 
-    pub fn from_screenspace(
-        windows: &Res<Windows>,
-        images: &Res<Assets<Image>>,
-        camera: &Camera,
-        camera_transform: &GlobalTransform,
-    ) -> Option<Self> {
-        let view = camera_transform.compute_matrix();
-        let screen_size = match camera.target.get_logical_size(windows, images) {
-            Some(s) => s,
-            None => {
-                error!("Unable to get screen size for RenderTarget {:?}", camera.target);
-                return None;
-            }
-        };
-
+    pub fn from_screenspace(windows: &Res<Windows>, camera: &Camera, camera_transform: &GlobalTransform) -> Option<Self> {
         let window = windows.get_primary().unwrap();
         let cursor_position = match window.cursor_position() {
             Some(c) => c,
             None => return None,
         };
 
-        let projection = camera.projection_matrix;
-
-        // 2D Normalized device coordinate cursor position from (-1, -1) to (1, 1)
-        let cursor_ndc = (cursor_position / screen_size) * 2.0 - Vec2::from([1.0, 1.0]);
+        let view = camera_transform.compute_matrix();
+        let screen_size = camera.logical_target_size()?;
+        let projection = camera.projection_matrix();
+        let far_ndc = projection.project_point3(Vec3::NEG_Z).z;
+        let near_ndc = projection.project_point3(Vec3::Z).z;
+        let cursor_ndc = (cursor_position / screen_size) * 2.0 - Vec2::ONE;
         let ndc_to_world: Mat4 = view * projection.inverse();
-        let world_to_ndc = projection * view;
-        let is_orthographic = projection.w_axis[3] == 1.0;
+        let near = ndc_to_world.project_point3(cursor_ndc.extend(near_ndc));
+        let far = ndc_to_world.project_point3(cursor_ndc.extend(far_ndc));
+        let ray_direction = far - near;
 
-        // Compute the cursor position at the near plane. The bevy camera looks at -Z.
-        let ndc_near = world_to_ndc.transform_point3(-Vec3::Z * camera.near).z;
-        let cursor_pos_near = ndc_to_world.transform_point3(cursor_ndc.extend(ndc_near));
-
-        // Compute the ray's direction depending on the projection used.
-        let ray_direction = match is_orthographic {
-            true => view.transform_vector3(-Vec3::Z), // All screenspace rays are parallel in ortho
-            false => cursor_pos_near - camera_transform.translation, // Direction from camera to cursor
-        };
-
-        Some(Ray3d::new(cursor_pos_near, ray_direction))
+        Some(Ray3d::new(near, ray_direction))
     }
 
     pub fn intersect_y_plane(&self, y_offset: f32) -> Option<Vec3> {

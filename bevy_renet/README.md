@@ -92,3 +92,10 @@ You can run the `simple` example with:
 If you want a more complex example you can checkout the [demo_bevy](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) sample:
 
 [Bevy Demo.webm](https://user-images.githubusercontent.com/35241085/180664609-f8c969e0-d313-45c0-9c04-8a116896d0bd.webm)
+
+## Bevy Compatibility
+
+|bevy|bevy_renet|
+|---|---|
+|0.8|0.0.5|
+|0.7|0.0.4|
