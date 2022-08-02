@@ -311,6 +311,16 @@ impl RenetServer {
     pub fn clients_id(&self) -> Vec<u64> {
         self.netcode_server.clients_id()
     }
+
+    /// Returns the maximum number of clients that can be connected.
+    pub fn max_clients(&self) -> usize {
+        self.netcode_server.max_clients()
+    }
+
+    /// Returns the maximum number of clients that can be connected.
+    pub fn connected_clients(&self) -> usize {
+        self.netcode_server.connected_clients()
+    }
 }
 
 fn handle_server_result(
