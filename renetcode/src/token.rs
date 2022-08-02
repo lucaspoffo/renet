@@ -13,7 +13,7 @@ use crate::{
     NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS,
     NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
-use aead::Error as CryptoError;
+use chacha20poly1305::aead::Error as CryptoError;
 
 /// A public connect token that the client receives to start connecting to the server.
 /// How the client receives ConnectToken is up to you, could be from a matchmaking

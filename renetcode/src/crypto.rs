@@ -1,7 +1,5 @@
-use aead::{AeadInPlace, Error as CryptoError, NewAead};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, Tag, XChaCha20Poly1305, XNonce};
-use rand_chacha::ChaCha20Rng;
-use rand_core::{RngCore, SeedableRng};
+use chacha20poly1305::aead::{rand_core::RngCore, OsRng};
+use chacha20poly1305::{AeadInPlace, ChaCha20Poly1305, Error as CryptoError, Key, KeyInit, Nonce, Tag, XChaCha20Poly1305, XNonce};
 
 use crate::NETCODE_MAC_BYTES;
 
@@ -56,9 +54,8 @@ pub fn encrypt_in_place_xnonce(buffer: &mut [u8], xnonce: &[u8; 24], key: &[u8; 
 }
 
 pub fn generate_random_bytes<const N: usize>() -> [u8; N] {
-    let mut rng = ChaCha20Rng::from_entropy();
     let mut bytes = [0; N];
-    rng.fill_bytes(&mut bytes);
+    OsRng.fill_bytes(&mut bytes);
     bytes
 }
 
