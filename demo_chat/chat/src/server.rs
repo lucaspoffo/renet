@@ -2,13 +2,15 @@ use std::{
     collections::HashMap,
     io,
     net::{SocketAddr, UdpSocket},
+    sync::{Arc, RwLock},
     time::{Duration, SystemTime},
 };
 
-use renet::{RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent};
-use renet_visualizer::{RenetServerVisualizer, RenetVisualizerStyle};
+use matcher::{RegisterServer, ServerUpdate, Username, PROTOCOL_ID};
+use renet::{RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent, NETCODE_KEY_BYTES};
+use renet_visualizer::RenetServerVisualizer;
 
-use crate::{channels_config, Channels, ClientMessages, Message, ServerMessages, Username};
+use crate::{channels_config, lobby_status::update_lobby_status, Channels, ClientMessages, Message, ServerMessages};
 use bincode::Options;
 use log::info;
 
@@ -17,6 +19,7 @@ pub struct ChatServer {
     pub usernames: HashMap<u64, String>,
     pub messages: Vec<Message>,
     pub visualizer: RenetServerVisualizer<240>,
+    server_update: Arc<RwLock<ServerUpdate>>,
 }
 
 impl ChatServer {
@@ -27,17 +30,37 @@ impl ChatServer {
             receive_channels_config: channels_config(),
             ..Default::default()
         };
-        let server_config = ServerConfig::new(64, 0, addr, ServerAuthentication::Unsecure);
+        let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
+
+        let register_server = RegisterServer {
+            name: "Teste".to_owned(),
+            address: addr,
+            max_clients: server_config.max_clients as u64,
+            private_key: [0; NETCODE_KEY_BYTES],
+            current_clients: 0,
+        };
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
         let mut usernames = HashMap::new();
         usernames.insert(1, host_username);
 
+        let server_update = Arc::new(RwLock::new(ServerUpdate {
+            current_clients: 0,
+            max_clients: server.max_clients() as u64,
+        }));
+
+        // Create thread to register/update server status to matcher service
+        let server_update_clone = server_update.clone();
+        std::thread::spawn(move || {
+            update_lobby_status(register_server, server_update_clone);
+        });
+
         Self {
             server,
             usernames,
             messages: vec![],
-            visualizer: RenetServerVisualizer::new(RenetVisualizerStyle::default()),
+            visualizer: RenetServerVisualizer::default(),
+            server_update,
         }
     }
 
@@ -84,6 +107,11 @@ impl ChatServer {
         }
 
         self.server.send_packets().unwrap();
+
+        let mut server_update = self.server_update.write().unwrap();
+        server_update.max_clients = self.server.max_clients() as u64;
+        server_update.current_clients = self.server.connected_clients() as u64;
+
         Ok(())
     }
 

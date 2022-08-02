@@ -3,21 +3,35 @@ use eframe::{
     egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2},
     epaint::PathShape,
 };
+use egui_extras::{Size, TableBuilder};
 use log::error;
-use renet::{ClientAuthentication, NetworkInfo, RenetClient, RenetConnectionConfig};
-use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
+use matcher::{LobbyListing, Username};
+use renet::{ClientAuthentication, ConnectToken, RenetClient, RenetConnectionConfig};
+use renet_visualizer::RenetClientVisualizer;
 
 use std::{
     collections::HashMap,
+    error::Error,
     net::{SocketAddr, UdpSocket},
+    sync::mpsc::{Receiver, TryRecvError},
     time::{Instant, SystemTime},
 };
+use std::{
+    sync::mpsc::{self, Sender},
+    time::Duration,
+};
 
-use crate::{channels_config, server::ChatServer, Channels, Message, Username};
+use crate::{channels_config, server::ChatServer, Channels, Message};
 use crate::{ClientMessages, ServerMessages};
 
 enum AppState {
-    MainScreen,
+    MainScreen {
+        lobby_list: Vec<LobbyListing>,
+        lobby_update: Receiver<Vec<LobbyListing>>,
+    },
+    RequestingToken {
+        token: Receiver<ConnectToken>,
+    },
     ClientChat {
         client: Box<RenetClient>,
         usernames: HashMap<u64, String>,
@@ -39,16 +53,66 @@ pub struct ChatApp {
     show_network_info: bool,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
-        AppState::MainScreen
+impl AppState {
+    fn main_screen() -> Self {
+        let (sender, receiver) = mpsc::channel();
+
+        // Spawn thread to update lobby list
+        std::thread::spawn(move || {
+            update_lobby(sender);
+        });
+
+        AppState::MainScreen {
+            lobby_list: vec![],
+            lobby_update: receiver,
+        }
     }
+}
+
+fn update_lobby(sender: Sender<Vec<LobbyListing>>) {
+    let client = reqwest::blocking::Client::new();
+    loop {
+        match lobby_list_request(&client) {
+            Err(e) => log::error!("Error getting lobby list: {}", e),
+            Ok(lobby_list) => {
+                if let Err(e) = sender.send(lobby_list) {
+                    log::error!("Stopped updating lobby list: {}", e);
+                    break;
+                }
+            }
+        }
+
+        std::thread::sleep(Duration::from_secs(5));
+    }
+}
+
+fn lobby_list_request(client: &reqwest::blocking::Client) -> Result<Vec<LobbyListing>, reqwest::Error> {
+    let res = client.get("http://localhost:7000/server").send()?;
+    res.error_for_status_ref()?;
+    let lobby_list: Vec<LobbyListing> = res.json()?;
+
+    Ok(lobby_list)
+}
+
+fn connect_token_request(server_id: u64, username: String, sender: Sender<ConnectToken>) -> Result<(), Box<dyn Error>> {
+    let client = reqwest::blocking::Client::new();
+    let res = client
+        .post(format!("http://localhost:7000/server/{server_id}/connect"))
+        .json(&username)
+        .send()?;
+    res.error_for_status_ref()?;
+    let bytes = res.bytes()?;
+    let token = ConnectToken::read(&mut bytes.as_ref())?;
+    println!("{:?}", token);
+    sender.send(token)?;
+
+    Ok(())
 }
 
 impl Default for ChatApp {
     fn default() -> Self {
         Self {
-            state: AppState::MainScreen,
+            state: AppState::main_screen(),
             username: String::new(),
             server_addr: "127.0.0.1:5000".to_string(),
             connection_error: None,
@@ -62,7 +126,8 @@ impl Default for ChatApp {
 impl ChatApp {
     pub fn draw(&mut self, ctx: &egui::Context) {
         match &mut self.state {
-            AppState::MainScreen => self.draw_main_screen(ctx),
+            AppState::MainScreen { .. } => self.draw_main_screen(ctx),
+            AppState::RequestingToken { .. } => self.draw_connecting(ctx),
             AppState::ClientChat { client, .. } if !client.is_connected() => self.draw_connecting(ctx),
             AppState::ClientChat { .. } | AppState::HostChat { .. } => self.draw_chat(ctx),
         }
@@ -77,11 +142,17 @@ impl ChatApp {
             ..
         } = self;
 
+        let lobby_list = match state {
+            AppState::MainScreen { lobby_list, .. } => lobby_list.clone(),
+            _ => unreachable!(),
+        };
+
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::Area::new("buttons")
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .show(ui.ctx(), |ui| {
                     ui.set_width(300.);
+                    ui.set_height(300.);
                     ui.vertical_centered(|ui| {
                         ui.horizontal(|ui| {
                             ui.label("Nick:");
@@ -101,7 +172,7 @@ impl ChatApp {
                                         let client = create_renet_client(username.clone(), server_addr);
 
                                         *state = AppState::ClientChat {
-                                            visualizer: Box::new(RenetClientVisualizer::new(RenetVisualizerStyle::default())),
+                                            visualizer: Box::new(RenetClientVisualizer::default()),
                                             client: Box::new(client),
                                             messages: vec![],
                                             usernames: HashMap::new(),
@@ -126,6 +197,53 @@ impl ChatApp {
                         if let Some(error) = connection_error {
                             ui.separator();
                             ui.colored_label(Color32::RED, format!("Connection Error: {}", error));
+                        }
+
+                        ui.separator();
+                        ui.heading("Lobby list");
+                        if lobby_list.is_empty() {
+                            ui.label("No lobbies available");
+                        } else {
+                            TableBuilder::new(ui)
+                                .striped(true)
+                                .cell_layout(egui::Layout::left_to_right())
+                                .column(Size::remainder())
+                                .column(Size::exact(40.))
+                                .column(Size::exact(60.))
+                                .header(12.0, |mut header| {
+                                    header.col(|ui| {
+                                        ui.label("Name");
+                                    });
+                                })
+                                .body(|mut body| {
+                                    for lobby in lobby_list.iter() {
+                                        body.row(30., |mut row| {
+                                            row.col(|ui| {
+                                                ui.label(&lobby.name);
+                                            });
+
+                                            row.col(|ui| {
+                                                ui.label(format!("{}/{}", lobby.current_clients, lobby.max_clients));
+                                            });
+
+                                            row.col(|ui| {
+                                                if ui.button("connect").clicked() {
+                                                    let (sender, receiver) = mpsc::channel();
+                                                    let server_id = lobby.id;
+                                                    // Spawn thread to update lobby list
+                                                    let username_clone = username.clone();
+                                                    std::thread::spawn(move || {
+                                                        if let Err(e) = connect_token_request(server_id, username_clone, sender) {
+                                                            log::error!("Failed to get connect token for server {}: {}", server_id, e);
+                                                        }
+                                                    });
+
+                                                    *state = AppState::RequestingToken { token: receiver };
+                                                }
+                                            });
+                                        });
+                                    }
+                                });
                         }
                     });
                 });
@@ -221,7 +339,7 @@ impl ChatApp {
                 }
                 _ => unreachable!(),
             }
-            *state = AppState::MainScreen;
+            *state = AppState::main_screen();
             return;
         }
 
@@ -297,7 +415,7 @@ impl ChatApp {
                     error!("{}", e);
                 }
                 if let Some(e) = client.disconnected() {
-                    self.state = AppState::MainScreen;
+                    self.state = AppState::main_screen();
                     self.connection_error = Some(e.to_string());
                 } else {
                     visualizer.add_network_info(client.network_info());
@@ -324,7 +442,7 @@ impl ChatApp {
                     }
                     if let Err(e) = client.send_packets() {
                         error!("Error sending packets: {}", e);
-                        self.state = AppState::MainScreen;
+                        self.state = AppState::main_screen();
                         self.connection_error = Some(e.to_string());
                     }
                 }
@@ -332,13 +450,52 @@ impl ChatApp {
             AppState::HostChat { chat_server: server } => {
                 if let Err(e) = server.update(duration) {
                     error!("Failed updating server: {}", e);
-                    self.state = AppState::MainScreen;
+                    self.state = AppState::main_screen();
                     self.connection_error = Some(e.to_string());
                 }
             }
-            _ => {}
+            AppState::MainScreen {
+                lobby_list, lobby_update, ..
+            } => match lobby_update.try_recv() {
+                Ok(new_list) => *lobby_list = new_list,
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    panic!("Lobby update channel disconnected");
+                }
+            },
+            AppState::RequestingToken { token } => match token.try_recv() {
+                Ok(token) => {
+                    let client = create_renet_client_from_token(token);
+
+                    self.state = AppState::ClientChat {
+                        visualizer: Box::new(RenetClientVisualizer::default()),
+                        client: Box::new(client),
+                        messages: vec![],
+                        usernames: HashMap::new(),
+                    };
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    panic!("Lobby request token channel disconnected");
+                }
+            },
         }
     }
+}
+
+fn create_renet_client_from_token(connect_token: ConnectToken) -> RenetClient {
+    let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    let socket = UdpSocket::bind(client_addr).unwrap();
+    let connection_config = RenetConnectionConfig {
+        send_channels_config: channels_config(),
+        receive_channels_config: channels_config(),
+        ..Default::default()
+    };
+
+    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    let authentication = ClientAuthentication::Secure { connect_token };
+
+    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
 }
 
 fn create_renet_client(username: String, server_addr: SocketAddr) -> RenetClient {
@@ -360,17 +517,7 @@ fn create_renet_client(username: String, server_addr: SocketAddr) -> RenetClient
         server_addr,
     };
 
-    RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap()
-}
-
-fn draw_network_info(ui: &mut Ui, network_info: &NetworkInfo) {
-    ui.vertical(|ui| {
-        ui.heading("Network info");
-        ui.label(format!("RTT: {:.2} ms", network_info.rtt));
-        ui.label(format!("Sent Kbps: {:.2}", network_info.sent_kbps));
-        ui.label(format!("Received Kbps: {:.2}", network_info.received_kbps));
-        ui.label(format!("Packet Loss: {:.2}%", network_info.packet_loss * 100.));
-    });
+    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
 }
 
 fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
@@ -393,10 +540,7 @@ fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     egui::ScrollArea::vertical().id_source("host_commands_scroll").show(ui, |ui| {
         for client_id in chat_server.server.clients_id().into_iter() {
             ui.horizontal(|ui| {
-                ui.label(format!("Client {}", client_id)).on_hover_ui(|ui| {
-                    let network_info = chat_server.server.network_info(client_id).unwrap();
-                    draw_network_info(ui, &network_info);
-                });
+                ui.label(format!("Client {}", client_id));
                 if ui.button("X").on_hover_text("Disconnect client").clicked() {
                     chat_server.server.disconnect(client_id);
                 }
