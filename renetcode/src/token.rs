@@ -20,6 +20,10 @@ use chacha20poly1305::aead::Error as CryptoError;
 /// system or from a call to a REST API as an example.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectToken {
+    // NOTE: On the netcode standard the client id is not available in the public part of the
+    // ConnectToken. But having it acessible here makes it easier to consume the token, and the
+    // server still uses the client_id from the private part.
+    pub(crate) client_id: u64,
     pub(crate) version_info: [u8; 13],
     pub(crate) protocol_id: u64,
     pub(crate) create_timestamp: u64,
@@ -100,6 +104,7 @@ impl ConnectToken {
         private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, &xnonce, private_key)?;
 
         Ok(Self {
+            client_id,
             version_info: *NETCODE_VERSION_INFO,
             protocol_id,
             private_data,
@@ -114,6 +119,7 @@ impl ConnectToken {
     }
 
     pub fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
+        writer.write_all(&self.client_id.to_le_bytes())?;
         writer.write_all(&self.version_info)?;
         writer.write_all(&self.protocol_id.to_le_bytes())?;
         writer.write_all(&self.create_timestamp.to_le_bytes())?;
@@ -129,6 +135,7 @@ impl ConnectToken {
     }
 
     pub fn read(src: &mut impl io::Read) -> Result<Self, NetcodeError> {
+        let client_id = read_u64(src)?;
         let version_info: [u8; 13] = read_bytes(src)?;
         if &version_info != NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
@@ -146,6 +153,7 @@ impl ConnectToken {
         let server_to_client_key: [u8; NETCODE_KEY_BYTES] = read_bytes(src)?;
 
         Ok(Self {
+            client_id,
             version_info,
             protocol_id,
             create_timestamp,

@@ -51,7 +51,7 @@ fn new_renet_client() -> RenetClient {
         server_addr,
         user_data: None,
     };
-    RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap()
+    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
 }
 
 fn new_renet_server() -> RenetServer {

@@ -67,12 +67,12 @@ impl fmt::Display for DisconnectReason {
 }
 
 impl NetcodeClient {
-    pub fn new(current_time: Duration, client_id: ClientID, connect_token: ConnectToken) -> Self {
+    pub fn new(current_time: Duration, connect_token: ConnectToken) -> Self {
         let server_addr = connect_token.server_addresses[0].expect("cannot create or deserialize a ConnectToken without a server address");
 
         Self {
             sequence: 0,
-            client_id,
+            client_id: connect_token.client_id,
             server_addr,
             server_addr_index: 0,
             challenge_token_sequence: 0,
@@ -338,7 +338,7 @@ mod tests {
         .unwrap();
         let server_key = connect_token.server_to_client_key;
         let client_key = connect_token.client_to_server_key;
-        let mut client = NetcodeClient::new(Duration::ZERO, client_id, connect_token);
+        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
         let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();

@@ -124,7 +124,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         user_data: Some(username.to_netcode_user_data()),
         protocol_id: PROTOCOL_ID,
     };
-    let mut client = RenetClient::new(current_time, socket, client_id, connection_config, authentication).unwrap();
+    let mut client = RenetClient::new(current_time, socket, connection_config, authentication).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

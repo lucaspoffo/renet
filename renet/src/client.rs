@@ -45,7 +45,6 @@ impl RenetClient {
     pub fn new(
         current_time: Duration,
         socket: UdpSocket,
-        client_id: u64,
         config: RenetConnectionConfig,
         authentication: ClientAuthentication,
     ) -> Result<Self, RenetError> {
@@ -70,7 +69,7 @@ impl RenetClient {
             ClientAuthentication::Secure { connect_token } => connect_token,
         };
 
-        let netcode_client = NetcodeClient::new(current_time, client_id, connect_token);
+        let netcode_client = NetcodeClient::new(current_time, connect_token);
         let client_packet_info = ClientPacketInfo::new(config.bandwidth_smoothing_factor);
 
         Ok(Self {
@@ -91,7 +90,6 @@ impl RenetClient {
         Self::new(
             Duration::ZERO,
             socket,
-            0,
             Default::default(),
             ClientAuthentication::Unsecure {
                 client_id: 0,

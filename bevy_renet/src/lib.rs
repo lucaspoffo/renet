@@ -176,7 +176,6 @@ mod tests {
         RenetClient::new(
             current_time,
             UdpSocket::bind((ip, 0))?,
-            client_id,
             RenetConnectionConfig::default(),
             authentication,
         )

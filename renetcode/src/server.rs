@@ -486,6 +486,11 @@ impl NetcodeServer {
         self.max_clients
     }
 
+    /// Returns the maximum number of clients that can be connected.
+    pub fn connected_clients(&self) -> usize {
+        self.clients.iter().filter(|slot| slot.is_some()).count()
+    }
+
     /// Advance the server current time, and remove any pending connections that have expired.
     pub fn update(&mut self, duration: Duration) {
         self.current_time += duration;
@@ -669,7 +674,7 @@ mod tests {
             TEST_KEY,
         )
         .unwrap();
-        let mut client = NetcodeClient::new(Duration::ZERO, client_id, connect_token);
+        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
         let (client_packet, _) = client.update(Duration::ZERO).unwrap();
 
         let result = server.process_packet(client_addr, client_packet);
