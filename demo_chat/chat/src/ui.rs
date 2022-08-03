@@ -220,6 +220,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
             _ => {}
         }
         *state = AppState::main_screen();
+        ui_state.error = None;
         return;
     }
 

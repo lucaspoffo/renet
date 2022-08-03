@@ -7,7 +7,7 @@ use std::{
 
 use actix_rt::{spawn, time::interval};
 use actix_web::{
-    get, middleware, post, put,
+    delete, get, middleware, post, put,
     web::{self, Data, Json},
     App, HttpResponse, HttpServer,
 };
@@ -65,6 +65,7 @@ async fn main() -> std::io::Result<()> {
             .service(server_connect)
             .service(server_list)
             .service(server_update)
+            .service(server_remove)
     })
     .bind(("127.0.0.1", 7000))?
     .run()
@@ -105,6 +106,17 @@ async fn server_update(path: web::Path<u64>, lobby_list: Data<LobbyList>, info: 
 
             HttpResponse::Ok().finish()
         }
+        None => HttpResponse::NotFound().finish(),
+    }
+}
+
+#[delete("/server/{server_id}")]
+async fn server_remove(path: web::Path<u64>, lobby_list: Data<LobbyList>) -> HttpResponse {
+    let mut servers = lobby_list.servers.write().unwrap();
+    let server_id = path.into_inner();
+
+    match servers.remove(&server_id) {
+        Some(_) => HttpResponse::Ok().finish(),
         None => HttpResponse::NotFound().finish(),
     }
 }

@@ -18,6 +18,11 @@ pub fn update_lobby_status(mut register_server: RegisterServer, server_update: A
         if Arc::strong_count(&server_update) == 1 {
             // The server dropped so we can return
             log::info!("Stopped updating lobby status");
+            if let Status::Updating { server_id } = status {
+                if let Err(e) = remove_server_request(server_id, &client) {
+                    log::error!("Failed to remove server from listing: {}", e);
+                }
+            }
             return;
         }
 
@@ -60,4 +65,10 @@ fn register_server_request(register_server: &RegisterServer, client: &Client) ->
     res.error_for_status_ref()?;
     let server_id: u64 = res.json()?;
     Ok(server_id)
+}
+
+fn remove_server_request(server_id: u64, client: &Client) -> Result<(), reqwest::Error> {
+    let res = client.delete(format!("http://localhost:7000/server/{server_id}")).send()?;
+    res.error_for_status()?;
+    Ok(())
 }
