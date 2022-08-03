@@ -7,9 +7,7 @@ use std::{
 };
 
 use matcher::{RegisterServer, ServerUpdate, Username, PROTOCOL_ID};
-use renet::{
-    generate_random_bytes, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent, NETCODE_KEY_BYTES,
-};
+use renet::{generate_random_bytes, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent};
 use renet_visualizer::RenetServerVisualizer;
 
 use crate::{channels_config, lobby_status::update_lobby_status, Channels, ClientMessages, Message, ServerMessages};
