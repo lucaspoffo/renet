@@ -8,6 +8,7 @@ use std::collections::HashMap;
 mod client;
 mod lobby_status;
 mod server;
+mod ui;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {

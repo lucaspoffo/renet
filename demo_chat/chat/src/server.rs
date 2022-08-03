@@ -1,13 +1,15 @@
 use std::{
     collections::HashMap,
     io,
-    net::{SocketAddr, UdpSocket},
+    net::UdpSocket,
     sync::{Arc, RwLock},
     time::{Duration, SystemTime},
 };
 
 use matcher::{RegisterServer, ServerUpdate, Username, PROTOCOL_ID};
-use renet::{RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent, NETCODE_KEY_BYTES};
+use renet::{
+    generate_random_bytes, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent, NETCODE_KEY_BYTES,
+};
 use renet_visualizer::RenetServerVisualizer;
 
 use crate::{channels_config, lobby_status::update_lobby_status, Channels, ClientMessages, Message, ServerMessages};
@@ -23,20 +25,23 @@ pub struct ChatServer {
 }
 
 impl ChatServer {
-    pub fn new(addr: SocketAddr, host_username: String) -> Self {
-        let socket = UdpSocket::bind(addr).unwrap();
+    pub fn new(lobby_name: String, host_username: String) -> Self {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let server_addr = socket.local_addr().unwrap();
         let connection_config = RenetConnectionConfig {
             send_channels_config: channels_config(),
             receive_channels_config: channels_config(),
             ..Default::default()
         };
-        let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
+
+        let private_key = generate_random_bytes();
+        let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Secure { private_key });
 
         let register_server = RegisterServer {
-            name: "Teste".to_owned(),
-            address: addr,
+            name: lobby_name,
+            address: server_addr,
             max_clients: server_config.max_clients as u64,
-            private_key: [0; NETCODE_KEY_BYTES],
+            private_key,
             current_clients: 0,
         };
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
