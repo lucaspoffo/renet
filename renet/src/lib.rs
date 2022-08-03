@@ -8,7 +8,7 @@ mod server;
 pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, ReliableChannelConfig, UnreliableChannelConfig};
 pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
 
-pub use renetcode::{ConnectToken, NetcodeError};
+pub use renetcode::{ConnectToken, NetcodeError, generate_random_bytes};
 pub use renetcode::{NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 
 pub use client::{ClientAuthentication, RenetClient};
