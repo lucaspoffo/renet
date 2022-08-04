@@ -15,6 +15,13 @@ pub struct RegisterServer {
     pub max_clients: u64,
     pub address: SocketAddr,
     pub private_key: [u8; NETCODE_KEY_BYTES],
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestConnection {
+    pub username: String,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +36,7 @@ pub struct LobbyListing {
     pub name: String,
     pub max_clients: u64,
     pub current_clients: u64,
+    pub is_protected: bool,
 }
 
 impl Username {

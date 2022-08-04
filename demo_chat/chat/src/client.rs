@@ -1,7 +1,7 @@
 use bincode::Options;
 use eframe::egui;
 use log::error;
-use matcher::LobbyListing;
+use matcher::{LobbyListing, RequestConnection};
 use renet::{ClientAuthentication, ConnectToken, RenetClient, RenetConnectionConfig};
 use renet_visualizer::RenetClientVisualizer;
 
@@ -26,6 +26,7 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct UiState {
     pub username: String,
+    pub password: String,
     pub lobby_name: String,
     pub error: Option<String>,
     pub text_input: String,
@@ -38,7 +39,7 @@ pub enum AppState {
         lobby_update: Receiver<Vec<LobbyListing>>,
     },
     RequestingToken {
-        token: Receiver<ConnectToken>,
+        token: Receiver<reqwest::Result<ConnectToken>>,
     },
     ClientChat {
         client: Box<RenetClient>,
@@ -98,16 +99,23 @@ fn lobby_list_request(client: &reqwest::blocking::Client) -> Result<Vec<LobbyLis
     Ok(lobby_list)
 }
 
-pub fn connect_token_request(server_id: u64, username: String, sender: Sender<ConnectToken>) -> Result<(), Box<dyn Error>> {
+pub fn connect_token_request(
+    server_id: u64,
+    request_connection: RequestConnection,
+    sender: Sender<reqwest::Result<ConnectToken>>,
+) -> Result<(), Box<dyn Error>> {
     let client = reqwest::blocking::Client::new();
     let res = client
         .post(format!("http://localhost:7000/server/{server_id}/connect"))
-        .json(&username)
+        .json(&request_connection)
         .send()?;
-    res.error_for_status_ref()?;
-    let bytes = res.bytes()?;
-    let token = ConnectToken::read(&mut bytes.as_ref())?;
-    sender.send(token)?;
+    if let Err(e) = res.error_for_status_ref() {
+        sender.send(Err(e))?;
+    } else {
+        let bytes = res.bytes()?;
+        let token = ConnectToken::read(&mut bytes.as_ref())?;
+        sender.send(Ok(token))?;
+    }
 
     Ok(())
 }
@@ -207,7 +215,7 @@ impl ChatApp {
                 }
             },
             AppState::RequestingToken { token } => match token.try_recv() {
-                Ok(token) => {
+                Ok(Ok(token)) => {
                     let client = create_renet_client_from_token(token);
 
                     self.state = AppState::ClientChat {
@@ -217,9 +225,14 @@ impl ChatApp {
                         usernames: HashMap::new(),
                     };
                 }
+                Ok(Err(e)) => {
+                    self.ui_state.error = Some(format!("Failed to get connect token:\n{}", e));
+                    self.state = AppState::main_screen();
+                }
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
-                    panic!("Lobby request token channel disconnected");
+                    self.ui_state.error = Some("Failed to get connect token".to_owned());
+                    self.state = AppState::main_screen();
                 }
             },
         }

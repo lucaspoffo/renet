@@ -14,7 +14,7 @@ use actix_web::{
 
 use renet::{ConnectToken, NETCODE_KEY_BYTES};
 
-use matcher::{LobbyListing, RegisterServer, ServerUpdate, Username, PROTOCOL_ID};
+use matcher::{LobbyListing, RegisterServer, RequestConnection, ServerUpdate, Username, PROTOCOL_ID};
 
 struct Server {
     name: String,
@@ -22,6 +22,7 @@ struct Server {
     max_clients: u64,
     last_updated: Instant,
     address: SocketAddr,
+    password: Option<String>,
     private_key: [u8; NETCODE_KEY_BYTES],
 }
 
@@ -33,6 +34,7 @@ impl From<RegisterServer> for Server {
             current_clients: register_server.current_clients,
             max_clients: register_server.max_clients,
             private_key: register_server.private_key,
+            password: register_server.password,
             last_updated: Instant::now(),
         }
     }
@@ -122,15 +124,17 @@ async fn server_remove(path: web::Path<u64>, lobby_list: Data<LobbyList>) -> Htt
 }
 
 #[post("/server/{server_id}/connect")]
-async fn server_connect(path: web::Path<u64>, lobby_list: Data<LobbyList>, info: Json<String>) -> HttpResponse {
+async fn server_connect(path: web::Path<u64>, lobby_list: Data<LobbyList>, request_connection: Json<RequestConnection>) -> HttpResponse {
     let servers = lobby_list.servers.read().unwrap();
     let server_id = path.into_inner();
-    let username = info.into_inner();
 
     match servers.get(&server_id) {
         Some(server) => {
+            if server.password != request_connection.password {
+                return HttpResponse::Unauthorized().finish();
+            }
             let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-            let user_data = Username(username).to_netcode_user_data();
+            let user_data = Username(request_connection.username.clone()).to_netcode_user_data();
             let client_id = current_time.as_millis() as u64;
             let connect_token = ConnectToken::generate(
                 current_time,
@@ -161,6 +165,7 @@ async fn server_list(server_list: Data<LobbyList>) -> HttpResponse {
             name: server.name.clone(),
             max_clients: server.max_clients,
             current_clients: server.current_clients,
+            is_protected: server.password.is_some(),
         })
         .collect();
     let body = serde_json::to_string(&simple_servers).unwrap();

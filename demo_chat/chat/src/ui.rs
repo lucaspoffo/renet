@@ -1,10 +1,10 @@
 use bincode::Options;
 use eframe::{
-    egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2},
+    egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2, Widget},
     epaint::PathShape,
 };
 use egui_extras::{Size, TableBuilder};
-use matcher::LobbyListing;
+use matcher::{LobbyListing, RequestConnection};
 
 use std::{collections::HashMap, sync::mpsc};
 
@@ -15,7 +15,7 @@ use crate::{
     Channels,
 };
 
-pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<u64> {
+pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u64, bool)> {
     ui.separator();
     ui.heading("Lobby list");
     if lobby_list.is_empty() {
@@ -27,10 +27,12 @@ pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<u64
     TableBuilder::new(ui)
         .striped(true)
         .cell_layout(egui::Layout::left_to_right())
+        .column(Size::exact(12.))
         .column(Size::remainder())
         .column(Size::exact(40.))
         .column(Size::exact(60.))
         .header(12.0, |mut header| {
+            header.col(|_| {});
             header.col(|ui| {
                 ui.label("Name");
             });
@@ -38,6 +40,12 @@ pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<u64
         .body(|mut body| {
             for lobby in lobby_list.iter() {
                 body.row(30., |mut row| {
+                    row.col(|ui| {
+                        if lobby.is_protected {
+                            ui.label("🔒");
+                        }
+                    });
+
                     row.col(|ui| {
                         ui.label(&lobby.name);
                     });
@@ -48,7 +56,7 @@ pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<u64
 
                     row.col(|ui| {
                         if ui.button("connect").clicked() {
-                            connect_server_id = Some(lobby.id);
+                            connect_server_id = Some((lobby.id, lobby.is_protected));
                         }
                     });
                 });
@@ -129,12 +137,18 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list
                         ui.text_edit_singleline(&mut ui_state.lobby_name)
                     });
 
+                    ui.horizontal(|ui| {
+                        ui.label("Lobby password:").on_hover_text("Password can be empty");
+                        egui::TextEdit::singleline(&mut ui_state.password).password(true).ui(ui)
+                    });
+
                     ui.vertical_centered_justified(|ui| {
                         if ui.button("Host").clicked() {
                             if ui_state.username.is_empty() || ui_state.lobby_name.is_empty() {
                                 ui_state.error = Some("Nick or Lobby name can't be empty".to_owned());
                             } else {
-                                let server = ChatServer::new(ui_state.lobby_name.clone(), ui_state.username.clone());
+                                let server =
+                                    ChatServer::new(ui_state.lobby_name.clone(), ui_state.username.clone(), ui_state.password.clone());
                                 *state = AppState::HostChat {
                                     chat_server: Box::new(server),
                                 };
@@ -147,14 +161,21 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list
                         ui.colored_label(Color32::RED, format!("Error: {}", error));
                     }
 
-                    if let Some(connect_server_id) = draw_lobby_list(ui, lobby_list) {
+                    if let Some((connect_server_id, is_protected)) = draw_lobby_list(ui, lobby_list) {
                         if ui_state.username.is_empty() {
                             ui_state.error = Some("Nick can't be empty".to_owned());
+                        } else if is_protected && ui_state.password.is_empty() {
+                            ui_state.error = Some("Lobby is protected, please insert a password".to_owned());
                         } else {
                             let (sender, receiver) = mpsc::channel();
-                            let username_clone = ui_state.username.clone();
+                            let password = if is_protected { Some(ui_state.password.clone()) } else { None };
+                            let request_connection = RequestConnection {
+                                username: ui_state.username.clone(),
+                                password,
+                            };
+
                             std::thread::spawn(move || {
-                                if let Err(e) = connect_token_request(connect_server_id, username_clone, sender) {
+                                if let Err(e) = connect_token_request(connect_server_id, request_connection, sender) {
                                     log::error!("Failed to get connect token for server {}: {}", connect_server_id, e);
                                 }
                             });

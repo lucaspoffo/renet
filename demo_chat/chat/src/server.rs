@@ -23,7 +23,7 @@ pub struct ChatServer {
 }
 
 impl ChatServer {
-    pub fn new(lobby_name: String, host_username: String) -> Self {
+    pub fn new(lobby_name: String, host_username: String, password: String) -> Self {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
         let server_addr = socket.local_addr().unwrap();
         let connection_config = RenetConnectionConfig {
@@ -35,11 +35,14 @@ impl ChatServer {
         let private_key = generate_random_bytes();
         let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Secure { private_key });
 
+        let password = if password.is_empty() { None } else { Some(password) };
+
         let register_server = RegisterServer {
             name: lobby_name,
             address: server_addr,
             max_clients: server_config.max_clients as u64,
             private_key,
+            password,
             current_clients: 0,
         };
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
