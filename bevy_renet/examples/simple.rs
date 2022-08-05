@@ -79,13 +79,13 @@ fn main() {
     app.insert_resource(Lobby::default());
 
     if is_host {
-        app.add_plugin(RenetServerPlugin);
+        app.add_plugin(RenetServerPlugin::default());
         app.insert_resource(new_renet_server());
         app.add_system(server_update_system);
         app.add_system(server_sync_players);
         app.add_system(move_players_system);
     } else {
-        app.add_plugin(RenetClientPlugin);
+        app.add_plugin(RenetClientPlugin::default());
         app.insert_resource(new_renet_client());
         app.insert_resource(PlayerInput::default());
         app.add_system(player_input);
