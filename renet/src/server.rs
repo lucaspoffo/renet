@@ -16,9 +16,8 @@ use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DAT
 
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.
-#[derive(Debug)]
-pub struct RenetServer<T = UdpTransport> {
-    transport: T,
+pub struct RenetServer {
+    transport: Box<dyn Transport>,
     reliable_server: RechannelServer<u64>,
     netcode_server: NetcodeServer,
     bandwidth_smoothing_factor: f32,
@@ -74,18 +73,13 @@ impl ServerConfig {
     }
 }
 
-impl RenetServer<UdpTransport> {
-    #[doc(hidden)]
-    pub fn __test() -> Self {
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), ServerAuthentication::Unsecure);
-        let transport = UdpTransport::new().unwrap();
-        Self::new(Duration::ZERO, server_config, RenetConnectionConfig::default(), transport)
-    }
-}
-
-impl<T: Transport> RenetServer<T> {
-    pub fn new(current_time: Duration, server_config: ServerConfig, connection_config: RenetConnectionConfig, transport: T) -> Self {
+impl RenetServer {
+    pub fn new(
+        current_time: Duration,
+        server_config: ServerConfig,
+        connection_config: RenetConnectionConfig,
+        transport: Box<dyn Transport>,
+    ) -> Self {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
         let bandwidth_smoothing_factor = connection_config.bandwidth_smoothing_factor;
         let reliable_server = RechannelServer::new(current_time, connection_config.to_connection_config());
@@ -115,6 +109,14 @@ impl<T: Transport> RenetServer<T> {
         }
     }
 
+    #[doc(hidden)]
+    pub fn __test() -> Self {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), ServerAuthentication::Unsecure);
+        let transport = UdpTransport::new().unwrap();
+        Self::new(Duration::ZERO, server_config, RenetConnectionConfig::default(), Box::new(transport))
+    }
+
     pub fn addr(&self) -> SocketAddr {
         self.netcode_server.address()
     }
@@ -131,7 +133,7 @@ impl<T: Transport> RenetServer<T> {
             server_result,
             current_time,
             self.bandwidth_smoothing_factor,
-            &mut self.transport,
+            &mut *self.transport,
             &mut self.reliable_server,
             &mut self.clients_packet_info,
             &mut self.events,
@@ -189,7 +191,7 @@ impl<T: Transport> RenetServer<T> {
                         server_result,
                         current_time,
                         self.bandwidth_smoothing_factor,
-                        &mut self.transport,
+                        &mut *self.transport,
                         &mut self.reliable_server,
                         &mut self.clients_packet_info,
                         &mut self.events,
@@ -206,7 +208,7 @@ impl<T: Transport> RenetServer<T> {
                 server_result,
                 current_time,
                 self.bandwidth_smoothing_factor,
-                &mut self.transport,
+                &mut *self.transport,
                 &mut self.reliable_server,
                 &mut self.clients_packet_info,
                 &mut self.events,
@@ -279,7 +281,7 @@ impl<T: Transport> RenetServer<T> {
             for packet in packets.iter() {
                 match self.netcode_server.generate_payload_packet(client_id, packet) {
                     Ok((addr, payload)) => {
-                        send_to(current_time, &mut self.transport, &mut self.clients_packet_info, payload, addr)?;
+                        send_to(current_time, &mut *self.transport, &mut self.clients_packet_info, payload, addr)?;
                     }
                     Err(e) => error!("Failed to encrypt payload packet: {}", e),
                 }
