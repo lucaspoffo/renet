@@ -62,7 +62,7 @@ const PROTOCOL_ID: u64 = 7;
 
 fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
-    let transport = UdpTransport::with_socket(socket).unwrap();
+    let transport = Box::new(UdpTransport::with_socket(socket).unwrap());
     let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
@@ -112,7 +112,7 @@ fn server(addr: SocketAddr) {
 }
 
 fn client(server_addr: SocketAddr, username: Username) {
-    let transport = UdpTransport::new().unwrap();
+    let transport = Box::new(UdpTransport::new().unwrap());
     let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
