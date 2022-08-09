@@ -67,7 +67,6 @@ fn main() {
     app.insert_resource(PlayerInput::default());
     app.insert_resource(MostRecentTick(None));
     app.insert_resource(new_renet_client());
-    app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
     app.insert_resource(NetworkMapping::default());
 
     app.add_system(player_input);
@@ -76,6 +75,8 @@ fn main() {
     app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
     app.add_system(client_send_player_commands.with_run_criteria(run_if_client_connected));
     app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
+
+    app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
     app.add_system(update_visulizer_system);
 
     app.add_startup_system(setup_level);

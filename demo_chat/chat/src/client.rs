@@ -2,7 +2,7 @@ use bincode::Options;
 use eframe::egui;
 use log::error;
 use matcher::{LobbyListing, RequestConnection};
-use renet::{ClientAuthentication, ConnectToken, RenetClient, RenetConnectionConfig};
+use renet::{ClientAuthentication, ConnectToken, DefaultChannel, RenetClient, RenetConnectionConfig};
 use renet_visualizer::RenetClientVisualizer;
 
 use std::{
@@ -17,10 +17,10 @@ use std::{
     time::Duration,
 };
 
-use crate::{channels_config, server::ChatServer, Channels, Message};
 use crate::{
+    server::ChatServer,
     ui::{draw_chat, draw_loader, draw_main_screen},
-    ServerMessages,
+    Message, ServerMessages,
 };
 
 #[derive(Debug, Default)]
@@ -171,7 +171,7 @@ impl ChatApp {
                 } else {
                     visualizer.add_network_info(client.network_info());
 
-                    while let Some(message) = client.receive_message(Channels::Reliable.id()) {
+                    while let Some(message) = client.receive_message(DefaultChannel::Reliable) {
                         let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                         match message {
                             ServerMessages::ClientConnected { client_id, username } => {
@@ -242,11 +242,7 @@ impl ChatApp {
 fn create_renet_client_from_token(connect_token: ConnectToken) -> RenetClient {
     let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let socket = UdpSocket::bind(client_addr).unwrap();
-    let connection_config = RenetConnectionConfig {
-        send_channels_config: channels_config(),
-        receive_channels_config: channels_config(),
-        ..Default::default()
-    };
+    let connection_config = RenetConnectionConfig::default();
 
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let authentication = ClientAuthentication::Secure { connect_token };

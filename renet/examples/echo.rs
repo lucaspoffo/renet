@@ -1,17 +1,14 @@
-use renet::{
-    ClientAuthentication, RenetClient, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
-    NETCODE_USER_DATA_BYTES,
-};
-use std::collections::HashMap;
-use std::thread;
-use std::time::Duration;
 use std::{
+    collections::HashMap,
     net::{SocketAddr, UdpSocket},
-    time::Instant,
-};
-use std::{
     sync::mpsc::{self, Receiver, TryRecvError},
-    time::SystemTime,
+    thread,
+    time::{Duration, Instant, SystemTime},
+};
+
+use renet::{
+    ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
+    NETCODE_USER_DATA_BYTES,
 };
 
 // Helper struct to pass an username in the user data
@@ -95,7 +92,7 @@ fn server(addr: SocketAddr) {
         }
 
         for client_id in server.clients_id().into_iter() {
-            while let Some(message) = server.receive_message(client_id, 0) {
+            while let Some(message) = server.receive_message(client_id, DefaultChannel::Reliable) {
                 let text = String::from_utf8(message).unwrap();
                 let username = usernames.get(&client_id).unwrap();
                 println!("Client {} ({}) sent text: {}", username, client_id, text);
@@ -105,7 +102,7 @@ fn server(addr: SocketAddr) {
         }
 
         for text in received_messages.iter() {
-            server.broadcast_message(0, text.as_bytes().to_vec());
+            server.broadcast_message(DefaultChannel::Reliable, text.as_bytes().to_vec());
         }
 
         server.send_packets().unwrap();
@@ -134,12 +131,12 @@ fn client(server_addr: SocketAddr, username: Username) {
         last_updated = now;
         if client.is_connected() {
             match stdin_channel.try_recv() {
-                Ok(text) => client.send_message(0, text.as_bytes().to_vec()),
+                Ok(text) => client.send_message(DefaultChannel::Reliable, text.as_bytes().to_vec()),
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
             }
 
-            while let Some(text) = client.receive_message(0) {
+            while let Some(text) = client.receive_message(DefaultChannel::Reliable) {
                 let text = String::from_utf8(text).unwrap();
                 println!("{}", text);
             }

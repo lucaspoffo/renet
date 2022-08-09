@@ -1,6 +1,5 @@
 use client::ChatApp;
 use eframe::{egui, App};
-use renet::{ChannelConfig, ReliableChannelConfig};
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
@@ -27,28 +26,6 @@ enum ServerMessages {
     ClientDisconnected { client_id: u64 },
     ClientMessage(Message),
     InitClient { usernames: HashMap<u64, String> },
-}
-
-#[derive(Debug)]
-pub enum Channels {
-    Reliable,
-}
-
-impl Channels {
-    pub fn id(&self) -> u8 {
-        match self {
-            Channels::Reliable => 0,
-        }
-    }
-}
-
-pub fn channels_config() -> Vec<ChannelConfig> {
-    let reliable_channel = ChannelConfig::Reliable(ReliableChannelConfig {
-        channel_id: Channels::Reliable.id(),
-        ..Default::default()
-    });
-
-    vec![reliable_channel]
 }
 
 impl Message {

@@ -5,6 +5,7 @@ use eframe::{
 };
 use egui_extras::{Size, TableBuilder};
 use matcher::{LobbyListing, RequestConnection};
+use renet::DefaultChannel;
 
 use std::{collections::HashMap, sync::mpsc};
 
@@ -12,7 +13,6 @@ use crate::{client::connect_token_request, ClientMessages};
 use crate::{
     client::{AppState, UiState},
     server::ChatServer,
-    Channels,
 };
 
 pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u64, bool)> {
@@ -269,7 +269,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                 }
                 AppState::ClientChat { client, .. } => {
                     let message = bincode::options().serialize(&ClientMessages::Text(text)).unwrap();
-                    client.send_message(Channels::Reliable.id(), message);
+                    client.send_message(DefaultChannel::Reliable, message);
                 }
                 _ => unreachable!(),
             };

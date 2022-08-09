@@ -1,4 +1,4 @@
-use crate::channel::{ChannelConfig, ReceiveChannel, SendChannel};
+use crate::channel::{ChannelConfig, DefaultChannel, ReceiveChannel, SendChannel};
 use crate::error::{DisconnectionReason, RechannelError};
 use crate::packet::{Packet, Payload};
 
@@ -63,12 +63,6 @@ impl SentPacket {
 
 impl Default for ConnectionConfig {
     fn default() -> Self {
-        let channels = vec![
-            ChannelConfig::Reliable(Default::default()),
-            ChannelConfig::Unreliable(Default::default()),
-            ChannelConfig::Block(Default::default()),
-        ];
-
         Self {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
@@ -77,8 +71,8 @@ impl Default for ConnectionConfig {
             packet_loss_smoothing_factor: 0.1,
             heartbeat_time: Duration::from_millis(100),
             fragment_config: FragmentConfig::default(),
-            send_channels_config: channels.clone(),
-            receive_channels_config: channels,
+            send_channels_config: DefaultChannel::config(),
+            receive_channels_config: DefaultChannel::config(),
         }
     }
 }

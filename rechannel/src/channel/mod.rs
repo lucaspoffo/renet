@@ -28,6 +28,46 @@ pub enum ChannelConfig {
     Block(BlockChannelConfig),
 }
 
+pub(crate) trait SendChannel: std::fmt::Debug {
+    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16, current_time: Duration) -> Option<ChannelPacketData>;
+    fn send_message(&mut self, payload: Bytes, current_time: Duration);
+    fn process_ack(&mut self, ack: u16);
+    fn can_send_message(&self) -> bool;
+    fn error(&self) -> Option<ChannelError>;
+}
+
+pub(crate) trait ReceiveChannel: std::fmt::Debug {
+    fn process_messages(&mut self, messages: Vec<Payload>);
+    fn receive_message(&mut self) -> Option<Payload>;
+    fn error(&self) -> Option<ChannelError>;
+}
+
+/// Default channels used when using the default configuration.
+/// Use this enum only when using the default channels configuration.
+pub enum DefaultChannel {
+    Reliable,
+    Unreliable,
+    Block,
+}
+
+impl From<ReliableChannelConfig> for ChannelConfig {
+    fn from(config: ReliableChannelConfig) -> Self {
+        Self::Reliable(config)
+    }
+}
+
+impl From<UnreliableChannelConfig> for ChannelConfig {
+    fn from(config: UnreliableChannelConfig) -> Self {
+        Self::Unreliable(config)
+    }
+}
+
+impl From<BlockChannelConfig> for ChannelConfig {
+    fn from(config: BlockChannelConfig) -> Self {
+        Self::Block(config)
+    }
+}
+
 impl ChannelConfig {
     pub(crate) fn new_channels(
         &self,
@@ -62,34 +102,22 @@ impl ChannelConfig {
     }
 }
 
-pub(crate) trait SendChannel: std::fmt::Debug {
-    fn get_messages_to_send(&mut self, available_bytes: u64, sequence: u16, current_time: Duration) -> Option<ChannelPacketData>;
-    fn send_message(&mut self, payload: Bytes, current_time: Duration);
-    fn process_ack(&mut self, ack: u16);
-    fn can_send_message(&self) -> bool;
-    fn error(&self) -> Option<ChannelError>;
-}
-
-pub(crate) trait ReceiveChannel: std::fmt::Debug {
-    fn process_messages(&mut self, messages: Vec<Payload>);
-    fn receive_message(&mut self) -> Option<Payload>;
-    fn error(&self) -> Option<ChannelError>;
-}
-
-impl From<ReliableChannelConfig> for ChannelConfig {
-    fn from(config: ReliableChannelConfig) -> Self {
-        Self::Reliable(config)
+impl From<DefaultChannel> for u8 {
+    fn from(channel: DefaultChannel) -> Self {
+        match channel {
+            DefaultChannel::Reliable => 0,
+            DefaultChannel::Unreliable => 1,
+            DefaultChannel::Block => 2,
+        }
     }
 }
 
-impl From<UnreliableChannelConfig> for ChannelConfig {
-    fn from(config: UnreliableChannelConfig) -> Self {
-        Self::Unreliable(config)
-    }
-}
-
-impl From<BlockChannelConfig> for ChannelConfig {
-    fn from(config: BlockChannelConfig) -> Self {
-        Self::Block(config)
+impl DefaultChannel {
+    pub fn config() -> Vec<ChannelConfig> {
+        vec![
+            ChannelConfig::Reliable(Default::default()),
+            ChannelConfig::Unreliable(Default::default()),
+            ChannelConfig::Block(Default::default()),
+        ]
     }
 }
