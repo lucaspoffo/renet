@@ -8,7 +8,7 @@ use std::{
 
 use renet::{
     ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
-    NETCODE_USER_DATA_BYTES,
+    UdpTransport, NETCODE_USER_DATA_BYTES,
 };
 
 // Helper struct to pass an username in the user data
@@ -62,10 +62,11 @@ const PROTOCOL_ID: u64 = 7;
 
 fn server(addr: SocketAddr) {
     let socket = UdpSocket::bind(addr).unwrap();
+    let transport = UdpTransport::with_socket(socket).unwrap();
     let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
+    let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, transport);
 
     let mut usernames: HashMap<u64, String> = HashMap::new();
     let mut received_messages = vec![];
@@ -111,7 +112,7 @@ fn server(addr: SocketAddr) {
 }
 
 fn client(server_addr: SocketAddr, username: Username) {
-    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let transport = UdpTransport::new().unwrap();
     let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
@@ -121,7 +122,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         user_data: Some(username.to_netcode_user_data()),
         protocol_id: PROTOCOL_ID,
     };
-    let mut client = RenetClient::new(current_time, socket, connection_config, authentication).unwrap();
+    let mut client = RenetClient::new(current_time, connection_config, authentication, transport).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod network_info;
 mod server;
+mod transport;
 
 pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, DefaultChannel, ReliableChannelConfig, UnreliableChannelConfig};
 pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
@@ -16,6 +17,7 @@ pub use config::RenetConnectionConfig;
 pub use error::RenetError;
 pub use network_info::NetworkInfo;
 pub use server::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent};
+pub use transport::{Transport, UdpTransport};
 
 // Reused in the renet_visualizer crate
 #[doc(hidden)]

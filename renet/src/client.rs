@@ -1,16 +1,16 @@
 use crate::{
     error::{DisconnectionReason, RenetError},
     network_info::{ClientPacketInfo, NetworkInfo, PacketInfo},
-    RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
+    RenetConnectionConfig, Transport, UdpTransport, NUM_DISCONNECT_PACKETS_TO_SEND,
 };
 
 use log::debug;
 use rechannel::{error::RechannelError, remote_connection::RemoteConnection, Bytes};
 use renetcode::{ConnectToken, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
-use std::net::UdpSocket;
+use std::error::Error;
+use std::net::SocketAddr;
 use std::time::Duration;
-use std::{io, net::SocketAddr};
 
 /// Configuration to establishe an secure ou unsecure connection with the server.
 #[allow(clippy::large_enum_variant)]
@@ -32,23 +32,43 @@ pub enum ClientAuthentication {
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
-pub struct RenetClient {
+pub struct RenetClient<T> {
     current_time: Duration,
     netcode_client: NetcodeClient,
-    socket: UdpSocket,
+    transport: T,
     reliable_connection: RemoteConnection,
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
     client_packet_info: ClientPacketInfo,
 }
 
-impl RenetClient {
+impl RenetClient<UdpTransport> {
+    #[doc(hidden)]
+    pub fn __test() -> Self {
+        let server_addr = "127.0.0.1:5000".parse().unwrap();
+        let transport = UdpTransport::new().unwrap();
+
+        Self::new(
+            Duration::ZERO,
+            Default::default(),
+            ClientAuthentication::Unsecure {
+                client_id: 0,
+                server_addr,
+                user_data: None,
+                protocol_id: 0,
+            },
+            transport,
+        )
+        .unwrap()
+    }
+}
+
+impl<T: Transport> RenetClient<T> {
     pub fn new(
         current_time: Duration,
-        socket: UdpSocket,
         config: RenetConnectionConfig,
         authentication: ClientAuthentication,
+        transport: T,
     ) -> Result<Self, RenetError> {
-        socket.set_nonblocking(true)?;
         let reliable_connection = RemoteConnection::new(current_time, config.to_connection_config());
         let connect_token: ConnectToken = match authentication {
             ClientAuthentication::Unsecure {
@@ -75,30 +95,11 @@ impl RenetClient {
         Ok(Self {
             current_time,
             buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
-            socket,
+            transport,
             reliable_connection,
             netcode_client,
             client_packet_info,
         })
-    }
-
-    #[doc(hidden)]
-    pub fn __test() -> Self {
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let server_addr = "127.0.0.1:5000".parse().unwrap();
-
-        Self::new(
-            Duration::ZERO,
-            socket,
-            Default::default(),
-            ClientAuthentication::Unsecure {
-                client_id: 0,
-                server_addr,
-                user_data: None,
-                protocol_id: 0,
-            },
-        )
-        .unwrap()
     }
 
     pub fn client_id(&self) -> u64 {
@@ -127,7 +128,7 @@ impl RenetClient {
         match self.netcode_client.disconnect() {
             Ok((addr, payload)) => {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = send_to(self.current_time, &self.socket, &mut self.client_packet_info, payload, addr) {
+                    if let Err(e) = send_to(self.current_time, &mut self.transport, &mut self.client_packet_info, payload, addr) {
                         log::error!("failed to send disconnect packet to server: {}", e);
                     }
                 }
@@ -166,7 +167,7 @@ impl RenetClient {
             let packets = self.reliable_connection.get_packets_to_send()?;
             for packet in packets.into_iter() {
                 let (addr, payload) = self.netcode_client.generate_payload_packet(&packet)?;
-                send_to(self.current_time, &self.socket, &mut self.client_packet_info, payload, addr)?;
+                send_to(self.current_time, &mut self.transport, &mut self.client_packet_info, payload, addr)?;
             }
         }
         Ok(())
@@ -186,8 +187,8 @@ impl RenetClient {
         }
 
         loop {
-            let packet = match self.socket.recv_from(&mut self.buffer) {
-                Ok((len, addr)) => {
+            let packet = match self.transport.recv_from(&mut self.buffer) {
+                Ok(Some((len, addr))) => {
                     if addr != self.netcode_client.server_addr() {
                         debug!("Discarded packet from unknown server {:?}", addr);
                         continue;
@@ -195,8 +196,8 @@ impl RenetClient {
 
                     &mut self.buffer[..len]
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(RenetError::IO(e)),
+                Ok(None) => break,
+                Err(e) => return Err(RenetError::Transport(e)),
             };
 
             let packet_info = PacketInfo::new(self.current_time, packet.len());
@@ -209,7 +210,7 @@ impl RenetClient {
 
         self.reliable_connection.update()?;
         if let Some((packet, addr)) = self.netcode_client.update(duration) {
-            send_to(self.current_time, &self.socket, &mut self.client_packet_info, packet, addr)?;
+            send_to(self.current_time, &mut self.transport, &mut self.client_packet_info, packet, addr)?;
         }
 
         self.client_packet_info.update_metrics();
@@ -220,12 +221,12 @@ impl RenetClient {
 
 fn send_to(
     current_time: Duration,
-    socket: &UdpSocket,
+    transport: &mut dyn Transport,
     client_packet_info: &mut ClientPacketInfo,
     packet: &[u8],
     address: SocketAddr,
-) -> Result<usize, std::io::Error> {
+) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let packet_info = PacketInfo::new(current_time, packet.len());
     client_packet_info.add_packet_sent(packet_info);
-    socket.send_to(packet, address)
+    transport.send_to(packet, address)
 }

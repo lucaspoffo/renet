@@ -9,7 +9,7 @@ use renetcode::DisconnectReason as NetcodeDisconnectReason;
 pub enum RenetError {
     Netcode(renetcode::NetcodeError),
     Rechannel(rechannel::error::RechannelError),
-    IO(std::io::Error),
+    Transport(Box<dyn Error + Send + Sync + 'static>),
 }
 
 impl Error for RenetError {}
@@ -19,7 +19,7 @@ impl fmt::Display for RenetError {
         match *self {
             RenetError::Netcode(ref err) => err.fmt(fmt),
             RenetError::Rechannel(ref err) => err.fmt(fmt),
-            RenetError::IO(ref err) => err.fmt(fmt),
+            RenetError::Transport(ref err) => err.fmt(fmt),
         }
     }
 }
@@ -42,9 +42,9 @@ impl From<rechannel::error::RechannelError> for RenetError {
     }
 }
 
-impl From<std::io::Error> for RenetError {
-    fn from(inner: std::io::Error) -> Self {
-        RenetError::IO(inner)
+impl From<Box<dyn Error + Send + Sync + 'static>> for RenetError {
+    fn from(inner: Box<dyn Error + Send + Sync + 'static>) -> Self {
+        RenetError::Transport(inner)
     }
 }
 
