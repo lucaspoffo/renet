@@ -55,8 +55,14 @@ impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Events::<RenetError>::default());
 
-        app.add_system_to_stage(CoreStage::PreUpdate, Self::update_system)
-            .add_system_to_stage(CoreStage::PostUpdate, Self::send_packets_system);
+        app.add_system_to_stage(
+            CoreStage::PreUpdate,
+            Self::update_system.with_run_criteria(has_resource::<RenetClient>),
+        )
+        .add_system_to_stage(
+            CoreStage::PostUpdate,
+            Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
+        );
 
         if self.default_system_setup {
             app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems().before(Self::update_system));
