@@ -7,13 +7,6 @@ use bevy::{
 
 use renet::{RenetClient, RenetError, RenetServer, ServerEvent};
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemLabel)]
-pub enum RenetSystems {
-    Update,
-    SendPackets,
-    ClearEvents,
-}
-
 pub struct RenetServerPlugin {
     pub default_system_setup: bool,
 }
@@ -43,13 +36,11 @@ impl Plugin for RenetServerPlugin {
         app.insert_resource(Events::<ServerEvent>::default());
         app.insert_resource(Events::<RenetError>::default());
 
+        app.add_system_to_stage(CoreStage::PreUpdate, Self::update_system)
+            .add_system_to_stage(CoreStage::PostUpdate, Self::send_packets_system);
+
         if self.default_system_setup {
-            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_systems(RenetSystems::Update))
-                .add_system_set_to_stage(
-                    CoreStage::PreUpdate,
-                    Self::get_systems(RenetSystems::ClearEvents).before(RenetSystems::Update),
-                )
-                .add_system_set_to_stage(CoreStage::PostUpdate, Self::get_systems(RenetSystems::SendPackets));
+            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems());
         }
     }
 }
@@ -58,13 +49,11 @@ impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Events::<RenetError>::default());
 
+        app.add_system_to_stage(CoreStage::PreUpdate, Self::update_system)
+            .add_system_to_stage(CoreStage::PostUpdate, Self::send_packets_system);
+
         if self.default_system_setup {
-            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_systems(RenetSystems::Update))
-                .add_system_set_to_stage(
-                    CoreStage::PreUpdate,
-                    Self::get_systems(RenetSystems::ClearEvents).before(RenetSystems::Update),
-                )
-                .add_system_set_to_stage(CoreStage::PostUpdate, Self::get_systems(RenetSystems::SendPackets));
+            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems().before(Self::update_system));
         }
     }
 }
@@ -85,7 +74,7 @@ impl RenetServerPlugin {
         }
     }
 
-    pub fn send_packets(mut server: ResMut<RenetServer>, mut renet_error: EventWriter<RenetError>) {
+    pub fn send_packets_system(mut server: ResMut<RenetServer>, mut renet_error: EventWriter<RenetError>) {
         if let Err(e) = server.send_packets() {
             renet_error.send(RenetError::IO(e));
         }
@@ -96,21 +85,10 @@ impl RenetServerPlugin {
         self
     }
 
-    pub fn get_systems(label: RenetSystems) -> SystemSet {
-        match label {
-            RenetSystems::ClearEvents => SystemSet::new()
-                .with_system(Events::<ServerEvent>::update_system)
-                .with_system(Events::<RenetError>::update_system)
-                .label(RenetSystems::ClearEvents),
-            RenetSystems::Update => SystemSet::new()
-                .with_system(Self::update_system.with_run_criteria(has_resource::<RenetServer>))
-                .label(RenetSystems::Update),
-            RenetSystems::SendPackets => SystemSet::new().with_system(
-                Self::send_packets
-                    .with_run_criteria(has_resource::<RenetServer>)
-                    .label(RenetSystems::SendPackets),
-            ),
-        }
+    pub fn get_clear_event_systems() -> SystemSet {
+        SystemSet::new()
+            .with_system(Events::<ServerEvent>::update_system)
+            .with_system(Events::<RenetError>::update_system)
     }
 }
 
@@ -121,7 +99,7 @@ impl RenetClientPlugin {
         }
     }
 
-    pub fn send_packets(mut client: ResMut<RenetClient>, mut renet_error: EventWriter<RenetError>) {
+    pub fn send_packets_system(mut client: ResMut<RenetClient>, mut renet_error: EventWriter<RenetError>) {
         if let Err(e) = client.send_packets() {
             renet_error.send(e);
         }
@@ -132,20 +110,8 @@ impl RenetClientPlugin {
         self
     }
 
-    pub fn get_systems(label: RenetSystems) -> SystemSet {
-        match label {
-            RenetSystems::ClearEvents => SystemSet::new()
-                .with_system(Events::<RenetError>::update_system)
-                .label(RenetSystems::ClearEvents),
-            RenetSystems::Update => SystemSet::new()
-                .with_system(Self::update_system.with_run_criteria(has_resource::<RenetClient>))
-                .label(RenetSystems::Update),
-            RenetSystems::SendPackets => SystemSet::new().with_system(
-                Self::send_packets
-                    .with_run_criteria(has_resource::<RenetClient>)
-                    .label(RenetSystems::SendPackets),
-            ),
-        }
+    pub fn get_clear_event_systems() -> SystemSet {
+        SystemSet::new().with_system(Events::<RenetError>::update_system)
     }
 }
 
