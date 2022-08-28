@@ -7,36 +7,66 @@ use bevy::{
 
 use renet::{RenetClient, RenetError, RenetServer, ServerEvent};
 
-pub struct RenetServerPlugin;
+pub struct RenetServerPlugin {
+    pub default_system_setup: bool,
+}
 
-pub struct RenetClientPlugin;
+impl Default for RenetServerPlugin {
+    fn default() -> Self {
+        Self {
+            default_system_setup: true,
+        }
+    }
+}
+
+pub struct RenetClientPlugin {
+    pub default_system_setup: bool,
+}
+
+impl Default for RenetClientPlugin {
+    fn default() -> Self {
+        Self {
+            default_system_setup: true,
+        }
+    }
+}
 
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ServerEvent>()
-            .add_event::<RenetError>()
-            .add_system_to_stage(
-                CoreStage::PreUpdate,
-                Self::update_system.with_run_criteria(has_resource::<RenetServer>),
-            )
-            .add_system_to_stage(
-                CoreStage::PostUpdate,
-                Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
-            );
+        app.insert_resource(Events::<ServerEvent>::default());
+        app.insert_resource(Events::<RenetError>::default());
+
+        app.add_system_to_stage(
+            CoreStage::PreUpdate,
+            Self::update_system.with_run_criteria(has_resource::<RenetServer>),
+        )
+        .add_system_to_stage(
+            CoreStage::PostUpdate,
+            Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
+        );
+
+        if self.default_system_setup {
+            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems());
+        }
     }
 }
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<RenetError>()
-            .add_system_to_stage(
-                CoreStage::PreUpdate,
-                Self::update_system.with_run_criteria(has_resource::<RenetClient>),
-            )
-            .add_system_to_stage(
-                CoreStage::PostUpdate,
-                Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
-            );
+        app.insert_resource(Events::<RenetError>::default());
+
+        app.add_system_to_stage(
+            CoreStage::PreUpdate,
+            Self::update_system.with_run_criteria(has_resource::<RenetClient>),
+        )
+        .add_system_to_stage(
+            CoreStage::PostUpdate,
+            Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
+        );
+
+        if self.default_system_setup {
+            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems().before(Self::update_system));
+        }
     }
 }
 
@@ -61,6 +91,17 @@ impl RenetServerPlugin {
             renet_error.send(RenetError::IO(e));
         }
     }
+
+    pub fn with_default_system_setup(mut self, default_system_setup: bool) -> Self {
+        self.default_system_setup = default_system_setup;
+        self
+    }
+
+    pub fn get_clear_event_systems() -> SystemSet {
+        SystemSet::new()
+            .with_system(Events::<ServerEvent>::update_system)
+            .with_system(Events::<RenetError>::update_system)
+    }
 }
 
 impl RenetClientPlugin {
@@ -74,6 +115,15 @@ impl RenetClientPlugin {
         if let Err(e) = client.send_packets() {
             renet_error.send(e);
         }
+    }
+
+    pub fn with_default_system_setup(mut self, default_system_setup: bool) -> Self {
+        self.default_system_setup = default_system_setup;
+        self
+    }
+
+    pub fn get_clear_event_systems() -> SystemSet {
+        SystemSet::new().with_system(Events::<RenetError>::update_system)
     }
 }
 
@@ -109,8 +159,8 @@ mod tests {
 
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
-            .add_plugin(RenetServerPlugin)
-            .add_plugin(RenetClientPlugin)
+            .add_plugin(RenetServerPlugin::default())
+            .add_plugin(RenetClientPlugin::default())
             .insert_resource(server)
             .insert_resource(client);
 
