@@ -8,26 +8,28 @@ use bevy::{
 use renet::{RenetClient, RenetError, RenetServer, ServerEvent};
 
 pub struct RenetServerPlugin {
-    pub default_system_setup: bool,
+    /// If this option is set to false,
+    /// you need to manually clear the bevy events for RenetError and ServerEvent.
+    /// The systems for clearing events can be retrieved by [`RenetServerPlugin::get_clear_event_systems()`].
+    pub clear_events: bool,
 }
 
 impl Default for RenetServerPlugin {
     fn default() -> Self {
-        Self {
-            default_system_setup: true,
-        }
+        Self { clear_events: true }
     }
 }
 
 pub struct RenetClientPlugin {
-    pub default_system_setup: bool,
+    /// If this option is set to false,
+    /// you need to manually clear the bevy events for RenetError.
+    /// The systems for clearing events can be retrieved by [`RenetClientPlugin::get_clear_event_systems()`].
+    pub clear_events: bool,
 }
 
 impl Default for RenetClientPlugin {
     fn default() -> Self {
-        Self {
-            default_system_setup: true,
-        }
+        Self { clear_events: true }
     }
 }
 
@@ -45,7 +47,7 @@ impl Plugin for RenetServerPlugin {
             Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
         );
 
-        if self.default_system_setup {
+        if self.clear_events {
             app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems());
         }
     }
@@ -64,7 +66,7 @@ impl Plugin for RenetClientPlugin {
             Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
         );
 
-        if self.default_system_setup {
+        if self.clear_events {
             app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems().before(Self::update_system));
         }
     }
@@ -92,11 +94,6 @@ impl RenetServerPlugin {
         }
     }
 
-    pub fn with_default_system_setup(mut self, default_system_setup: bool) -> Self {
-        self.default_system_setup = default_system_setup;
-        self
-    }
-
     pub fn get_clear_event_systems() -> SystemSet {
         SystemSet::new()
             .with_system(Events::<ServerEvent>::update_system)
@@ -115,11 +112,6 @@ impl RenetClientPlugin {
         if let Err(e) = client.send_packets() {
             renet_error.send(e);
         }
-    }
-
-    pub fn with_default_system_setup(mut self, default_system_setup: bool) -> Self {
-        self.default_system_setup = default_system_setup;
-        self
     }
 
     pub fn get_clear_event_systems() -> SystemSet {
