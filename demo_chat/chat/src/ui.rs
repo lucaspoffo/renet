@@ -1,6 +1,6 @@
 use bincode::Options;
 use eframe::{
-    egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2, Widget},
+    egui::{self, lerp, Align, Color32, Layout, Pos2, Ui, Vec2, Widget},
     epaint::PathShape,
 };
 use egui_extras::{Size, TableBuilder};
@@ -26,7 +26,7 @@ pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u6
     let mut connect_server_id = None;
     TableBuilder::new(ui)
         .striped(true)
-        .cell_layout(egui::Layout::left_to_right())
+        .cell_layout(Layout::left_to_right(Align::Min))
         .column(Size::exact(12.))
         .column(Size::remainder())
         .column(Size::exact(40.))

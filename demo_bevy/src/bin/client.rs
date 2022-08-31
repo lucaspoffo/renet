@@ -55,7 +55,7 @@ fn new_renet_client() -> RenetClient {
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_plugin(RenetClientPlugin);
+    app.add_plugin(RenetClientPlugin::default());
     app.add_plugin(LookTransformPlugin);
     app.add_plugin(FrameTimeDiagnosticsPlugin::default());
     app.add_plugin(LogDiagnosticsPlugin::default());

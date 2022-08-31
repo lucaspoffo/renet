@@ -43,7 +43,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
 
-    app.add_plugin(RenetServerPlugin);
+    app.add_plugin(RenetServerPlugin::default());
     app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
     app.add_plugin(RapierDebugRenderPlugin::default());
     app.add_plugin(FrameTimeDiagnosticsPlugin::default());

@@ -12,4 +12,4 @@ edition = "2021"
 
 [dependencies]
 renet = { path = "../renet", version = "0.0.9" }
-egui = "0.18"
+egui = "0.19"

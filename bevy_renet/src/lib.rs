@@ -7,36 +7,68 @@ use bevy::{
 
 use renet::{RenetClient, RenetError, RenetServer, ServerEvent};
 
-pub struct RenetServerPlugin;
+pub struct RenetServerPlugin {
+    /// If this option is set to false,
+    /// you need to manually clear the bevy events for RenetError and ServerEvent.
+    /// The systems for clearing events can be retrieved by [`RenetServerPlugin::get_clear_event_systems()`].
+    pub clear_events: bool,
+}
 
-pub struct RenetClientPlugin;
+impl Default for RenetServerPlugin {
+    fn default() -> Self {
+        Self { clear_events: true }
+    }
+}
+
+pub struct RenetClientPlugin {
+    /// If this option is set to false,
+    /// you need to manually clear the bevy events for RenetError.
+    /// The systems for clearing events can be retrieved by [`RenetClientPlugin::get_clear_event_systems()`].
+    pub clear_events: bool,
+}
+
+impl Default for RenetClientPlugin {
+    fn default() -> Self {
+        Self { clear_events: true }
+    }
+}
 
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ServerEvent>()
-            .add_event::<RenetError>()
-            .add_system_to_stage(
-                CoreStage::PreUpdate,
-                Self::update_system.with_run_criteria(has_resource::<RenetServer>),
-            )
-            .add_system_to_stage(
-                CoreStage::PostUpdate,
-                Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
-            );
+        app.insert_resource(Events::<ServerEvent>::default());
+        app.insert_resource(Events::<RenetError>::default());
+
+        app.add_system_to_stage(
+            CoreStage::PreUpdate,
+            Self::update_system.with_run_criteria(has_resource::<RenetServer>),
+        )
+        .add_system_to_stage(
+            CoreStage::PostUpdate,
+            Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
+        );
+
+        if self.clear_events {
+            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems());
+        }
     }
 }
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<RenetError>()
-            .add_system_to_stage(
-                CoreStage::PreUpdate,
-                Self::update_system.with_run_criteria(has_resource::<RenetClient>),
-            )
-            .add_system_to_stage(
-                CoreStage::PostUpdate,
-                Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
-            );
+        app.insert_resource(Events::<RenetError>::default());
+
+        app.add_system_to_stage(
+            CoreStage::PreUpdate,
+            Self::update_system.with_run_criteria(has_resource::<RenetClient>),
+        )
+        .add_system_to_stage(
+            CoreStage::PostUpdate,
+            Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
+        );
+
+        if self.clear_events {
+            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems().before(Self::update_system));
+        }
     }
 }
 
@@ -61,6 +93,12 @@ impl RenetServerPlugin {
             renet_error.send(RenetError::IO(e));
         }
     }
+
+    pub fn get_clear_event_systems() -> SystemSet {
+        SystemSet::new()
+            .with_system(Events::<ServerEvent>::update_system)
+            .with_system(Events::<RenetError>::update_system)
+    }
 }
 
 impl RenetClientPlugin {
@@ -74,6 +112,10 @@ impl RenetClientPlugin {
         if let Err(e) = client.send_packets() {
             renet_error.send(e);
         }
+    }
+
+    pub fn get_clear_event_systems() -> SystemSet {
+        SystemSet::new().with_system(Events::<RenetError>::update_system)
     }
 }
 
@@ -109,8 +151,8 @@ mod tests {
 
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
-            .add_plugin(RenetServerPlugin)
-            .add_plugin(RenetClientPlugin)
+            .add_plugin(RenetServerPlugin::default())
+            .add_plugin(RenetClientPlugin::default())
             .insert_resource(server)
             .insert_resource(client);
 
