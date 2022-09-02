@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_renet::{
     renet::{
-        ClientAuthentication, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
+        ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication,
+        ServerConfig, ServerEvent,
     },
     run_if_client_connected, RenetClientPlugin, RenetServerPlugin,
 };
@@ -127,13 +128,13 @@ fn server_update_system(
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
                     let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(*id, 0, message);
+                    server.send_message(*id, DefaultChannel::Reliable, message);
                 }
 
                 lobby.players.insert(*id, player_entity);
 
                 let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *id }).unwrap();
-                server.broadcast_message(0, message);
+                server.broadcast_message(DefaultChannel::Reliable, message);
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
@@ -142,13 +143,13 @@ fn server_update_system(
                 }
 
                 let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *id }).unwrap();
-                server.broadcast_message(0, message);
+                server.broadcast_message(DefaultChannel::Reliable, message);
             }
         }
     }
 
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, 0) {
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::Reliable) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
             if let Some(player_entity) = lobby.players.get(&client_id) {
                 commands.entity(*player_entity).insert(player_input);
@@ -164,7 +165,7 @@ fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(&Transform
     }
 
     let sync_message = bincode::serialize(&players).unwrap();
-    server.broadcast_message(1, sync_message);
+    server.broadcast_message(DefaultChannel::Unreliable, sync_message);
 }
 
 fn client_sync_players(
@@ -174,7 +175,7 @@ fn client_sync_players(
     mut client: ResMut<RenetClient>,
     mut lobby: ResMut<Lobby>,
 ) {
-    while let Some(message) = client.receive_message(0) {
+    while let Some(message) = client.receive_message(DefaultChannel::Reliable) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
             ServerMessages::PlayerConnected { id } => {
@@ -199,7 +200,7 @@ fn client_sync_players(
         }
     }
 
-    while let Some(message) = client.receive_message(1) {
+    while let Some(message) = client.receive_message(DefaultChannel::Unreliable) {
         let players: HashMap<u64, [f32; 3]> = bincode::deserialize(&message).unwrap();
         for (player_id, translation) in players.iter() {
             if let Some(player_entity) = lobby.players.get(player_id) {
@@ -248,7 +249,7 @@ fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_input: ResMut<Pl
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(0, input_message);
+    client.send_message(DefaultChannel::Reliable, input_message);
 }
 
 fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: Res<Time>) {
