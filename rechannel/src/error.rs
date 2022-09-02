@@ -42,7 +42,7 @@ impl fmt::Display for ChannelError {
         use ChannelError::*;
 
         match *self {
-            ReliableChannelOutOfSync => write!(fmt, "out of sync"),
+            ReliableChannelOutOfSync => write!(fmt, "reliable channel out of sync"),
             SendQueueFull => write!(fmt, "send queue was full"),
             FailedToSerialize => write!(fmt, "failed to serialize or deserialize"),
             SentMessageAboveMaxSize => write!(fmt, "sent message above the channel max message size"),
