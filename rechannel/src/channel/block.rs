@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ChannelError,
     packet::{ChannelPacketData, Payload},
-    sequence_buffer::{SequenceBuffer, sequence_less_than},
+    sequence_buffer::{sequence_less_than, SequenceBuffer},
     timer::Timer,
 };
 use log::{debug, error, info};
@@ -194,7 +194,10 @@ impl SendBlockChannel {
 
                     info!(
                         "Generated SliceMessage {} from chunk_id {}. ({}/{})",
-                        message.slice_id, self.chunk_id, message.slice_id + 1, *num_slices
+                        message.slice_id,
+                        self.chunk_id,
+                        message.slice_id + 1,
+                        *num_slices
                     );
 
                     slice_messages.push(message);
@@ -283,7 +286,7 @@ impl SendChannel for SendBlockChannel {
                     if num_acked_slices == num_slices {
                         self.sending = Sending::No;
                         info!("Finished sending block message {}.", self.chunk_id);
-                        self.chunk_id += 1;
+                        self.chunk_id = self.chunk_id.wrapping_add(1);
                     }
                 }
             }
