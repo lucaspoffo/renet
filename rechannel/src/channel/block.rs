@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ChannelError,
     packet::{ChannelPacketData, Payload},
-    sequence_buffer::SequenceBuffer,
+    sequence_buffer::{SequenceBuffer, sequence_less_than},
     timer::Timer,
 };
 use log::{debug, error, info};
@@ -98,6 +98,7 @@ pub struct ReceiveBlockChannel {
     messages_received: VecDeque<Payload>,
     slice_size: usize,
     max_message_size: u64,
+    last_chunk_id: Option<u16>,
     error: Option<ChannelError>,
 }
 
@@ -358,6 +359,7 @@ impl ReceiveBlockChannel {
             channel_id: config.channel_id,
             receiving: Receiving::No,
             messages_received: VecDeque::new(),
+            last_chunk_id: None,
             error: None,
         }
     }
@@ -367,6 +369,13 @@ impl ReceiveBlockChannel {
             if message.num_slices == 0 {
                 error!("Cannot initialize block message with zero slices.");
                 return Err(ChannelError::InvalidSliceMessage);
+            }
+
+            if let Some(last_chunk_id) = self.last_chunk_id {
+                if (message.chunk_id == last_chunk_id) || sequence_less_than(message.chunk_id, last_chunk_id) {
+                    // Ignore already received message
+                    return Ok(None);
+                }
             }
 
             let total_size = message.num_slices as u64 * self.slice_size as u64;
@@ -465,6 +474,8 @@ impl ReceiveBlockChannel {
                 if *num_received_slices == *num_slices {
                     info!("Received all slices for chunk {}.", chunk_id);
                     let block = mem::take(chunk_data);
+                    let last_chunk_id = *chunk_id;
+                    self.last_chunk_id = Some(last_chunk_id);
                     self.receiving = Receiving::No;
                     return Ok(Some(block));
                 }
