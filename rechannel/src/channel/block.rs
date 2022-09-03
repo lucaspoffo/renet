@@ -655,4 +655,52 @@ mod tests {
         assert!(receive_channel.process_slice_message(&slice_message).is_err());
         assert!(matches!(receive_channel.receiving, Receiving::No));
     }
+
+    #[test]
+    fn ignore_already_received_messages() {
+        let current_time = Duration::ZERO;
+        let config = BlockChannelConfig {
+            slice_size: 10,
+            ..Default::default()
+        };
+        let mut send_channel = SendBlockChannel::new(config.clone());
+        let mut receive_channel = ReceiveBlockChannel::new(config);
+
+        send_channel.send_message(Bytes::from(vec![3; 20]), current_time);
+        send_channel.send_message(Bytes::from(vec![3; 20]), current_time);
+
+        // First message
+        let first_block_channel_data = send_channel.get_messages_to_send(15, 0, current_time).unwrap();
+        receive_channel.process_messages(first_block_channel_data.messages);
+        send_channel.process_ack(0);
+
+        assert!(receive_channel.receive_message().is_none());
+
+        let first_block_channel_data = send_channel.get_messages_to_send(u64::MAX, 1, current_time).unwrap();
+        receive_channel.process_messages(first_block_channel_data.messages.clone());
+        send_channel.process_ack(1);
+
+        assert!(receive_channel.receive_message().is_some());
+
+        // Second message
+        let second_block_channel_data = send_channel.get_messages_to_send(20, 2, current_time).unwrap();
+        receive_channel.process_messages(second_block_channel_data.messages);
+        send_channel.process_ack(2);
+
+        let second_block_channel_data = send_channel.get_messages_to_send(u64::MAX, 3, current_time).unwrap();
+        receive_channel.process_messages(second_block_channel_data.messages.clone());
+        send_channel.process_ack(3);
+
+        receive_channel.receive_message().unwrap();
+
+        // Check that receive channel is not receiving messages
+        assert!(matches!(receive_channel.receiving, Receiving::No));
+
+        // Try receiving old messages
+        receive_channel.process_messages(first_block_channel_data.messages);
+        assert!(matches!(receive_channel.receiving, Receiving::No));
+
+        receive_channel.process_messages(second_block_channel_data.messages);
+        assert!(matches!(receive_channel.receiving, Receiving::No));
+    }
 }
