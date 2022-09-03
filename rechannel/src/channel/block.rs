@@ -193,7 +193,7 @@ impl SendBlockChannel {
 
                     info!(
                         "Generated SliceMessage {} from chunk_id {}. ({}/{})",
-                        message.slice_id, self.chunk_id, message.slice_id, num_slices
+                        message.slice_id, self.chunk_id, message.slice_id + 1, *num_slices
                     );
 
                     slice_messages.push(message);
@@ -291,6 +291,12 @@ impl SendChannel for SendBlockChannel {
 
     fn send_message(&mut self, payload: Bytes, current_time: Duration) {
         if self.error.is_some() {
+            return;
+        }
+
+        if payload.is_empty() {
+            log::error!("Tried to send empty block message");
+            self.error = Some(ChannelError::SentEmptyMessage);
             return;
         }
 
