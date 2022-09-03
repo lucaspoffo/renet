@@ -703,4 +703,22 @@ mod tests {
         receive_channel.process_messages(second_block_channel_data.messages);
         assert!(matches!(receive_channel.receiving, Receiving::No));
     }
+
+    #[test]
+    fn test_wrapping_chunk_id() {
+        let current_time = Duration::ZERO;
+        let config = BlockChannelConfig::default();
+        let mut send_channel = SendBlockChannel::new(config.clone());
+        let mut receive_channel = ReceiveBlockChannel::new(config);
+        let message = Bytes::from(vec![3; 20]);
+
+        for i in 0..100000 {
+            let sequence = (i % u16::MAX as usize) as u16;
+            send_channel.send_message(message.clone(), current_time);
+            let block_channel_data = send_channel.get_messages_to_send(u64::MAX, sequence, current_time).unwrap();
+            receive_channel.process_messages(block_channel_data.messages);
+            assert!(receive_channel.receive_message().is_some());
+            send_channel.process_ack(sequence);
+        }
+    }
 }
