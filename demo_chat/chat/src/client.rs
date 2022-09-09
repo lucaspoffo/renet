@@ -3,7 +3,9 @@ use eframe::egui;
 use log::error;
 use matcher::{LobbyListing, RequestConnection};
 use renet::{ClientAuthentication, ConnectToken, DefaultChannel, RenetClient, RenetConnectionConfig};
+use renet_transport_steam::SteamTransport;
 use renet_visualizer::RenetClientVisualizer;
+use steamworks::{Client, SingleClient, ClientManager};
 
 use std::{
     collections::HashMap,
@@ -54,6 +56,8 @@ pub enum AppState {
 
 pub struct ChatApp {
     state: AppState,
+    client: Client<ClientManager>,
+    single_client: SingleClient<ClientManager>,
     ui_state: UiState,
     last_updated: Instant,
 }
@@ -122,10 +126,14 @@ pub fn connect_token_request(
 
 impl Default for ChatApp {
     fn default() -> Self {
+        let (client, single_client) = Client::init().unwrap();
+
         Self {
             state: AppState::main_screen(),
             ui_state: UiState::default(),
             last_updated: Instant::now(),
+            client,
+            single_client
         }
     }
 }
@@ -135,7 +143,7 @@ impl ChatApp {
         match &mut self.state {
             AppState::MainScreen { lobby_list, .. } => {
                 let lobby_list = lobby_list.clone();
-                draw_main_screen(&mut self.ui_state, &mut self.state, lobby_list, ctx);
+                draw_main_screen(&self.client, &mut self.ui_state, &mut self.state, lobby_list, ctx);
             }
             AppState::RequestingToken { .. } => draw_loader(ctx),
             AppState::ClientChat { client, .. } if !client.is_connected() => draw_loader(ctx),
@@ -154,6 +162,8 @@ impl ChatApp {
         let now = Instant::now();
         let duration = now - self.last_updated;
         self.last_updated = now;
+
+        self.single_client.run_callbacks();
 
         match &mut self.state {
             AppState::ClientChat {
@@ -216,7 +226,7 @@ impl ChatApp {
             },
             AppState::RequestingToken { token } => match token.try_recv() {
                 Ok(Ok(token)) => {
-                    let client = create_renet_client_from_token(token);
+                    let client = create_renet_client_from_token(&self.client, token);
 
                     self.state = AppState::ClientChat {
                         visualizer: Box::new(RenetClientVisualizer::default()),
@@ -239,13 +249,14 @@ impl ChatApp {
     }
 }
 
-fn create_renet_client_from_token(connect_token: ConnectToken) -> RenetClient {
+fn create_renet_client_from_token(client: &Client<ClientManager>, connect_token: ConnectToken) -> RenetClient {
     let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
-    let socket = UdpSocket::bind(client_addr).unwrap();
+    // let socket = UdpSocket::bind(client_addr).unwrap();
+    let transport = SteamTransport::new(client);
     let connection_config = RenetConnectionConfig::default();
 
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let authentication = ClientAuthentication::Secure { connect_token };
 
-    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
+    RenetClient::new(current_time, connection_config, authentication, Box::new(transport)).unwrap()
 }

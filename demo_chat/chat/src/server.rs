@@ -13,6 +13,8 @@ use renet_visualizer::RenetServerVisualizer;
 use crate::{lobby_status::update_lobby_status, ClientMessages, Message, ServerMessages};
 use bincode::Options;
 use log::info;
+use steamworks::{Client, SingleClient, ClientManager};
+use renet_transport_steam::{address_from_steam_id, SteamTransport};
 
 pub struct ChatServer {
     pub server: RenetServer,
@@ -23,9 +25,11 @@ pub struct ChatServer {
 }
 
 impl ChatServer {
-    pub fn new(lobby_name: String, host_username: String, password: String) -> Self {
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let server_addr = socket.local_addr().unwrap();
+    pub fn new(client: &Client<ClientManager>, lobby_name: String, host_username: String, password: String) -> Self {
+        // let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let transport = SteamTransport::new(client);
+
+        let server_addr = address_from_steam_id(client.user().steam_id());
         let connection_config = RenetConnectionConfig::default();
         let private_key = generate_random_bytes();
         let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Secure { private_key });
@@ -41,7 +45,7 @@ impl ChatServer {
             current_clients: 0,
         };
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        let server = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
+        let server = RenetServer::new(current_time, server_config, connection_config, Box::new(transport));
         let mut usernames = HashMap::new();
         usernames.insert(1, host_username);
 

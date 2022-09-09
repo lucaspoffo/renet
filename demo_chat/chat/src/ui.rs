@@ -8,12 +8,15 @@ use matcher::{LobbyListing, RequestConnection};
 use renet::DefaultChannel;
 
 use std::{collections::HashMap, sync::mpsc};
+use steamworks::{Client, ClientManager};
+
 
 use crate::{client::connect_token_request, ClientMessages};
 use crate::{
     client::{AppState, UiState},
     server::ChatServer,
 };
+
 
 pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u64, bool)> {
     ui.separator();
@@ -119,7 +122,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     });
 }
 
-pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list: Vec<LobbyListing>, ctx: &egui::Context) {
+pub fn draw_main_screen(client: &Client<ClientManager>, ui_state: &mut UiState, state: &mut AppState, lobby_list: Vec<LobbyListing>, ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         egui::Area::new("buttons")
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -148,7 +151,7 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list
                                 ui_state.error = Some("Nick or Lobby name can't be empty".to_owned());
                             } else {
                                 let server =
-                                    ChatServer::new(ui_state.lobby_name.clone(), ui_state.username.clone(), ui_state.password.clone());
+                                    ChatServer::new(client, ui_state.lobby_name.clone(), ui_state.username.clone(), ui_state.password.clone());
                                 *state = AppState::HostChat {
                                     chat_server: Box::new(server),
                                 };
