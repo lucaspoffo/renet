@@ -4,19 +4,20 @@ use eframe::{
     epaint::PathShape,
 };
 use egui_extras::{Size, TableBuilder};
-use matcher::{LobbyListing, RequestConnection};
-use renet::DefaultChannel;
+use matcher::{LobbyListing, RequestConnection, Username};
+use renet::{ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig};
+use renet_visualizer::RenetClientVisualizer;
 
-use std::{collections::HashMap, sync::mpsc};
+use std::{collections::HashMap, net::SocketAddr, sync::mpsc, time::SystemTime};
 use steamworks::{Client, ClientManager};
-
 
 use crate::{client::connect_token_request, ClientMessages};
 use crate::{
     client::{AppState, UiState},
     server::ChatServer,
 };
-
+use matcher::PROTOCOL_ID;
+use renet_transport_steam::SteamTransport;
 
 pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u64, bool)> {
     ui.separator();
@@ -122,7 +123,13 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     });
 }
 
-pub fn draw_main_screen(client: &Client<ClientManager>, ui_state: &mut UiState, state: &mut AppState, lobby_list: Vec<LobbyListing>, ctx: &egui::Context) {
+pub fn draw_main_screen(
+    client: &Client<ClientManager>,
+    ui_state: &mut UiState,
+    state: &mut AppState,
+    lobby_list: Vec<LobbyListing>,
+    ctx: &egui::Context,
+) {
     egui::CentralPanel::default().show(ctx, |ui| {
         egui::Area::new("buttons")
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -150,11 +157,57 @@ pub fn draw_main_screen(client: &Client<ClientManager>, ui_state: &mut UiState, 
                             if ui_state.username.is_empty() || ui_state.lobby_name.is_empty() {
                                 ui_state.error = Some("Nick or Lobby name can't be empty".to_owned());
                             } else {
-                                let server =
-                                    ChatServer::new(client, ui_state.lobby_name.clone(), ui_state.username.clone(), ui_state.password.clone());
+                                let server = ChatServer::new(
+                                    client,
+                                    ui_state.lobby_name.clone(),
+                                    ui_state.username.clone(),
+                                    ui_state.password.clone(),
+                                );
                                 *state = AppState::HostChat {
                                     chat_server: Box::new(server),
                                 };
+                            }
+                        }
+                    });
+
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        ui.label("Server addr:");
+                        ui.text_edit_singleline(&mut ui_state.server_addr)
+                    });
+
+                    ui.vertical_centered_justified(|ui| {
+                        if ui.button("Connect").clicked() {
+                            if ui_state.username.is_empty() {
+                                ui_state.error = Some("Nick can't be empty".to_owned());
+                            } else {
+                                match ui_state.server_addr.parse::<SocketAddr>() {
+                                    Err(e) => ui_state.error = Some(e.to_string()),
+                                    Ok(addr) => {
+                                        let transport = SteamTransport::new(client);
+                                        let connection_config = RenetConnectionConfig::default();
+                                        let username = Username(ui_state.username.clone());
+
+                                        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+                                        let authentication = ClientAuthentication::Unsecure {
+                                            protocol_id: PROTOCOL_ID,
+                                            client_id: client.user().steam_id().raw(),
+                                            server_addr: addr,
+                                            user_data: Some(username.to_netcode_user_data()),
+                                        };
+
+                                        let client =
+                                            RenetClient::new(current_time, connection_config, authentication, Box::new(transport)).unwrap();
+
+                                        *state = AppState::ClientChat {
+                                            client: Box::new(client),
+                                            usernames: HashMap::new(),
+                                            messages: vec![],
+                                            visualizer: Box::new(RenetClientVisualizer::default()),
+                                        };
+                                    }
+                                }
                             }
                         }
                     });
