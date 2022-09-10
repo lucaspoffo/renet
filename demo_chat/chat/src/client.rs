@@ -32,6 +32,7 @@ pub struct UiState {
     pub lobby_name: String,
     pub error: Option<String>,
     pub text_input: String,
+    pub server_addr: String,
     pub show_network_info: bool,
 }
 
@@ -250,7 +251,7 @@ impl ChatApp {
 }
 
 fn create_renet_client_from_token(client: &Client<ClientManager>, connect_token: ConnectToken) -> RenetClient {
-    let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    // let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     // let socket = UdpSocket::bind(client_addr).unwrap();
     let transport = SteamTransport::new(client);
     let connection_config = RenetConnectionConfig::default();
