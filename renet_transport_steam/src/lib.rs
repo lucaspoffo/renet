@@ -54,6 +54,23 @@ impl SteamTransport {
     pub fn new(client: &Client<ClientManager>) -> Self {
         let networking_messages = client.networking_messages();
 
+        // Accept all connections
+        networking_messages.session_request_callback(|request| {
+            request.accept();
+        });
+
+        networking_messages.session_failed_callback(|info| {
+            let reason = if let Some(end_reason) = info.end_reason() {
+                format!("{:?}", end_reason)
+            } else {
+                "Unknown".to_owned()
+            };
+
+            if let Some(identity) = info.identity_remote() {
+                log::error!("Session from user {:?} failed: {}", identity.steam_id(), reason);
+            }
+        });
+
         Self {
             networking_messages
         }
@@ -95,7 +112,9 @@ impl Transport for SteamTransport {
     fn send_to(&mut self, buffer: &[u8], addr: SocketAddr) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         let steam_id = steam_id_from_address(addr)?;
         let network_id = NetworkingIdentity::new_steam_id(steam_id);
-        self.networking_messages.send_message_to_user(network_id, SendFlags::UNRELIABLE_NO_NAGLE, buffer, CHANNEL_ID);
+        if let Err(e) = self.networking_messages.send_message_to_user(network_id, SendFlags::UNRELIABLE_NO_NAGLE, buffer, CHANNEL_ID) {
+            log::error!("Error while sending message to {:?}: {}", steam_id, e);
+        }
 
         Ok(())
     }
