@@ -32,7 +32,7 @@ impl ChatServer {
         let server_addr = address_from_steam_id(client.user().steam_id());
         let connection_config = RenetConnectionConfig::default();
         let private_key = generate_random_bytes();
-        let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Secure { private_key });
+        let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
 
         let password = if password.is_empty() { None } else { Some(password) };
 
