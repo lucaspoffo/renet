@@ -62,7 +62,7 @@ impl SteamTransport {
 
         // Accept all connections
         let _session_request_callback = networking_messages.session_request_callback(|request| {
-            println!("Receveid request from {:?}", request.remote().steam_id());
+            log::info!("Received session request from {:?}", request.remote().steam_id());
             request.accept();
         });
 
@@ -86,7 +86,6 @@ impl SteamTransport {
 impl Transport for SteamTransport {
     fn recv_from(&mut self, buffer: &mut [u8]) -> Result<Option<(usize, SocketAddr)>, Box<dyn Error + Send + Sync + 'static>> {
         let messages = self.networking_messages.receive_messages_on_channel(CHANNEL_ID, 1);
-
         if let Some(message) = messages.get(0) {
             let network_id = message.identity_peer();
             let addr = match network_id.steam_id() {
@@ -120,7 +119,7 @@ impl Transport for SteamTransport {
         let network_id = NetworkingIdentity::new_steam_id(steam_id);
         if let Err(e) = self
             .networking_messages
-            .send_message_to_user(network_id, SendFlags::UNRELIABLE_NO_NAGLE, buffer, CHANNEL_ID)
+            .send_message_to_user(network_id, SendFlags::UNRELIABLE, buffer, CHANNEL_ID)
         {
             log::error!("Error while sending message to {:?}: {}", steam_id, e);
         }
