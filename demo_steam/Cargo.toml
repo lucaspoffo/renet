@@ -1,0 +1,11 @@
+[package]
+name = "demo_steam"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+renet = { path = "../renet", version = "0.0.9" }
+steamworks = { path = "../../steamworks-rs", version = "0.9.0" }
+renet_transport_steam = { path = "../renet_transport_steam" }
