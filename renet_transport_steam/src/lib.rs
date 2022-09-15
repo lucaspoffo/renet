@@ -6,15 +6,15 @@ use std::{
 
 use renet::Transport;
 use steamworks::{
-    networking_messages::NetworkingMessages,
-    networking_types::{NetworkingIdentity, SendFlags},
+    networking_messages::{NetworkingMessages, SessionRequest},
+    networking_types::{NetConnectionInfo, NetworkingIdentity, SendFlags},
     CallbackHandle, Client, ClientManager, SteamId,
 };
 
 pub struct SteamTransport {
     networking_messages: NetworkingMessages<ClientManager>,
-    _session_request_callback: CallbackHandle<ClientManager>,
-    _session_failed_callback: CallbackHandle<ClientManager>,
+    session_request_callback: CallbackHandle<ClientManager>,
+    session_failed_callback: CallbackHandle<ClientManager>,
 }
 
 const CHANNEL_ID: u32 = 0;
@@ -61,12 +61,12 @@ impl SteamTransport {
         let networking_messages = client.networking_messages();
 
         // Accept all connections
-        let _session_request_callback = networking_messages.session_request_callback(|request| {
+        let session_request_callback = networking_messages.session_request_callback(|request| {
             log::info!("Received session request from {:?}", request.remote().steam_id());
             request.accept();
         });
 
-        let _session_failed_callback = networking_messages.session_failed_callback(|info| {
+        let session_failed_callback = networking_messages.session_failed_callback(|info| {
             let reason = if let Some(end_reason) = info.end_reason() { format!("{:?}", end_reason) } else { "Unknown".to_owned() };
 
             let user =
@@ -77,9 +77,17 @@ impl SteamTransport {
 
         Self {
             networking_messages,
-            _session_request_callback,
-            _session_failed_callback,
+            session_request_callback,
+            session_failed_callback,
         }
+    }
+
+    pub fn session_request_callback(&mut self, callback: impl FnMut(SessionRequest<ClientManager>) + Send + 'static) {
+        self.session_request_callback = self.networking_messages.session_request_callback(callback);
+    }
+
+    pub fn session_failed_callback(&mut self, callback: impl FnMut(NetConnectionInfo) + Send + 'static) {
+        self.session_failed_callback = self.networking_messages.session_failed_callback(callback);
     }
 }
 
