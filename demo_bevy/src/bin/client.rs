@@ -6,7 +6,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_renet::{
-    renet::{ClientAuthentication, RenetClient, RenetError},
+    renet::{ClientAuthentication, RenetClient, RenetError, UdpTransport},
     run_if_client_connected, RenetClientPlugin,
 };
 use demo_bevy::{
@@ -39,6 +39,7 @@ struct MostRecentTick(Option<u32>);
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let transport = Box::new(UdpTransport::with_socket(socket).unwrap()) as _;
     let connection_config = client_connection_config();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
@@ -49,7 +50,7 @@ fn new_renet_client() -> RenetClient {
         user_data: None,
     };
 
-    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
+    RenetClient::new(current_time, connection_config, authentication, transport).unwrap()
 }
 
 fn main() {

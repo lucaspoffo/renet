@@ -7,7 +7,7 @@ use bevy::{
 use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
-    renet::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent},
+    renet::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent, UdpTransport},
     RenetServerPlugin,
 };
 use demo_bevy::{
@@ -33,10 +33,11 @@ const PLAYER_MOVE_SPEED: f32 = 5.0;
 fn new_renet_server() -> RenetServer {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();
+    let transport = Box::new(UdpTransport::with_socket(socket).unwrap()) as _;
     let connection_config = server_connection_config();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
+    RenetServer::new(current_time, server_config, connection_config, transport)
 }
 
 fn main() {
