@@ -9,6 +9,16 @@ pub trait Transport {
     fn send_to(&mut self, buffer: &[u8], addr: SocketAddr) -> Result<(), Box<dyn Error + Send + Sync + 'static>>;
 }
 
+impl<T: Transport + ?Sized> Transport for Box<T> {
+    fn recv_from(&mut self, buffer: &mut [u8]) -> Result<Option<(usize, SocketAddr)>, Box<dyn Error + Send + Sync + 'static>> {
+        self.as_mut().recv_from(buffer)
+    }
+
+    fn send_to(&mut self, buffer: &[u8], addr: SocketAddr) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+        self.as_mut().send_to(buffer, addr)
+    }
+}
+
 pub struct UdpTransport(UdpSocket);
 
 impl UdpTransport {

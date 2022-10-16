@@ -32,21 +32,21 @@ pub enum ClientAuthentication {
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
-pub struct RenetClient {
+pub struct RenetClient<T = Box<dyn Transport + Sync + Send>> {
     current_time: Duration,
     netcode_client: NetcodeClient,
-    transport: Box<dyn Transport>,
+    transport: T,
     reliable_connection: RemoteConnection,
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
     client_packet_info: ClientPacketInfo,
 }
 
-impl RenetClient {
+impl<T: Transport> RenetClient<T> {
     pub fn new(
         current_time: Duration,
         config: RenetConnectionConfig,
         authentication: ClientAuthentication,
-        transport: Box<dyn Transport>,
+        transport: T,
     ) -> Result<Self, RenetError> {
         let reliable_connection = RemoteConnection::new(current_time, config.to_connection_config());
         let connect_token: ConnectToken = match authentication {
@@ -81,25 +81,6 @@ impl RenetClient {
         })
     }
 
-    #[doc(hidden)]
-    pub fn __test() -> Self {
-        let server_addr = "127.0.0.1:5000".parse().unwrap();
-        let transport = UdpTransport::new().unwrap();
-
-        Self::new(
-            Duration::ZERO,
-            Default::default(),
-            ClientAuthentication::Unsecure {
-                client_id: 0,
-                server_addr,
-                user_data: None,
-                protocol_id: 0,
-            },
-            Box::new(transport),
-        )
-        .unwrap()
-    }
-
     pub fn client_id(&self) -> u64 {
         self.netcode_client.client_id()
     }
@@ -126,7 +107,7 @@ impl RenetClient {
         match self.netcode_client.disconnect() {
             Ok((addr, payload)) => {
                 for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = send_to(self.current_time, &mut *self.transport, &mut self.client_packet_info, payload, addr) {
+                    if let Err(e) = send_to(self.current_time, &mut self.transport, &mut self.client_packet_info, payload, addr) {
                         log::error!("failed to send disconnect packet to server: {}", e);
                     }
                 }
@@ -165,7 +146,7 @@ impl RenetClient {
             let packets = self.reliable_connection.get_packets_to_send()?;
             for packet in packets.into_iter() {
                 let (addr, payload) = self.netcode_client.generate_payload_packet(&packet)?;
-                send_to(self.current_time, &mut *self.transport, &mut self.client_packet_info, payload, addr)?;
+                send_to(self.current_time, &mut self.transport, &mut self.client_packet_info, payload, addr)?;
             }
         }
         Ok(())
@@ -208,12 +189,33 @@ impl RenetClient {
 
         self.reliable_connection.update()?;
         if let Some((packet, addr)) = self.netcode_client.update(duration) {
-            send_to(self.current_time, &mut *self.transport, &mut self.client_packet_info, packet, addr)?;
+            send_to(self.current_time, &mut self.transport, &mut self.client_packet_info, packet, addr)?;
         }
 
         self.client_packet_info.update_metrics();
 
         Ok(())
+    }
+}
+
+impl RenetClient<UdpTransport> {
+    #[doc(hidden)]
+    pub fn __test() -> Self {
+        let server_addr = "127.0.0.1:5000".parse().unwrap();
+        let transport = UdpTransport::new().unwrap();
+
+        Self::new(
+            Duration::ZERO,
+            Default::default(),
+            ClientAuthentication::Unsecure {
+                client_id: 0,
+                server_addr,
+                user_data: None,
+                protocol_id: 0,
+            },
+            transport,
+        )
+        .unwrap()
     }
 }
 

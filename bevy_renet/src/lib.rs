@@ -80,7 +80,7 @@ impl RenetServerPlugin {
         mut server_events: EventWriter<ServerEvent>,
     ) {
         if let Err(e) = server.update(time.delta()) {
-            renet_error.send(RenetError::IO(e));
+            renet_error.send(e);
         }
 
         while let Some(event) = server.get_event() {
@@ -90,7 +90,7 @@ impl RenetServerPlugin {
 
     pub fn send_packets_system(mut server: ResMut<RenetServer>, mut renet_error: EventWriter<RenetError>) {
         if let Err(e) = server.send_packets() {
-            renet_error.send(RenetError::IO(e));
+            renet_error.send(e);
         }
     }
 
@@ -135,6 +135,8 @@ pub fn run_if_client_connected(client: Option<Res<RenetClient>>) -> ShouldRun {
 
 #[cfg(test)]
 mod tests {
+    use renet::UdpTransport;
+
     use crate::renet::{ClientAuthentication, RenetConnectionConfig, ServerAuthentication, ServerConfig};
     use std::{
         error::Error,
@@ -196,13 +198,12 @@ mod tests {
 
     fn create_server() -> Result<RenetServer, Box<dyn Error>> {
         let server_addr = SocketAddr::new(SERVER_IP, SERVER_PORT);
-        RenetServer::new(
+        Ok(RenetServer::new(
             SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?,
             ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure),
             RenetConnectionConfig::default(),
-            UdpSocket::bind(server_addr)?,
-        )
-        .map_err(From::from)
+            Box::new(UdpTransport::with_socket(UdpSocket::bind(server_addr)?)?) as _,
+        ))
     }
 
     fn create_client() -> Result<RenetClient, Box<dyn Error>> {
@@ -215,12 +216,11 @@ mod tests {
             protocol_id: PROTOCOL_ID,
             user_data: None,
         };
-        RenetClient::new(
+        Ok(RenetClient::new(
             current_time,
-            UdpSocket::bind((ip, 0))?,
             RenetConnectionConfig::default(),
             authentication,
-        )
-        .map_err(From::from)
+            Box::new(UdpTransport::with_socket(UdpSocket::bind((ip, 0))?)?) as _,
+        )?)
     }
 }

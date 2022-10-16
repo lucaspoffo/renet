@@ -66,7 +66,7 @@ fn server(addr: SocketAddr) {
     let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, transport);
+    let mut server = RenetServer::new(current_time, server_config, connection_config, transport);
 
     let mut usernames: HashMap<u64, String> = HashMap::new();
     let mut received_messages = vec![];

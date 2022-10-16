@@ -16,8 +16,8 @@ use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DAT
 
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.
-pub struct RenetServer {
-    transport: Box<dyn Transport>,
+pub struct RenetServer<T = Box<dyn Transport + Sync + Send>> {
+    transport: T,
     reliable_server: RechannelServer<u64>,
     netcode_server: NetcodeServer,
     bandwidth_smoothing_factor: f32,
@@ -73,13 +73,8 @@ impl ServerConfig {
     }
 }
 
-impl RenetServer {
-    pub fn new(
-        current_time: Duration,
-        server_config: ServerConfig,
-        connection_config: RenetConnectionConfig,
-        transport: Box<dyn Transport>,
-    ) -> Self {
+impl<T: Transport> RenetServer<T> {
+    pub fn new(current_time: Duration, server_config: ServerConfig, connection_config: RenetConnectionConfig, transport: T) -> Self {
         let buffer = vec![0u8; connection_config.max_packet_size as usize].into_boxed_slice();
         let bandwidth_smoothing_factor = connection_config.bandwidth_smoothing_factor;
         let reliable_server = RechannelServer::new(current_time, connection_config.to_connection_config());
@@ -109,14 +104,6 @@ impl RenetServer {
         }
     }
 
-    #[doc(hidden)]
-    pub fn __test() -> Self {
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), ServerAuthentication::Unsecure);
-        let transport = UdpTransport::new().unwrap();
-        Self::new(Duration::ZERO, server_config, RenetConnectionConfig::default(), Box::new(transport))
-    }
-
     pub fn addr(&self) -> SocketAddr {
         self.netcode_server.address()
     }
@@ -133,7 +120,7 @@ impl RenetServer {
             server_result,
             current_time,
             self.bandwidth_smoothing_factor,
-            &mut *self.transport,
+            &mut self.transport,
             &mut self.reliable_server,
             &mut self.clients_packet_info,
             &mut self.events,
@@ -191,7 +178,7 @@ impl RenetServer {
                         server_result,
                         current_time,
                         self.bandwidth_smoothing_factor,
-                        &mut *self.transport,
+                        &mut self.transport,
                         &mut self.reliable_server,
                         &mut self.clients_packet_info,
                         &mut self.events,
@@ -208,7 +195,7 @@ impl RenetServer {
                 server_result,
                 current_time,
                 self.bandwidth_smoothing_factor,
-                &mut *self.transport,
+                &mut self.transport,
                 &mut self.reliable_server,
                 &mut self.clients_packet_info,
                 &mut self.events,
@@ -281,7 +268,7 @@ impl RenetServer {
             for packet in packets.iter() {
                 match self.netcode_server.generate_payload_packet(client_id, packet) {
                     Ok((addr, payload)) => {
-                        send_to(current_time, &mut *self.transport, &mut self.clients_packet_info, payload, addr)?;
+                        send_to(current_time, &mut self.transport, &mut self.clients_packet_info, payload, addr)?;
                     }
                     Err(e) => error!("Failed to encrypt payload packet: {}", e),
                 }
@@ -318,6 +305,16 @@ impl RenetServer {
     /// Returns the maximum number of clients that can be connected.
     pub fn connected_clients(&self) -> usize {
         self.netcode_server.connected_clients()
+    }
+}
+
+impl RenetServer<UdpTransport> {
+    #[doc(hidden)]
+    pub fn __test() -> Self {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let server_config = ServerConfig::new(64, 0, socket.local_addr().unwrap(), ServerAuthentication::Unsecure);
+        let transport = UdpTransport::new().unwrap();
+        Self::new(Duration::ZERO, server_config, RenetConnectionConfig::default(), transport)
     }
 }
 

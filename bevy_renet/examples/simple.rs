@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_renet::{
     renet::{
         ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication,
-        ServerConfig, ServerEvent,
+        ServerConfig, ServerEvent, UdpTransport,
     },
     run_if_client_connected, RenetClientPlugin, RenetServerPlugin,
 };
@@ -43,6 +43,7 @@ enum ServerMessages {
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let transport = Box::new(UdpTransport::with_socket(socket).unwrap()) as _;
     let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
@@ -52,16 +53,17 @@ fn new_renet_client() -> RenetClient {
         server_addr,
         user_data: None,
     };
-    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
+    RenetClient::new(current_time, connection_config, authentication, transport).unwrap()
 }
 
 fn new_renet_server() -> RenetServer {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();
+    let transport = Box::new(UdpTransport::with_socket(socket).unwrap()) as _;
     let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
+    RenetServer::new(current_time, server_config, connection_config, transport)
 }
 
 fn main() {
