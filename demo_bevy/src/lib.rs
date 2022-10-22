@@ -15,7 +15,6 @@ pub struct Player {
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component)]
 pub struct PlayerInput {
-    pub most_recent_tick: Option<u32>,
     pub up: bool,
     pub down: bool,
     pub left: bool,
@@ -34,7 +33,7 @@ pub enum ClientChannel {
 
 pub enum ServerChannel {
     ServerMessages,
-    NetworkFrame,
+    NetworkedEntities,
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
@@ -51,30 +50,26 @@ pub struct NetworkedEntities {
     pub translations: Vec<[f32; 3]>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct NetworkFrame {
-    pub tick: u32,
-    pub entities: NetworkedEntities,
+impl From<ClientChannel> for u8 {
+    fn from(channel_id: ClientChannel) -> Self {
+        match channel_id {
+            ClientChannel::Command => 0,
+            ClientChannel::Input => 1,
+        }
+    }
 }
 
 impl ClientChannel {
-    pub fn id(&self) -> u8 {
-        match self {
-            Self::Input => 0,
-            Self::Command => 1,
-        }
-    }
-
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
             ReliableChannelConfig {
-                channel_id: Self::Input.id(),
+                channel_id: Self::Input.into(),
                 message_resend_time: Duration::ZERO,
                 ..Default::default()
             }
             .into(),
             ReliableChannelConfig {
-                channel_id: Self::Command.id(),
+                channel_id: Self::Command.into(),
                 message_resend_time: Duration::ZERO,
                 ..Default::default()
             }
@@ -83,23 +78,26 @@ impl ClientChannel {
     }
 }
 
-impl ServerChannel {
-    pub fn id(&self) -> u8 {
-        match self {
-            Self::NetworkFrame => 0,
-            Self::ServerMessages => 1,
+impl From<ServerChannel> for u8 {
+    fn from(channel_id: ServerChannel) -> Self {
+        match channel_id {
+            ServerChannel::NetworkedEntities => 0,
+            ServerChannel::ServerMessages => 1,
         }
     }
+}
 
+impl ServerChannel {
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
             UnreliableChannelConfig {
-                channel_id: Self::NetworkFrame.id(),
+                channel_id: Self::NetworkedEntities.into(),
+                sequenced: true, // We don't care about old positions
                 ..Default::default()
             }
             .into(),
             ReliableChannelConfig {
-                channel_id: Self::ServerMessages.id(),
+                channel_id: Self::ServerMessages.into(),
                 message_resend_time: Duration::from_millis(200),
                 ..Default::default()
             }

@@ -10,8 +10,8 @@ use bevy_renet::{
     run_if_client_connected, RenetClientPlugin,
 };
 use demo_bevy::{
-    client_connection_config, setup_level, ClientChannel, NetworkFrame, PlayerCommand, PlayerInput, Ray3d, ServerChannel, ServerMessages,
-    PROTOCOL_ID,
+    client_connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, Ray3d, ServerChannel,
+    ServerMessages, PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -32,9 +32,6 @@ struct PlayerInfo {
 struct ClientLobby {
     players: HashMap<u64, PlayerInfo>,
 }
-
-#[derive(Debug)]
-struct MostRecentTick(Option<u32>);
 
 fn new_renet_client() -> RenetClient {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
@@ -65,7 +62,6 @@ fn main() {
 
     app.insert_resource(ClientLobby::default());
     app.insert_resource(PlayerInput::default());
-    app.insert_resource(MostRecentTick(None));
     app.insert_resource(new_renet_client());
     app.insert_resource(NetworkMapping::default());
 
@@ -116,13 +112,11 @@ fn player_input(
     mouse_button_input: Res<Input<MouseButton>>,
     target_query: Query<&Transform, With<Target>>,
     mut player_commands: EventWriter<PlayerCommand>,
-    most_recent_tick: Res<MostRecentTick>,
 ) {
     player_input.left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
     player_input.right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
     player_input.up = keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up);
     player_input.down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
-    player_input.most_recent_tick = most_recent_tick.0;
 
     if mouse_button_input.just_pressed(MouseButton::Left) {
         let target_transform = target_query.single();
@@ -135,13 +129,13 @@ fn player_input(
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(ClientChannel::Input.id(), input_message);
+    client.send_message(ClientChannel::Input, input_message);
 }
 
 fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
     for command in player_commands.iter() {
         let command_message = bincode::serialize(command).unwrap();
-        client.send_message(ClientChannel::Command.id(), command_message);
+        client.send_message(ClientChannel::Command, command_message);
     }
 }
 
@@ -152,10 +146,9 @@ fn client_sync_players(
     mut client: ResMut<RenetClient>,
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
-    mut most_recent_tick: ResMut<MostRecentTick>,
 ) {
     let client_id = client.client_id();
-    while let Some(message) = client.receive_message(ServerChannel::ServerMessages.id()) {
+    while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
             ServerMessages::PlayerCreate { id, translation, entity } => {
@@ -209,17 +202,12 @@ fn client_sync_players(
         }
     }
 
-    while let Some(message) = client.receive_message(ServerChannel::NetworkFrame.id()) {
-        let frame: NetworkFrame = bincode::deserialize(&message).unwrap();
-        match most_recent_tick.0 {
-            None => most_recent_tick.0 = Some(frame.tick),
-            Some(tick) if tick < frame.tick => most_recent_tick.0 = Some(frame.tick),
-            _ => continue,
-        }
+    while let Some(message) = client.receive_message(ServerChannel::NetworkedEntities) {
+        let networked_entities: NetworkedEntities = bincode::deserialize(&message).unwrap();
 
-        for i in 0..frame.entities.entities.len() {
-            if let Some(entity) = network_mapping.0.get(&frame.entities.entities[i]) {
-                let translation = frame.entities.translations[i].into();
+        for i in 0..networked_entities.entities.len() {
+            if let Some(entity) = network_mapping.0.get(&networked_entities.entities[i]) {
+                let translation = networked_entities.translations[i].into();
                 let transform = Transform {
                     translation,
                     ..Default::default()

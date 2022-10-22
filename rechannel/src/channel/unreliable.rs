@@ -330,7 +330,7 @@ mod tests {
 
         // Send first message
         let first_message = Bytes::from(vec![0]);
-        send_channel.send_message(first_message.clone(), current_time);
+        send_channel.send_message(first_message, current_time);
         let first_channel_data = send_channel.get_messages_to_send(u64::MAX, sequence, current_time).unwrap();
         assert_eq!(first_channel_data.messages.len(), 1);
 

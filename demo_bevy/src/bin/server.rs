@@ -11,8 +11,8 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use demo_bevy::{
-    server_connection_config, setup_level, spawn_fireball, ClientChannel, NetworkFrame, Player, PlayerCommand, PlayerInput, Projectile,
-    ServerChannel, ServerMessages, PROTOCOL_ID,
+    server_connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput,
+    Projectile, ServerChannel, ServerMessages, PROTOCOL_ID,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -20,13 +20,6 @@ use renet_visualizer::RenetServerVisualizer;
 pub struct ServerLobby {
     pub players: HashMap<u64, Entity>,
 }
-
-#[derive(Debug, Default)]
-struct NetworkTick(u32);
-
-// Clients last received ticks
-#[derive(Debug, Default)]
-struct ClientTicks(HashMap<u64, Option<u32>>);
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
@@ -51,8 +44,6 @@ fn main() {
     app.add_plugin(EguiPlugin);
 
     app.insert_resource(ServerLobby::default());
-    app.insert_resource(NetworkTick(0));
-    app.insert_resource(ClientTicks::default());
     app.insert_resource(new_renet_server());
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
@@ -79,7 +70,6 @@ fn server_update_system(
     mut lobby: ResMut<ServerLobby>,
     mut server: ResMut<RenetServer>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
-    mut client_ticks: ResMut<ClientTicks>,
     players: Query<(Entity, &Player, &Transform)>,
 ) {
     for event in server_events.iter() {
@@ -97,7 +87,7 @@ fn server_update_system(
                         translation,
                     })
                     .unwrap();
-                    server.send_message(*id, ServerChannel::ServerMessages.id(), message);
+                    server.send_message(*id, ServerChannel::ServerMessages, message);
                 }
 
                 // Spawn new player
@@ -126,24 +116,23 @@ fn server_update_system(
                     translation,
                 })
                 .unwrap();
-                server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+                server.broadcast_message(ServerChannel::ServerMessages, message);
             }
             ServerEvent::ClientDisconnected(id) => {
                 println!("Player {} disconnected.", id);
                 visualizer.remove_client(*id);
-                client_ticks.0.remove(id);
                 if let Some(player_entity) = lobby.players.remove(id) {
                     commands.entity(player_entity).despawn();
                 }
 
                 let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *id }).unwrap();
-                server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+                server.broadcast_message(ServerChannel::ServerMessages, message);
             }
         }
     }
 
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, ClientChannel::Command.id()) {
+        while let Some(message) = server.receive_message(client_id, ClientChannel::Command) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
                 PlayerCommand::BasicAttack { mut cast_at } => {
@@ -163,15 +152,14 @@ fn server_update_system(
                                 translation: translation.into(),
                             };
                             let message = bincode::serialize(&message).unwrap();
-                            server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+                            server.broadcast_message(ServerChannel::ServerMessages, message);
                         }
                     }
                 }
             }
         }
-        while let Some(message) = server.receive_message(client_id, ClientChannel::Input.id()) {
+        while let Some(message) = server.receive_message(client_id, ClientChannel::Input) {
             let input: PlayerInput = bincode::deserialize(&message).unwrap();
-            client_ticks.0.insert(client_id, input.most_recent_tick);
             if let Some(player_entity) = lobby.players.get(&client_id) {
                 commands.entity(*player_entity).insert(input);
             }
@@ -198,21 +186,15 @@ fn update_visulizer_system(
 }
 
 #[allow(clippy::type_complexity)]
-fn server_network_sync(
-    mut tick: ResMut<NetworkTick>,
-    mut server: ResMut<RenetServer>,
-    networked_entities: Query<(Entity, &Transform), Or<(With<Player>, With<Projectile>)>>,
-) {
-    let mut frame = NetworkFrame::default();
-    for (entity, transform) in networked_entities.iter() {
-        frame.entities.entities.push(entity);
-        frame.entities.translations.push(transform.translation.into());
+fn server_network_sync(mut server: ResMut<RenetServer>, query: Query<(Entity, &Transform), Or<(With<Player>, With<Projectile>)>>) {
+    let mut networked_entities = NetworkedEntities::default();
+    for (entity, transform) in query.iter() {
+        networked_entities.entities.push(entity);
+        networked_entities.translations.push(transform.translation.into());
     }
 
-    frame.tick = tick.0;
-    tick.0 += 1;
-    let sync_message = bincode::serialize(&frame).unwrap();
-    server.broadcast_message(ServerChannel::NetworkFrame.id(), sync_message);
+    let sync_message = bincode::serialize(&networked_entities).unwrap();
+    server.broadcast_message(ServerChannel::NetworkedEntities, sync_message);
 }
 
 fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
@@ -255,6 +237,6 @@ fn projectile_on_removal_system(mut server: ResMut<RenetServer>, removed_project
         let message = ServerMessages::DespawnProjectile { entity };
         let message = bincode::serialize(&message).unwrap();
 
-        server.broadcast_message(ServerChannel::ServerMessages.id(), message);
+        server.broadcast_message(ServerChannel::ServerMessages, message);
     }
 }
