@@ -4,7 +4,7 @@ pub(crate) mod unreliable;
 
 use std::time::Duration;
 
-pub use block::BlockChannelConfig;
+pub use block::ChunkChannelConfig;
 pub use reliable::ReliableChannelConfig;
 pub use unreliable::UnreliableChannelConfig;
 
@@ -12,7 +12,7 @@ use bytes::Bytes;
 
 use crate::{
     channel::{
-        block::{ReceiveBlockChannel, SendBlockChannel},
+        block::{ReceiveChunkChannel, SendChunkChannel},
         reliable::{ReceiveReliableChannel, SendReliableChannel},
         unreliable::{ReceiveUnreliableChannel, SendUnreliableChannel},
     },
@@ -25,7 +25,7 @@ use crate::{
 pub enum ChannelConfig {
     Reliable(ReliableChannelConfig),
     Unreliable(UnreliableChannelConfig),
-    Block(BlockChannelConfig),
+    Chunk(ChunkChannelConfig),
 }
 
 pub(crate) trait SendChannel: std::fmt::Debug {
@@ -47,7 +47,7 @@ pub(crate) trait ReceiveChannel: std::fmt::Debug {
 pub enum DefaultChannel {
     Reliable,
     Unreliable,
-    Block,
+    Chunk,
 }
 
 impl From<ReliableChannelConfig> for ChannelConfig {
@@ -62,9 +62,9 @@ impl From<UnreliableChannelConfig> for ChannelConfig {
     }
 }
 
-impl From<BlockChannelConfig> for ChannelConfig {
-    fn from(config: BlockChannelConfig) -> Self {
-        Self::Block(config)
+impl From<ChunkChannelConfig> for ChannelConfig {
+    fn from(config: ChunkChannelConfig) -> Self {
+        Self::Chunk(config)
     }
 }
 
@@ -86,9 +86,9 @@ impl ChannelConfig {
                 Box::new(SendReliableChannel::new(config.clone())),
                 Box::new(ReceiveReliableChannel::new(config.clone())),
             ),
-            Block(config) => (
-                Box::new(SendBlockChannel::new(config.clone())),
-                Box::new(ReceiveBlockChannel::new(config.clone())),
+            Chunk(config) => (
+                Box::new(SendChunkChannel::new(config.clone())),
+                Box::new(ReceiveChunkChannel::new(config.clone())),
             ),
         }
     }
@@ -97,7 +97,7 @@ impl ChannelConfig {
         match self {
             ChannelConfig::Unreliable(config) => config.channel_id,
             ChannelConfig::Reliable(config) => config.channel_id,
-            ChannelConfig::Block(config) => config.channel_id,
+            ChannelConfig::Chunk(config) => config.channel_id,
         }
     }
 }
@@ -107,7 +107,7 @@ impl From<DefaultChannel> for u8 {
         match channel {
             DefaultChannel::Reliable => 0,
             DefaultChannel::Unreliable => 1,
-            DefaultChannel::Block => 2,
+            DefaultChannel::Chunk => 2,
         }
     }
 }
@@ -117,7 +117,7 @@ impl DefaultChannel {
         vec![
             ChannelConfig::Reliable(Default::default()),
             ChannelConfig::Unreliable(Default::default()),
-            ChannelConfig::Block(Default::default()),
+            ChannelConfig::Chunk(Default::default()),
         ]
     }
 }

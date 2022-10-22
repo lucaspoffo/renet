@@ -35,7 +35,7 @@ impl Default for RenetConnectionConfig {
         let channels_config = vec![
             ChannelConfig::Reliable(Default::default()),
             ChannelConfig::Unreliable(Default::default()),
-            ChannelConfig::Block(Default::default()),
+            ChannelConfig::Chunk(Default::default()),
         ];
 
         Self {

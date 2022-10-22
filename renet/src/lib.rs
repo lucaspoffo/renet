@@ -5,7 +5,7 @@ mod error;
 mod network_info;
 mod server;
 
-pub use rechannel::channel::{BlockChannelConfig, ChannelConfig, DefaultChannel, ReliableChannelConfig, UnreliableChannelConfig};
+pub use rechannel::channel::{ChunkChannelConfig, ChannelConfig, DefaultChannel, ReliableChannelConfig, UnreliableChannelConfig};
 pub use rechannel::error::{ChannelError, DisconnectionReason, RechannelError};
 
 pub use renetcode::{generate_random_bytes, ConnectToken, NetcodeError};

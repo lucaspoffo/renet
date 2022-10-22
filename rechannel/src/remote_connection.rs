@@ -278,7 +278,7 @@ impl RemoteConnection {
         for send_channel in self.send_channels.values_mut() {
             if let Some(channel_packet_data) = send_channel.get_messages_to_send(available_bytes, sequence, self.current_time) {
                 available_bytes -= bincode::options().serialized_size(&channel_packet_data)?;
-                channels_packet_data.push(channel_packet_data)
+                channels_packet_data.push(channel_packet_data);
             }
         }
 

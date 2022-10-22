@@ -11,9 +11,9 @@ Provides the following features:
 - Client/Server connection management
 - Authentication and encryption, checkout [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
 - Multiple types of channels:
-    - Reliable Ordered: garantee ordering and delivery of all messages
-    - Unreliable Unordered: messages that don't require any garantee of delivery or ordering
-    - Block Reliable: for bigger messages, such as level initialization
+    - Reliable: garantee delivery of all messages
+    - Unreliable: messages that don't require any garantee of delivery or ordering
+    - Chunk Reliable: slice big messages to be sent in multiple frames (e.g. level initialization)
 - Packet fragmention and reassembly
 
 Sections:
