@@ -519,7 +519,7 @@ impl NetcodeServer {
     /// }
     /// # fn send_to(p: &[u8], addr: std::net::SocketAddr) {}
     /// ```
-    pub fn update_client<'s>(&'s mut self, client_id: ClientID) -> ServerResult<'_, 's> {
+    pub fn update_client(&mut self, client_id: ClientID) -> ServerResult<'_, '_> {
         let slot = match find_client_slot_by_id(&self.clients, client_id) {
             None => return ServerResult::None,
             Some(slot) => slot,
@@ -590,7 +590,7 @@ impl NetcodeServer {
     // TODO: we can return Result<PacketToSend, NetcodeError>
     //       but the library user would need to be aware that he has to run
     //       the same code as Result::ClientDisconnected
-    pub fn disconnect<'s>(&'s mut self, client_id: ClientID) -> ServerResult<'_, 's> {
+    pub fn disconnect(&mut self, client_id: ClientID) -> ServerResult<'_, '_> {
         if let Some(slot) = find_client_slot_by_id(&self.clients, client_id) {
             let client = self.clients[slot].take().unwrap();
             let packet = Packet::Disconnect;
