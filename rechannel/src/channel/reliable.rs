@@ -1,4 +1,5 @@
 use crate::{
+    channel::{ReceiveChannel, SendChannel},
     error::ChannelError,
     packet::{ChannelPacketData, Payload},
     sequence_buffer::{sequence_greater_than, sequence_less_than, SequenceBuffer},
@@ -11,16 +12,14 @@ use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
-use super::{ReceiveChannel, SendChannel};
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct ReliableMessage {
+struct ReliableMessage {
     id: u16,
     payload: Bytes,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ReliableMessageSent {
+pub struct ReliableMessageSent {
     reliable_message: ReliableMessage,
     resend_timer: Timer,
 }
@@ -52,6 +51,8 @@ pub struct ReliableChannelConfig {
     pub max_message_size: u64,
     /// Delay to wait before resending messages
     pub message_resend_time: Duration,
+    /// If set to true, messages will be received in the order they were sent
+    pub ordered: bool,
 }
 
 #[derive(Debug)]
@@ -69,23 +70,33 @@ pub(crate) struct SendReliableChannel {
 }
 
 #[derive(Debug)]
+enum ReceiveOrder {
+    Ordered,
+    Unordered {
+        received_messages: SequenceBuffer<()>,
+        most_recent_message_id: u16,
+    },
+}
+
+#[derive(Debug)]
 pub(crate) struct ReceiveReliableChannel {
     channel_id: u8,
     max_message_size: u64,
     messages_received: SequenceBuffer<ReliableMessage>,
-    received_message_id: u16,
+    awaiting_message_id: u16,
     num_messages_received: u64,
+    receive_order: ReceiveOrder,
     error: Option<ChannelError>,
 }
 
 impl ReliableMessage {
-    pub fn new(id: u16, payload: Bytes) -> Self {
+    fn new(id: u16, payload: Bytes) -> Self {
         Self { id, payload }
     }
 }
 
 impl ReliableMessageSent {
-    pub fn new(reliable_message: ReliableMessage, resend_time: Duration, current_time: Duration) -> Self {
+    fn new(reliable_message: ReliableMessage, resend_time: Duration, current_time: Duration) -> Self {
         let mut resend_timer = Timer::new(current_time, resend_time);
         resend_timer.finish();
         Self {
@@ -111,6 +122,7 @@ impl Default for ReliableChannelConfig {
             packet_budget: 6000,
             max_message_size: 3000,
             message_resend_time: Duration::from_millis(200),
+            ordered: false,
         }
     }
 }
@@ -161,7 +173,7 @@ impl SendChannel for SendReliableChannel {
                 let serialized_size = match bincode::options().serialized_size(&message_send.reliable_message) {
                     Ok(size) => size as u64,
                     Err(e) => {
-                        log::error!("Failed to get message size in channel {}: {}", self.channel_id, e);
+                        log::error!("Failed to get message size in reliable channel {}: {}", self.channel_id, e);
                         self.error = Some(ChannelError::FailedToSerialize);
                         return None;
                     }
@@ -174,7 +186,7 @@ impl SendChannel for SendReliableChannel {
                     let message = match bincode::options().serialize(&message_send.reliable_message) {
                         Ok(message) => message,
                         Err(e) => {
-                            log::error!("Failed to serialize message in channel {}: {}", self.channel_id, e);
+                            log::error!("Failed to serialize message in reliable channel {}: {}", self.channel_id, e);
                             self.error = Some(ChannelError::FailedToSerialize);
                             return None;
                         }
@@ -267,13 +279,21 @@ impl SendChannel for SendReliableChannel {
 impl ReceiveReliableChannel {
     pub fn new(config: ReliableChannelConfig) -> Self {
         assert!(config.max_message_size <= config.packet_budget);
+        let receive_order = match config.ordered {
+            true => ReceiveOrder::Ordered,
+            false => ReceiveOrder::Unordered {
+                received_messages: SequenceBuffer::with_capacity(config.message_receive_queue_size),
+                most_recent_message_id: 0,
+            },
+        };
 
         Self {
             channel_id: config.channel_id,
             max_message_size: config.max_message_size,
-            received_message_id: 0,
+            awaiting_message_id: 0,
             num_messages_received: 0,
             messages_received: SequenceBuffer::with_capacity(config.message_receive_queue_size),
+            receive_order,
             error: None,
         }
     }
@@ -298,19 +318,35 @@ impl ReceiveChannel for ReceiveReliableChannel {
                         return;
                     }
 
-                    if sequence_less_than(message.id, self.received_message_id) {
+                    if sequence_less_than(message.id, self.awaiting_message_id) {
                         // Discard old message
                         continue;
                     }
 
-                    let max_message_id = self.received_message_id.wrapping_add(self.messages_received.size() as u16 - 1);
+                    let max_message_id = self.awaiting_message_id.wrapping_add(self.messages_received.size() as u16 - 1);
                     if sequence_greater_than(message.id, max_message_id) {
                         // Out of space to to add messages
                         self.error = Some(ChannelError::ReliableChannelOutOfSync);
                     }
 
-                    if !self.messages_received.exists(message.id) {
-                        self.messages_received.insert(message.id, message);
+                    match &mut self.receive_order {
+                        ReceiveOrder::Ordered => {
+                            if !self.messages_received.exists(message.id) {
+                                self.messages_received.insert(message.id, message);
+                            }
+                        }
+                        ReceiveOrder::Unordered {
+                            ref mut received_messages,
+                            ref mut most_recent_message_id,
+                        } => {
+                            if !received_messages.exists(message.id) {
+                                received_messages.insert(message.id, ());
+                                if *most_recent_message_id < message.id {
+                                    *most_recent_message_id = message.id;
+                                }
+                                self.messages_received.insert(message.id, message);
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -327,16 +363,40 @@ impl ReceiveChannel for ReceiveReliableChannel {
             return None;
         }
 
-        let received_message_id = self.received_message_id;
+        match &mut self.receive_order {
+            ReceiveOrder::Ordered => {
+                let current_message_id = self.awaiting_message_id;
+                if !self.messages_received.exists(current_message_id) {
+                    return None;
+                }
 
-        if !self.messages_received.exists(received_message_id) {
-            return None;
+                self.awaiting_message_id = self.awaiting_message_id.wrapping_add(1);
+                self.num_messages_received += 1;
+
+                self.messages_received.remove(current_message_id).map(|m| m.payload.to_vec())
+            }
+            ReceiveOrder::Unordered {
+                most_recent_message_id, ..
+            } => {
+                let mut current_message_id = self.awaiting_message_id;
+                let max_received_message_id = most_recent_message_id.wrapping_add(1);
+                while sequence_less_than(current_message_id, max_received_message_id) {
+                    if !self.messages_received.exists(current_message_id) {
+                        current_message_id = current_message_id.wrapping_add(1);
+                        continue;
+                    }
+
+                    if self.awaiting_message_id == current_message_id {
+                        self.awaiting_message_id = self.awaiting_message_id.wrapping_add(1);
+                    }
+
+                    self.num_messages_received += 1;
+                    return self.messages_received.remove(current_message_id).map(|m| m.payload.to_vec());
+                }
+
+                None
+            }
         }
-
-        self.received_message_id = self.received_message_id.wrapping_add(1);
-        self.num_messages_received += 1;
-
-        self.messages_received.remove(received_message_id).map(|m| m.payload.to_vec())
     }
 
     fn error(&self) -> Option<ChannelError> {
@@ -352,16 +412,9 @@ mod tests {
 
     #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
     enum TestMessages {
-        Noop,
         First,
-        Second(u32),
-        Third(u64),
-    }
-
-    impl Default for TestMessages {
-        fn default() -> Self {
-            TestMessages::Noop
-        }
+        Second,
+        Third,
     }
 
     impl TestMessages {
@@ -371,9 +424,12 @@ mod tests {
     }
 
     #[test]
-    fn send_receive_message() {
+    fn send_receive_ordered_message() {
         let current_time = Duration::ZERO;
-        let config = ReliableChannelConfig::default();
+        let config = ReliableChannelConfig {
+            ordered: true,
+            ..Default::default()
+        };
         let mut send_channel = SendReliableChannel::new(config.clone());
         let mut receive_channel = ReceiveReliableChannel::new(config);
         let sequence = 0;
@@ -381,21 +437,77 @@ mod tests {
         assert!(!send_channel.has_messages_to_send());
         assert_eq!(send_channel.num_messages_sent, 0);
 
-        let message = TestMessages::Second(0).serialize();
+        // Send first message
+        let first_message = TestMessages::First.serialize();
+        send_channel.send_message(first_message.clone(), current_time);
+        let first_channel_data = send_channel.get_messages_to_send(u64::MAX, sequence, current_time).unwrap();
+        assert_eq!(first_channel_data.messages.len(), 1);
 
-        send_channel.send_message(message.clone(), current_time);
-        assert_eq!(send_channel.num_messages_sent, 1);
-        assert!(receive_channel.receive_message().is_none());
+        // Send second message
+        let second_message = TestMessages::First.serialize();
+        send_channel.send_message(second_message.clone(), current_time);
+        let second_channel_data = send_channel.get_messages_to_send(u64::MAX, sequence + 1, current_time).unwrap();
+        assert_eq!(second_channel_data.messages.len(), 1);
 
-        let channel_data = send_channel.get_messages_to_send(u64::MAX, sequence, current_time).unwrap();
-        assert_eq!(channel_data.messages.len(), 1);
+        // Process and try to receive second message
+        receive_channel.process_messages(second_channel_data.messages);
+        let received_message = receive_channel.receive_message();
+        assert!(received_message.is_none());
 
-        receive_channel.process_messages(channel_data.messages);
+        // Process and receive first message
+        receive_channel.process_messages(first_channel_data.messages);
         let received_message = receive_channel.receive_message().unwrap();
-        assert_eq!(received_message, message);
+        assert_eq!(received_message, first_message);
+
+        // Now receive second message
+        let received_message = receive_channel.receive_message().unwrap();
+        assert_eq!(received_message, second_message);
 
         assert!(send_channel.has_messages_to_send());
         send_channel.process_ack(sequence);
+        send_channel.process_ack(sequence + 1);
+        assert!(!send_channel.has_messages_to_send());
+    }
+
+    #[test]
+    fn send_receive_unordered_message() {
+        let current_time = Duration::ZERO;
+        let config = ReliableChannelConfig {
+            ordered: false,
+            ..Default::default()
+        };
+        let mut send_channel = SendReliableChannel::new(config.clone());
+        let mut receive_channel = ReceiveReliableChannel::new(config);
+        let sequence = 0;
+
+        assert!(!send_channel.has_messages_to_send());
+        assert_eq!(send_channel.num_messages_sent, 0);
+
+        // Send first message
+        let first_message = TestMessages::First.serialize();
+        send_channel.send_message(first_message.clone(), current_time);
+        let first_channel_data = send_channel.get_messages_to_send(u64::MAX, sequence, current_time).unwrap();
+        assert_eq!(first_channel_data.messages.len(), 1);
+
+        // Send second message
+        let second_message = TestMessages::First.serialize();
+        send_channel.send_message(second_message.clone(), current_time);
+        let second_channel_data = send_channel.get_messages_to_send(u64::MAX, sequence + 1, current_time).unwrap();
+        assert_eq!(second_channel_data.messages.len(), 1);
+
+        // Process and receive second message
+        receive_channel.process_messages(second_channel_data.messages);
+        let received_message = receive_channel.receive_message().unwrap();
+        assert_eq!(received_message, second_message);
+
+        // Process and receive first message
+        receive_channel.process_messages(first_channel_data.messages);
+        let received_message = receive_channel.receive_message().unwrap();
+        assert_eq!(received_message, first_message);
+
+        assert!(send_channel.has_messages_to_send());
+        send_channel.process_ack(sequence);
+        send_channel.process_ack(sequence + 1);
         assert!(!send_channel.has_messages_to_send());
     }
 
@@ -405,8 +517,8 @@ mod tests {
         let config = ReliableChannelConfig::default();
         let mut channel = SendReliableChannel::new(config);
 
-        let first_message = TestMessages::Third(0).serialize();
-        let second_message = TestMessages::Third(1).serialize();
+        let first_message = TestMessages::First.serialize();
+        let second_message = TestMessages::Second.serialize();
 
         let message = ReliableMessage::new(0, first_message.clone());
         let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
@@ -459,7 +571,7 @@ mod tests {
         };
         let mut send_channel = SendReliableChannel::new(send_config);
         let mut receive_channel = ReceiveReliableChannel::new(receive_config);
-        let message = TestMessages::Second(0).serialize();
+        let message = TestMessages::First.serialize();
 
         send_channel.send_message(message.clone(), current_time);
         let first_channel_data = send_channel.get_messages_to_send(u64::MAX, 0, current_time).unwrap();
