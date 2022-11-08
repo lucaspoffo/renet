@@ -134,13 +134,19 @@ impl NetcodeClient {
     /// server. If nothing is returned, it was a packet used for the internal protocol or an
     /// invalid packet.
     pub fn process_packet<'a>(&mut self, buffer: &'a mut [u8]) -> Option<&'a [u8]> {
-        let (_, packet) = Packet::decode(
+        let packet = match Packet::decode(
             buffer,
             self.connect_token.protocol_id,
             Some(&self.connect_token.server_to_client_key),
             Some(&mut self.replay_protection),
-        )
-        .ok()?;
+        ) {
+            Ok((_, packet)) => packet,
+            Err(e) => {
+                log::error!("Failed to decode packet: {}", e);
+                return None;
+            }
+        };
+
         match (packet, &self.state) {
             (Packet::ConnectionDenied, ClientState::SendingConnectionRequest | ClientState::SendingConnectionResponse) => {
                 self.state = ClientState::Disconnected(DisconnectReason::ConnectionDenied);
@@ -206,8 +212,8 @@ impl NetcodeClient {
     /// Update the internal state of the client, receives the duration since last updated.
     /// Might return the serve address and a protocol packet to be sent to the server.
     pub fn update(&mut self, duration: Duration) -> Option<(&mut [u8], SocketAddr)> {
-        if let Err(_e) = self.update_internal_state(duration) {
-            // TODO(log): error
+        if let Err(e) = self.update_internal_state(duration) {
+            log::error!("Failed to update client: {}", e);
             return None;
         }
 
