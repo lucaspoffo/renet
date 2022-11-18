@@ -32,6 +32,7 @@ pub enum ClientAuthentication {
 
 /// A client that establishes an authenticated connection with a server.
 /// Can send/receive encrypted messages from/to the server.
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetClient {
     current_time: Duration,
     netcode_client: NetcodeClient,

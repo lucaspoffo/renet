@@ -17,6 +17,7 @@ use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_USER_DAT
 /// A server that can establish authenticated connections with multiple clients.
 /// Can send/receive encrypted messages from/to them.
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetServer {
     socket: UdpSocket,
     reliable_server: RechannelServer<u64>,
