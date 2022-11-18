@@ -19,7 +19,7 @@ use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugi
 #[derive(Component)]
 struct ControlledPlayer;
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 struct NetworkMapping(HashMap<Entity, Entity>);
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ struct PlayerInfo {
     server_entity: Entity,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Resource)]
 struct ClientLobby {
     players: HashMap<u64, PlayerInfo>,
 }
@@ -153,7 +153,7 @@ fn client_sync_players(
         match server_message {
             ServerMessages::PlayerCreate { id, translation, entity } => {
                 println!("Player {} connected.", id);
-                let mut client_entity = commands.spawn_bundle(PbrBundle {
+                let mut client_entity = commands.spawn(PbrBundle {
                     mesh: meshes.add(Mesh::from(shape::Capsule::default())),
                     material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
                     transform: Transform::from_xyz(translation[0], translation[1], translation[2]),
@@ -183,7 +183,7 @@ fn client_sync_players(
                 }
             }
             ServerMessages::SpawnProjectile { entity, translation } => {
-                let projectile_entity = commands.spawn_bundle(PbrBundle {
+                let projectile_entity = commands.spawn(PbrBundle {
                     mesh: meshes.add(Mesh::from(shape::Icosphere {
                         radius: 0.1,
                         subdivisions: 5,
@@ -237,14 +237,14 @@ fn update_target_system(
 
 fn setup_camera(mut commands: Commands) {
     commands
-        .spawn_bundle(LookTransformBundle {
+        .spawn(LookTransformBundle {
             transform: LookTransform {
                 eye: Vec3::new(0.0, 8., 2.5),
                 target: Vec3::new(0.0, 0.5, 0.0),
             },
             smoother: Smoother::new(0.9),
         })
-        .insert_bundle(Camera3dBundle {
+        .insert(Camera3dBundle {
             transform: Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
             ..default()
         });
@@ -252,7 +252,7 @@ fn setup_camera(mut commands: Commands) {
 
 fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     commands
-        .spawn_bundle(PbrBundle {
+        .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Icosphere {
                 radius: 0.1,
                 subdivisions: 5,

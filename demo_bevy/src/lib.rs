@@ -13,7 +13,7 @@ pub struct Player {
     pub id: u64,
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component, Resource)]
 pub struct PlayerInput {
     pub up: bool,
     pub down: bool,
@@ -126,7 +126,7 @@ pub fn server_connection_config() -> RenetConnectionConfig {
 pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
     commands
-        .spawn_bundle(PbrBundle {
+        .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Box::new(10., 1., 10.))),
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             transform: Transform::from_xyz(0.0, -1.0, 0.0),
@@ -134,7 +134,7 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
         })
         .insert(Collider::cuboid(5., 0.5, 5.));
     // light
-    commands.spawn_bundle(PointLightBundle {
+    commands.spawn(PointLightBundle {
         point_light: PointLight {
             intensity: 1500.0,
             shadows_enabled: true,
@@ -161,7 +161,7 @@ pub fn spawn_fireball(
         direction = Vec3::X;
     }
     commands
-        .spawn_bundle(PbrBundle {
+        .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Icosphere {
                 radius: 0.1,
                 subdivisions: 5,
@@ -176,7 +176,7 @@ pub fn spawn_fireball(
         .insert(Velocity::linear(direction * 10.))
         .insert(ActiveEvents::COLLISION_EVENTS)
         .insert(Projectile {
-            duration: Timer::from_seconds(1.5, false),
+            duration: Timer::from_seconds(1.5, TimerMode::Once),
         })
         .id()
 }

@@ -16,7 +16,7 @@ const PROTOCOL_ID: u64 = 7;
 
 const PLAYER_MOVE_SPEED: f32 = 1.0;
 
-#[derive(Debug, Default, Serialize, Deserialize, Component)]
+#[derive(Debug, Default, Serialize, Deserialize, Component, Resource)]
 struct PlayerInput {
     up: bool,
     down: bool,
@@ -29,7 +29,7 @@ struct Player {
     id: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Resource)]
 struct Lobby {
     players: HashMap<u64, Entity>,
 }
@@ -114,7 +114,7 @@ fn server_update_system(
                 println!("Player {} connected.", id);
                 // Spawn player cube
                 let player_entity = commands
-                    .spawn_bundle(PbrBundle {
+                    .spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
                         material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
                         transform: Transform::from_xyz(0.0, 0.5, 0.0),
@@ -181,7 +181,7 @@ fn client_sync_players(
             ServerMessages::PlayerConnected { id } => {
                 println!("Player {} connected.", id);
                 let player_entity = commands
-                    .spawn_bundle(PbrBundle {
+                    .spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
                         material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
                         transform: Transform::from_xyz(0.0, 0.5, 0.0),
@@ -217,13 +217,13 @@ fn client_sync_players(
 /// set up a simple 3D scene
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
-    commands.spawn_bundle(PbrBundle {
+    commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
         material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
         ..Default::default()
     });
     // light
-    commands.spawn_bundle(PointLightBundle {
+    commands.spawn(PointLightBundle {
         point_light: PointLight {
             intensity: 1500.0,
             shadows_enabled: true,
@@ -233,7 +233,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
         ..Default::default()
     });
     // camera
-    commands.spawn_bundle(Camera3dBundle {
+    commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..Default::default()
     });

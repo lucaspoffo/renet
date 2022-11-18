@@ -11,6 +11,7 @@ use renet::{CircularBuffer, NetworkInfo, RenetServer};
 ///
 /// N: determines how many values are shown in the graph.
 /// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetClientVisualizer<const N: usize> {
     rtt: CircularBuffer<N, f32>,
     sent_bandwidth_kbps: CircularBuffer<N, f32>,
@@ -24,6 +25,7 @@ pub struct RenetClientVisualizer<const N: usize> {
 ///
 /// N: determines how many values are shown in the graph.
 /// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetServerVisualizer<const N: usize> {
     show_all_clients: bool,
     selected_client: Option<u64>,
