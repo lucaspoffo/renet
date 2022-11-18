@@ -281,6 +281,8 @@ impl NetcodeServer {
         )?;
         self.global_sequence += 1;
 
+        log::trace!("Connection request from Client {}", connect_token.client_id);
+
         let pending = self.pending_clients.entry(addr).or_insert_with(|| Connection {
             confirmed: false,
             sequence: 0,
@@ -397,6 +399,7 @@ impl NetcodeServer {
                 Some(&mut pending.replay_protection),
             )?;
             pending.last_packet_received_time = self.current_time;
+            log::trace!("Received packet from pending client ({}): {:?}", addr, packet.packet_type());
             match packet {
                 Packet::ConnectionRequest {
                     protocol_id,
