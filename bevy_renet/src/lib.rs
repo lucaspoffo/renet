@@ -146,6 +146,7 @@ mod tests {
 
     #[test]
     fn sending_and_receiving_messages() {
+        _ = env_logger::init();
         let server = create_server().unwrap();
         let client = create_client().unwrap();
 
@@ -156,9 +157,10 @@ mod tests {
             .insert_resource(server)
             .insert_resource(client);
 
-        app.update();
-        app.update();
-        app.update();
+        // Connect client
+        for _ in 0..10 {
+            app.update();
+        }
 
         let client = app.world.resource::<RenetClient>();
         assert!(client.is_connected(), "The client should be connected to the server",);
