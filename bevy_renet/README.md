@@ -97,5 +97,6 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 
 |bevy|bevy_renet|
 |---|---|
+|0.9|0.0.6|
 |0.8|0.0.5|
 |0.7|0.0.4|

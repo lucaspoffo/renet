@@ -11,6 +11,7 @@ pub struct RenetServerPlugin {
     /// If this option is set to false,
     /// you need to manually clear the bevy events for RenetError and ServerEvent.
     /// The systems for clearing events can be retrieved by [`RenetServerPlugin::get_clear_event_systems()`].
+    /// Defaults to `true`
     pub clear_events: bool,
 }
 
@@ -24,6 +25,7 @@ pub struct RenetClientPlugin {
     /// If this option is set to false,
     /// you need to manually clear the bevy events for RenetError.
     /// The systems for clearing events can be retrieved by [`RenetClientPlugin::get_clear_event_systems()`].
+    /// Defaults to `true`
     pub clear_events: bool,
 }
 

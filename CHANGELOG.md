@@ -1,7 +1,6 @@
 # Renet changelog
 
-## Unreleased
-
+## 0.0.10 - 2022-11-18
 ### Added ⭐
 * Added function `client_addr`, `user_data`, `is_client_connected`, `max_clients`, `connected_clients` for `RenetServer`, some utilities from `NetcodeServer`. [(commit)](https://github.com/lucaspoffo/renet/commit/576962e53a2e2b74f8f3c8355ae2abf706826f73) [(commit)](https://github.com/lucaspoffo/renet/commit/dff1fc5785ac2b82309b92477c90a250feb3af55)
 * Renetcode/Renet: make generate_random_bytes public, this can be used to generate a random private key. [(commit)](https://github.com/lucaspoffo/renet/commit/f8509f11017e2d234c8059cc181f9644468ea87f)

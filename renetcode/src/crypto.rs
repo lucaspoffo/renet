@@ -55,8 +55,8 @@ pub fn encrypt_in_place_xnonce(buffer: &mut [u8], xnonce: &[u8; 24], key: &[u8; 
 
 /// Generate a buffer with random bytes using randomness from the operating system.
 ///
-/// The implementation is provided by the [getrandom] crate. Refer to
-/// [getrandom] documentation for details.
+/// The implementation is provided by the `getrandom` crate. Refer to
+/// `getrandom` documentation for details.
 pub fn generate_random_bytes<const N: usize>() -> [u8; N] {
     let mut bytes = [0; N];
     OsRng.fill_bytes(&mut bytes);
