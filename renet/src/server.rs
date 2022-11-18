@@ -318,7 +318,7 @@ impl RenetServer {
         self.netcode_server.max_clients()
     }
 
-    /// Returns the maximum number of clients that can be connected.
+    /// Returns the current number of clients connected.
     pub fn connected_clients(&self) -> usize {
         self.netcode_server.connected_clients()
     }
