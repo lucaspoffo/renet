@@ -38,6 +38,7 @@ impl Username {
 }
 
 fn main() {
+    env_logger::init();
     println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
     let args: Vec<String> = std::env::args().collect();
 
