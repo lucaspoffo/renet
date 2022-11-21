@@ -321,6 +321,7 @@ impl NetcodeServer {
             let packet = Packet::Payload(payload);
             let len = packet.encode(&mut self.out, self.protocol_id, Some((client.sequence, &client.send_key)))?;
             client.sequence += 1;
+            client.last_packet_send_time = self.current_time;
 
             return Ok((client.addr, &mut self.out[..len]));
         }

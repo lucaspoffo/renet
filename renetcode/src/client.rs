@@ -206,6 +206,7 @@ impl NetcodeClient {
             Some((self.sequence, &self.connect_token.client_to_server_key)),
         )?;
         self.sequence += 1;
+        self.last_packet_send_time = Some(self.current_time);
 
         Ok((self.server_addr, &mut self.out[..len]))
     }
