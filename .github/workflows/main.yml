@@ -29,7 +29,7 @@ jobs:
           sudo apt-get install --no-install-recommends libxcb-shape0-dev libxcb-xfixes0-dev
 
       - name: Cache crates
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Test
         uses: dtolnay/rust-toolchain@stable
@@ -49,7 +49,7 @@ jobs:
           sudo apt-get install --no-install-recommends libxcb-shape0-dev libxcb-xfixes0-dev
 
       - name: Cache crates
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Clippy
         uses: dtolnay/rust-toolchain@stable
