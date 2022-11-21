@@ -61,4 +61,4 @@ const NETCODE_ADDITIONAL_DATA_SIZE: usize = 13 + 8 + 8;
 
 const NETCODE_TIMEOUT_SECONDS: i32 = 15;
 
-const NETCODE_SEND_RATE: Duration = Duration::from_millis(200);
+const NETCODE_SEND_RATE: Duration = Duration::from_millis(250);

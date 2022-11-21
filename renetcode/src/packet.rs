@@ -248,7 +248,7 @@ impl<'a> Packet<'a> {
             encrypt_in_place(&mut buffer[start..end + NETCODE_MAC_BYTES], sequence, private_key, &aad)?;
             Ok(end + NETCODE_MAC_BYTES)
         } else {
-            Err(NetcodeError::InvalidPrivateKey)
+            Err(NetcodeError::UnavailablePrivateKey)
         }
     }
 
@@ -294,7 +294,7 @@ impl<'a> Packet<'a> {
             let packet = Packet::read(packet_type, &buffer[read_pos..buffer.len() - NETCODE_MAC_BYTES])?;
             Ok((sequence, packet))
         } else {
-            Err(NetcodeError::InvalidPrivateKey)
+            Err(NetcodeError::UnavailablePrivateKey)
         }
     }
 }

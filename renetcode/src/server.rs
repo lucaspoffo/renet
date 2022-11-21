@@ -354,6 +354,8 @@ impl NetcodeServer {
                 Some(&client.receive_key),
                 Some(&mut client.replay_protection),
             )?;
+            log::trace!("Received packet from connected client ({}): {:?}", client.client_id, packet.packet_type());
+
             client.last_packet_received_time = self.current_time;
             match client.state {
                 ConnectionState::Connected => match packet {

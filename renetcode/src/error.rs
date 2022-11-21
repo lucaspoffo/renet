@@ -7,7 +7,7 @@ use chacha20poly1305::aead::Error as CryptoError;
 #[derive(Debug)]
 pub enum NetcodeError {
     /// No private keys was available while decrypting.
-    InvalidPrivateKey,
+    UnavailablePrivateKey,
     /// The type of the packet is invalid.
     InvalidPacketType,
     /// The connect token has an invalid protocol id.
@@ -45,7 +45,7 @@ impl fmt::Display for NetcodeError {
         use NetcodeError::*;
 
         match *self {
-            InvalidPrivateKey => write!(fmt, "invalid private key"),
+            UnavailablePrivateKey => write!(fmt, "no private key was found for this address"),
             InvalidPacketType => write!(fmt, "invalid packet type"),
             InvalidProtocolID => write!(fmt, "invalid protocol id"),
             InvalidVersion => write!(fmt, "invalid version info"),
