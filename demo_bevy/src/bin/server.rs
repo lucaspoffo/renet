@@ -1,8 +1,10 @@
 use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
 
 use bevy::{
+    app::AppExit,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
+    window::exit_on_all_closed,
 };
 use bevy_egui::{EguiContext, EguiPlugin};
 use bevy_rapier3d::prelude::*;
@@ -54,6 +56,7 @@ fn main() {
     app.add_system(update_visulizer_system);
     app.add_system(despawn_projectile_system);
     app.add_system_to_stage(CoreStage::PostUpdate, projectile_on_removal_system);
+    app.add_system_to_stage(CoreStage::PostUpdate, disconnect_clients_on_exit.after(exit_on_all_closed));
 
     app.add_startup_system(setup_level);
     app.add_startup_system(setup_simple_camera);
@@ -238,5 +241,11 @@ fn projectile_on_removal_system(mut server: ResMut<RenetServer>, removed_project
         let message = bincode::serialize(&message).unwrap();
 
         server.broadcast_message(ServerChannel::ServerMessages, message);
+    }
+}
+
+fn disconnect_clients_on_exit(exit: EventReader<AppExit>, mut server: ResMut<RenetServer>) {
+    if !exit.is_empty() {
+        server.disconnect_clients();
     }
 }
