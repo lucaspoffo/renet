@@ -160,14 +160,14 @@ mod tests {
             .insert_resource(client);
 
         // Connect client
-        for _ in 0..10 {
+        loop {
             app.update();
+            if app.world.resource::<RenetClient>().is_connected() {
+                break;
+            }
         }
 
-        let client = app.world.resource::<RenetClient>();
-        assert!(client.is_connected(), "The client should be connected to the server",);
-
-        let client_id = client.client_id();
+        let client_id = app.world.resource::<RenetClient>().client_id();
         for index in 0..10 {
             // Send message from server to client
             let server_message = format!("Hello from server {}", index).as_bytes().to_vec();
