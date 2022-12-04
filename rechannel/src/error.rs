@@ -31,8 +31,6 @@ pub enum ChannelError {
     FailedToSerialize,
     /// Tried to send a message that is above the channel max message size.
     SentMessageAboveMaxSize,
-    /// Tried to send an empty message
-    SentEmptyMessage,
     /// Received a message above above the channel max message size.
     ReceivedMessageAboveMaxSize,
     /// Received an invalid slice message in a block channel.
@@ -48,7 +46,6 @@ impl fmt::Display for ChannelError {
             SendQueueFull => write!(fmt, "send queue was full"),
             FailedToSerialize => write!(fmt, "failed to serialize or deserialize"),
             SentMessageAboveMaxSize => write!(fmt, "sent message above the channel max message size"),
-            SentEmptyMessage => write!(fmt, "sent empty message"),
             ReceivedMessageAboveMaxSize => write!(fmt, "received message above the channel max message size"),
             InvalidSliceMessage => write!(fmt, "received an invalid slice message in a block channel"),
         }

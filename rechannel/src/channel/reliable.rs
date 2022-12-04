@@ -252,12 +252,6 @@ impl SendChannel for SendReliableChannel {
             return;
         }
 
-        if payload.is_empty() {
-            log::error!("Tried to send empty reliable message");
-            self.error = Some(ChannelError::SentEmptyMessage);
-            return;
-        }
-
         self.send_message_id = self.send_message_id.wrapping_add(1);
 
         let reliable_message = ReliableMessage::new(message_id, payload);

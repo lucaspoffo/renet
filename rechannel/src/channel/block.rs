@@ -300,12 +300,6 @@ impl SendChannel for SendChunkChannel {
             return;
         }
 
-        if payload.is_empty() {
-            log::error!("Tried to send empty chunk message");
-            self.error = Some(ChannelError::SentEmptyMessage);
-            return;
-        }
-
         if payload.len() as u64 > self.max_message_size {
             log::error!(
                 "Tried to send chunk message with size above the limit, got {} bytes, expected less than {}",

@@ -170,12 +170,6 @@ impl SendChannel for SendUnreliableChannel {
             return;
         }
 
-        if payload.is_empty() {
-            log::error!("Tried to send empty unreliable message");
-            self.error = Some(ChannelError::SentEmptyMessage);
-            return;
-        }
-
         if self.messages_to_send.len() >= self.message_send_queue_size {
             self.error = Some(ChannelError::SendQueueFull);
             log::warn!("Unreliable channel {} has reached the maximum queue size", self.channel_id);
