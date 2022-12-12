@@ -22,7 +22,7 @@ bevy = { version = "0.9.0", default-features = false, features = ["bevy_core_pip
 bevy_renet = { path = "../bevy_renet" }
 serde = { version = "1.0", features = [ "derive" ] }
 bincode = "1.3.1"
-bevy_egui = "0.17.1"
+bevy_egui = "0.18.0"
 renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
 # TODO: when released, use new version with bevy 0.8
 smooth-bevy-cameras = { git = "https://github.com/bonsairobo/smooth-bevy-cameras", rev="138835" }
