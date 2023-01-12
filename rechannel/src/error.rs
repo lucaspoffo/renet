@@ -17,6 +17,8 @@ pub enum DisconnectionReason {
     SendChannelError { channel_id: u8, error: ChannelError },
     /// Error occurred in a receive channel
     ReceiveChannelError { channel_id: u8, error: ChannelError },
+    /// Custom error
+    CustomError { code: u64 },
 }
 
 /// Possibles errors that can occur in a channel.
@@ -62,6 +64,7 @@ impl fmt::Display for DisconnectionReason {
             InvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
             SendChannelError { channel_id, error } => write!(fmt, "send channel {} with error: {}", channel_id, error),
             ReceiveChannelError { channel_id, error } => write!(fmt, "receive channel {} with error: {}", channel_id, error),
+            CustomError { code } => write!(fmt, "custom error with code: {}", code),
         }
     }
 }

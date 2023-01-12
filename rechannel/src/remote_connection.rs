@@ -1,10 +1,12 @@
 use crate::channel::{ChannelConfig, DefaultChannel, ReceiveChannel, SendChannel};
 use crate::error::{DisconnectionReason, RechannelError};
+use crate::network_info::{BandwidthInfo, NetworkInfo};
 use crate::packet::{Packet, Payload};
 
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
 use crate::timer::Timer;
+use crate::transport::ClientTransport;
 
 use bincode::Options;
 use bytes::Bytes;
@@ -32,6 +34,7 @@ pub struct ConnectionConfig {
     pub received_packets_buffer_size: usize,
     pub rtt_smoothing_factor: f32,
     pub packet_loss_smoothing_factor: f32,
+    pub bandwidth_smoothing_factor: f32,
     pub heartbeat_time: Duration,
     pub fragment_config: FragmentConfig,
     pub send_channels_config: Vec<ChannelConfig>,
@@ -50,6 +53,7 @@ pub struct RemoteConnection {
     sent_buffer: SequenceBuffer<SentPacket>,
     received_buffer: SequenceBuffer<()>,
     current_time: Duration,
+    bandwidth_info: BandwidthInfo,
     rtt: f32,
     packet_loss: f32,
     acks: Vec<u16>,
@@ -67,8 +71,9 @@ impl Default for ConnectionConfig {
             max_packet_size: 16 * 1024,
             sent_packets_buffer_size: 256,
             received_packets_buffer_size: 256,
-            rtt_smoothing_factor: 0.01,
+            rtt_smoothing_factor: 0.005,
             packet_loss_smoothing_factor: 0.1,
+            bandwidth_smoothing_factor: 0.1,
             heartbeat_time: Duration::from_millis(100),
             fragment_config: FragmentConfig::default(),
             send_channels_config: DefaultChannel::config(),
@@ -78,9 +83,10 @@ impl Default for ConnectionConfig {
 }
 
 impl RemoteConnection {
-    pub fn new(current_time: Duration, config: ConnectionConfig) -> Self {
+    pub fn new(config: ConnectionConfig) -> Self {
         config.fragment_config.assert_can_fragment_packet_with_size(config.max_packet_size);
 
+        let current_time = Duration::ZERO;
         let heartbeat_timer = Timer::new(current_time, config.heartbeat_time);
         let reassembly_buffer = SequenceBuffer::with_capacity(config.fragment_config.reassembly_buffer_size);
         let sent_buffer = SequenceBuffer::with_capacity(config.sent_packets_buffer_size);
@@ -112,19 +118,21 @@ impl RemoteConnection {
             sent_buffer,
             received_buffer,
             current_time,
-            config,
+            bandwidth_info: BandwidthInfo::new(config.bandwidth_smoothing_factor),
             rtt: 0.0,
             packet_loss: 0.0,
+            config,
             acks: vec![],
         }
     }
 
-    pub fn rtt(&self) -> f32 {
-        self.rtt
-    }
-
-    pub fn packet_loss(&self) -> f32 {
-        self.packet_loss
+    pub fn network_info(&self) -> NetworkInfo {
+        NetworkInfo {
+            sent_kbps: self.bandwidth_info.sent_kbps,
+            received_kbps: self.bandwidth_info.received_kbps,
+            rtt: self.rtt,
+            packet_loss: self.packet_loss,
+        }
     }
 
     pub fn is_connected(&self) -> bool {
@@ -164,11 +172,9 @@ impl RemoteConnection {
         channel.receive_message()
     }
 
-    pub fn advance_time(&mut self, duration: Duration) {
+    pub fn update(&mut self, duration: Duration) -> Result<(), RechannelError> {
         self.current_time += duration;
-    }
 
-    pub fn update(&mut self) -> Result<(), RechannelError> {
         if let Some(reason) = self.disconnected() {
             return Err(RechannelError::ClientDisconnected(reason));
         }
@@ -196,11 +202,14 @@ impl RemoteConnection {
         }
 
         self.update_packet_loss();
+        self.bandwidth_info.update_metrics();
 
         Ok(())
     }
 
     pub fn process_packet(&mut self, packet: &[u8]) -> Result<(), RechannelError> {
+        self.bandwidth_info.received_packet(self.current_time, packet.len());
+
         if let Some(reason) = self.disconnected() {
             return Err(RechannelError::ClientDisconnected(reason));
         }
@@ -282,7 +291,7 @@ impl RemoteConnection {
             }
         }
 
-        if !channels_packet_data.is_empty() {
+        let packets = if !channels_packet_data.is_empty() {
             self.sequence = self.sequence.wrapping_add(1);
             let packet_size = bincode::options().serialized_size(&channels_packet_data)?;
             let ack_data = self.received_buffer.ack_data();
@@ -303,18 +312,23 @@ impl RemoteConnection {
             };
 
             self.heartbeat_timer.reset(self.current_time);
-            return Ok(packets);
+            packets
         } else if self.heartbeat_timer.is_finished(self.current_time) {
             let ack_data = self.received_buffer.ack_data();
             let packet = Packet::Heartbeat { ack_data };
             let packet = bincode::options().serialize(&packet)?;
 
             self.heartbeat_timer.reset(self.current_time);
-            return Ok(vec![packet]);
+            vec![packet]
+        } else {
+            return Ok(vec![]);
+        };
+
+        for packet in &packets {
+            self.bandwidth_info.sent_packet(self.current_time, packet.len());
         }
 
-        // TODO: should we return Option<Vec>?
-        Ok(vec![])
+        Ok(packets)
     }
 
     fn update_acket_packets(&mut self, ack: u16, mut ack_bits: u32) {
@@ -329,7 +343,7 @@ impl RemoteConnection {
                         // Update RTT
                         let rtt = (self.current_time - sent_packet.time).as_secs_f32() * 1000.;
 
-                        if self.rtt == 0.0 || self.rtt < f32::EPSILON {
+                        if self.rtt == 0.0 || self.rtt < f32::EPSILON || self.config.rtt_smoothing_factor == 0.0 {
                             self.rtt = rtt;
                         } else {
                             self.rtt += (rtt - self.rtt) * self.config.rtt_smoothing_factor;
@@ -362,10 +376,25 @@ impl RemoteConnection {
         }
 
         let packet_loss = packets_dropped as f32 / packets_sent as f32;
-        if self.packet_loss == 0.0 || self.packet_loss < f32::EPSILON {
+        dbg!(packets_dropped, packets_sent);
+        if self.packet_loss == 0.0 || self.packet_loss < f32::EPSILON || self.config.packet_loss_smoothing_factor == 0.0 {
             self.packet_loss = packet_loss;
         } else {
             self.packet_loss += (packet_loss - self.packet_loss) * self.config.packet_loss_smoothing_factor;
+        }
+    }
+
+    pub fn send_packets(&mut self, transport: &mut dyn ClientTransport) {
+        let packets = match self.get_packets_to_send() {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Failed to get packets to send: {}", e);
+                return;
+            },
+        };
+
+        for packet in packets.iter() {
+           transport.send(packet);
         }
     }
 }
@@ -378,7 +407,7 @@ mod tests {
 
     #[test]
     fn round_time_trip() {
-        let mut connection = RemoteConnection::new(Duration::ZERO, ConnectionConfig::default());
+        let mut connection = RemoteConnection::new(ConnectionConfig::default());
 
         let message: Bytes = vec![1, 2, 3].into();
         let mut ack_data = AckData { ack: 0, ack_bits: 1 };
@@ -386,18 +415,21 @@ mod tests {
             connection.send_message(1, message.clone());
             assert!(!connection.get_packets_to_send().unwrap().is_empty());
 
-            connection.advance_time(Duration::from_millis(100));
+            connection.update(Duration::from_millis(100)).unwrap();
             connection.update_acket_packets(ack_data.ack, ack_data.ack_bits);
 
             ack_data.ack += 1;
         }
 
-        assert_eq!(connection.rtt(), 100.);
+        assert_eq!(connection.network_info().rtt, 100.);
     }
 
     #[test]
     fn packet_loss() {
-        let mut connection = RemoteConnection::new(Duration::ZERO, ConnectionConfig::default());
+        let mut connection = RemoteConnection::new(ConnectionConfig {
+            packet_loss_smoothing_factor: 0.0,
+            ..Default::default()
+        });
 
         let message: Bytes = vec![1, 2, 3].into();
         let mut ack_data = AckData { ack: 0, ack_bits: 1 };
@@ -409,19 +441,18 @@ mod tests {
             if i % 2 == 0 {
                 connection.update_acket_packets(ack_data.ack, ack_data.ack_bits);
             }
-            connection.advance_time(Duration::from_millis(100));
-
+            connection.update(Duration::from_millis(100)).unwrap();
             ack_data.ack += 1;
         }
 
         connection.update_packet_loss();
-        assert_eq!(connection.packet_loss(), 0.5);
+        assert_eq!(connection.network_info().packet_loss, 0.5);
     }
 
     #[test]
     fn confirm_only_completed_fragmented_packet() {
         let config = ConnectionConfig::default();
-        let mut connection = RemoteConnection::new(Duration::ZERO, config);
+        let mut connection = RemoteConnection::new(config);
         let message = vec![7u8; 2500];
         connection.send_message(0, message.clone());
 

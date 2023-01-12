@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::CircularBuffer;
+use crate::circular_buffer::CircularBuffer;
 
 const CIRCULAR_BUFFER_SIZE: usize = 60;
 
@@ -16,20 +16,20 @@ pub struct NetworkInfo {
     pub packet_loss: f32,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct PacketInfo {
+#[derive(Debug, Clone, Copy, Default)]
+struct PacketInfo {
     time: Duration,
     size: usize,
 }
 
 impl PacketInfo {
-    pub fn new(time: Duration, size: usize) -> Self {
+    fn new(time: Duration, size: usize) -> Self {
         Self { time, size }
     }
 }
 
 #[derive(Debug)]
-pub struct ClientPacketInfo {
+pub struct BandwidthInfo {
     packets_sent: CircularBuffer<CIRCULAR_BUFFER_SIZE, PacketInfo>,
     packets_received: CircularBuffer<CIRCULAR_BUFFER_SIZE, PacketInfo>,
     bandwidth_smoothing_factor: f32,
@@ -67,7 +67,7 @@ impl<const N: usize> CircularBuffer<N, PacketInfo> {
     }
 }
 
-impl ClientPacketInfo {
+impl BandwidthInfo {
     pub fn new(bandwidth_smoothing_factor: f32) -> Self {
         Self {
             packets_sent: Default::default(),
