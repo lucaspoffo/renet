@@ -1,10 +1,10 @@
-use bevy::prelude::*;
+use bevy::prelude::{shape::Plane, *};
 use bevy_renet::{
     renet::{
         ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication,
         ServerConfig, ServerEvent,
     },
-    run_if_client_connected, RenetClientPlugin, RenetServerPlugin,
+    RenetClientPlugin, RenetServerPlugin,
 };
 
 use std::time::SystemTime;
@@ -77,21 +77,17 @@ fn main() {
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.insert_resource(Lobby::default());
+    app.init_resource::<Lobby>();
 
     if is_host {
         app.add_plugin(RenetServerPlugin::default());
         app.insert_resource(new_renet_server());
-        app.add_system(server_update_system);
-        app.add_system(server_sync_players);
-        app.add_system(move_players_system);
+        app.add_systems((server_update_system, server_sync_players, move_players_system));
     } else {
         app.add_plugin(RenetClientPlugin::default());
+        app.init_resource::<PlayerInput>();
         app.insert_resource(new_renet_client());
-        app.insert_resource(PlayerInput::default());
-        app.add_system(player_input);
-        app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
-        app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
+        app.add_systems((player_input, client_send_input, client_sync_players).distributive_run_if(bevy_renet::client_connected));
     }
 
     app.add_startup_system(setup);
@@ -218,7 +214,7 @@ fn client_sync_players(
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
+        mesh: meshes.add(Mesh::from(Plane::from_size(5.0))),
         material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
         ..Default::default()
     });

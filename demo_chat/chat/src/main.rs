@@ -42,7 +42,7 @@ impl App for ChatApp {
     }
 }
 
-fn main() {
+fn main() -> eframe::Result<()> {
     env_logger::init();
     let options = eframe::NativeOptions::default();
     eframe::run_native(
@@ -50,7 +50,7 @@ fn main() {
         options,
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
-            Box::new(ChatApp::default())
+            Box::<ChatApp>::default()
         }),
-    );
+    )
 }

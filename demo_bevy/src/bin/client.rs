@@ -3,17 +3,17 @@ use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
 use bevy::{
     app::AppExit,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::*,
-    window::exit_on_all_closed,
+    prelude::{shape::Icosphere, *},
+    window::{exit_on_all_closed, PrimaryWindow},
 };
-use bevy_egui::{EguiContext, EguiPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
     renet::{ClientAuthentication, RenetClient, RenetError},
-    run_if_client_connected, RenetClientPlugin,
+    RenetClientPlugin,
 };
 use demo_bevy::{
-    client_connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, Ray3d, ServerChannel,
-    ServerMessages, PROTOCOL_ID,
+    client_connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
+    PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -67,20 +67,16 @@ fn main() {
     app.insert_resource(new_renet_client());
     app.insert_resource(NetworkMapping::default());
 
-    app.add_system(player_input);
-    app.add_system(camera_follow);
-    app.add_system(update_target_system);
-    app.add_system(client_send_input.with_run_criteria(run_if_client_connected));
-    app.add_system(client_send_player_commands.with_run_criteria(run_if_client_connected));
-    app.add_system(client_sync_players.with_run_criteria(run_if_client_connected));
-    app.add_system_to_stage(CoreStage::PostUpdate, disconnect_on_exit.after(exit_on_all_closed));
+    app.add_systems((player_input, camera_follow, update_target_system));
+    app.add_systems(
+        (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::client_connected),
+    );
+    app.add_system(disconnect_on_exit.in_base_set(CoreSet::PostUpdate).after(exit_on_all_closed));
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
     app.add_system(update_visulizer_system);
 
-    app.add_startup_system(setup_level);
-    app.add_startup_system(setup_camera);
-    app.add_startup_system(setup_target);
+    app.add_startup_systems((setup_level, setup_camera, setup_target));
     app.add_system(panic_on_error_system);
 
     app.run();
@@ -94,7 +90,7 @@ fn panic_on_error_system(mut renet_error: EventReader<RenetError>) {
 }
 
 fn update_visulizer_system(
-    mut egui_context: ResMut<EguiContext>,
+    mut egui_contexts: EguiContexts,
     mut visualizer: ResMut<RenetClientVisualizer<200>>,
     client: Res<RenetClient>,
     mut show_visualizer: Local<bool>,
@@ -105,7 +101,7 @@ fn update_visulizer_system(
         *show_visualizer = !*show_visualizer;
     }
     if *show_visualizer {
-        visualizer.show_window(egui_context.ctx_mut());
+        visualizer.show_window(egui_contexts.ctx_mut());
     }
 }
 
@@ -187,10 +183,13 @@ fn client_sync_players(
             }
             ServerMessages::SpawnProjectile { entity, translation } => {
                 let projectile_entity = commands.spawn(PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Icosphere {
-                        radius: 0.1,
-                        subdivisions: 5,
-                    })),
+                    mesh: meshes.add(
+                        Mesh::try_from(Icosphere {
+                            radius: 0.1,
+                            subdivisions: 5,
+                        })
+                        .unwrap(),
+                    ),
                     material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
                     transform: Transform::from_translation(translation.into()),
                     ..Default::default()
@@ -225,15 +224,17 @@ fn client_sync_players(
 struct Target;
 
 fn update_target_system(
-    windows: Res<Windows>,
+    primary_window: Query<&Window, With<PrimaryWindow>>,
     mut target_query: Query<&mut Transform, With<Target>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
 ) {
     let (camera, camera_transform) = camera_query.single();
     let mut target_transform = target_query.single_mut();
-    if let Some(ray) = Ray3d::from_screenspace(&windows, camera, camera_transform) {
-        if let Some(pos) = ray.intersect_y_plane(1.0) {
-            target_transform.translation = pos;
+    if let Some(cursor_pos) = primary_window.single().cursor_position() {
+        if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
+            if let Some(distance) = ray.intersect_plane(Vec3::Y, Vec3::Y) {
+                target_transform.translation = ray.direction * distance + ray.origin;
+            }
         }
     }
 }
@@ -244,6 +245,7 @@ fn setup_camera(mut commands: Commands) {
             transform: LookTransform {
                 eye: Vec3::new(0.0, 8., 2.5),
                 target: Vec3::new(0.0, 0.5, 0.0),
+                up: Vec3::Y,
             },
             smoother: Smoother::new(0.9),
         })
@@ -256,10 +258,13 @@ fn setup_camera(mut commands: Commands) {
 fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     commands
         .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Icosphere {
-                radius: 0.1,
-                subdivisions: 5,
-            })),
+            mesh: meshes.add(
+                Mesh::try_from(Icosphere {
+                    radius: 0.1,
+                    subdivisions: 5,
+                })
+                .unwrap(),
+            ),
             material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
             transform: Transform::from_xyz(0.0, 0., 0.0),
             ..Default::default()
