@@ -11,7 +11,7 @@ pub(crate) struct ChannelPacketData {
     pub channel_id: u8,
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct AckData {
     pub ack: u16,
     pub ack_bits: u32,

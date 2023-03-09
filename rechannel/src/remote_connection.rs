@@ -1,6 +1,6 @@
 use crate::channel::{ChannelConfig, DefaultChannel, ReceiveChannel, SendChannel};
 use crate::error::{DisconnectionReason, RechannelError};
-use crate::packet::{Packet, Payload};
+use crate::packet::{AckData, Packet, Payload};
 
 use crate::reassembly_fragment::{build_fragments, FragmentConfig, ReassemblyFragment};
 use crate::sequence_buffer::SequenceBuffer;
@@ -10,7 +10,7 @@ use bincode::Options;
 use bytes::Bytes;
 use log::error;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -285,7 +285,7 @@ impl RemoteConnection {
         if !channels_packet_data.is_empty() {
             self.sequence = self.sequence.wrapping_add(1);
             let packet_size = bincode::options().serialized_size(&channels_packet_data)?;
-            let ack_data = self.received_buffer.ack_data();
+            let ack_data = self.received_buffer.ack_data(self.received_buffer.sequence().wrapping_sub(1));
 
             let sent_packet = SentPacket::new(self.current_time);
             self.sent_buffer.insert(sequence, sent_packet);
@@ -305,7 +305,7 @@ impl RemoteConnection {
             self.heartbeat_timer.reset(self.current_time);
             return Ok(packets);
         } else if self.heartbeat_timer.is_finished(self.current_time) {
-            let ack_data = self.received_buffer.ack_data();
+            let ack_data = self.received_buffer.ack_data(self.received_buffer.sequence().wrapping_sub(1));
             let packet = Packet::Heartbeat { ack_data };
             let packet = bincode::options().serialize(&packet)?;
 

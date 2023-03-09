@@ -116,20 +116,19 @@ impl<T: Clone> SequenceBuffer<T> {
         self.sequence
     }
 
-    pub fn ack_data(&self) -> AckData {
-        let ack = self.sequence().wrapping_sub(1);
+    pub fn ack_data(&self, sequence: u16) -> AckData {
         let mut ack_bits = 0;
         let mut mask = 1;
 
         for i in 0..32 {
-            let sequence = ack.wrapping_sub(i);
-            if self.exists(sequence) {
+            let previous_sequence = sequence.wrapping_sub(i);
+            if self.exists(previous_sequence) {
                 ack_bits |= mask;
             }
             mask <<= 1;
         }
 
-        AckData { ack, ack_bits }
+        AckData { ack: sequence, ack_bits }
     }
 }
 
@@ -215,7 +214,7 @@ mod tests {
         buffer.insert(7, DataStub).unwrap();
         buffer.insert(30, DataStub).unwrap();
         buffer.insert(31, DataStub).unwrap();
-        let ack_data = buffer.ack_data();
+        let ack_data = buffer.ack_data(buffer.sequence().wrapping_sub(1));
 
         assert_eq!(ack_data.ack, 31);
         assert_eq!(ack_data.ack_bits, 0b11011101000000000000000000000011u32);

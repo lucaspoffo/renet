@@ -6,6 +6,8 @@ pub mod remote_connection;
 mod sequence_buffer;
 pub mod server;
 mod timer;
+mod new_channel;
+mod another_channel;
 
 pub use bytes::Bytes;
 pub use packet::disconnect_packet;
