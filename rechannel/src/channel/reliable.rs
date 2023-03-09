@@ -171,7 +171,7 @@ impl SendChannel for SendReliableChannel {
                 }
 
                 let serialized_size = match bincode::options().serialized_size(&message_send.reliable_message) {
-                    Ok(size) => size as u64,
+                    Ok(size) => size,
                     Err(e) => {
                         log::error!("Failed to get message size in reliable channel {}: {}", self.channel_id, e);
                         self.error = Some(ChannelError::FailedToSerialize);
@@ -515,7 +515,7 @@ mod tests {
         let second_message = TestMessages::Second.serialize();
 
         let message = ReliableMessage::new(0, first_message.clone());
-        let message_size = bincode::options().serialized_size(&message).unwrap() as u64;
+        let message_size = bincode::options().serialized_size(&message).unwrap();
 
         channel.send_message(first_message, current_time);
         channel.send_message(second_message, current_time);

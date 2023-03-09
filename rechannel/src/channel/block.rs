@@ -185,8 +185,6 @@ impl SendChunkChannel {
                     };
 
                     let message_size = bincode::options().serialized_size(&message)?;
-                    let message_size = message_size as u64;
-
                     if available_bytes < message_size {
                         break;
                     }

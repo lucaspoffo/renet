@@ -191,15 +191,15 @@ impl NetcodeServer {
         None
     }
 
-    fn handle_connection_request<'a, 's>(
-        &'s mut self,
+    fn handle_connection_request<'a>(
+        &mut self,
         addr: SocketAddr,
         version_info: [u8; 13],
         protocol_id: u64,
         expire_timestamp: u64,
         xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
         data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
-    ) -> Result<ServerResult<'a, 's>, NetcodeError> {
+    ) -> Result<ServerResult<'a, '_>, NetcodeError> {
         if version_info != *NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
         }

@@ -188,11 +188,11 @@ impl SequenceBuffer<ReassemblyFragment> {
 
         // Resize buffer to fit the last fragment size
         if fragment_id == num_fragments - 1 {
-            let len = (reassembly_fragment.num_fragments_total - 1) as usize * config.fragment_size as usize + payload.len();
+            let len = (reassembly_fragment.num_fragments_total - 1) as usize * config.fragment_size + payload.len();
             reassembly_fragment.buffer.resize(len, 0);
         }
 
-        let start = fragment_id as usize * config.fragment_size as usize;
+        let start = fragment_id as usize * config.fragment_size;
         reassembly_fragment.buffer[start..start + payload.len()].copy_from_slice(&payload);
         if reassembly_fragment.num_fragments_received == reassembly_fragment.num_fragments_total {
             let reassembly_fragment = self.remove(sequence).expect("ReassemblyFragment always exists here");
