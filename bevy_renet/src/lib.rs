@@ -1,7 +1,7 @@
 pub use renet;
 
 use bevy::{
-    ecs::{schedule::ShouldRun, system::Resource},
+    ecs::schedule::{SystemConfig, SystemConfigs},
     prelude::*,
 };
 
@@ -37,39 +37,47 @@ impl Default for RenetClientPlugin {
 
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Events::<ServerEvent>::default());
-        app.insert_resource(Events::<RenetError>::default());
+        app.init_resource::<Events<ServerEvent>>();
+        app.init_resource::<Events<RenetError>>();
 
-        app.add_system_to_stage(
-            CoreStage::PreUpdate,
-            Self::update_system.with_run_criteria(has_resource::<RenetServer>),
+        app.add_system(
+            Self::update_system
+                .in_base_set(CoreSet::PreUpdate)
+                .run_if(resource_exists::<RenetServer>()),
         )
-        .add_system_to_stage(
-            CoreStage::PostUpdate,
-            Self::send_packets_system.with_run_criteria(has_resource::<RenetServer>),
+        .add_system(
+            Self::send_packets_system
+                .in_base_set(CoreSet::PostUpdate)
+                .run_if(resource_exists::<RenetServer>()),
         );
 
         if self.clear_events {
-            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems());
+            app.add_systems(Self::get_clear_event_systems().in_base_set(CoreSet::PreUpdate));
         }
     }
 }
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Events::<RenetError>::default());
+        app.init_resource::<Events<RenetError>>();
 
-        app.add_system_to_stage(
-            CoreStage::PreUpdate,
-            Self::update_system.with_run_criteria(has_resource::<RenetClient>),
+        app.add_system(
+            Self::update_system
+                .in_base_set(CoreSet::PreUpdate)
+                .run_if(resource_exists::<RenetClient>()),
         )
-        .add_system_to_stage(
-            CoreStage::PostUpdate,
-            Self::send_packets_system.with_run_criteria(has_resource::<RenetClient>),
+        .add_system(
+            Self::send_packets_system
+                .in_base_set(CoreSet::PostUpdate)
+                .run_if(resource_exists::<RenetClient>()),
         );
 
         if self.clear_events {
-            app.add_system_set_to_stage(CoreStage::PreUpdate, Self::get_clear_event_systems().before(Self::update_system));
+            app.add_system(
+                Self::get_clear_event_system()
+                    .in_base_set(CoreSet::PreUpdate)
+                    .before(Self::update_system),
+            );
         }
     }
 }
@@ -96,10 +104,8 @@ impl RenetServerPlugin {
         }
     }
 
-    pub fn get_clear_event_systems() -> SystemSet {
-        SystemSet::new()
-            .with_system(Events::<ServerEvent>::update_system)
-            .with_system(Events::<RenetError>::update_system)
+    pub fn get_clear_event_systems() -> SystemConfigs {
+        (Events::<ServerEvent>::update_system, Events::<RenetError>::update_system).into_configs()
     }
 }
 
@@ -116,22 +122,22 @@ impl RenetClientPlugin {
         }
     }
 
-    pub fn get_clear_event_systems() -> SystemSet {
-        SystemSet::new().with_system(Events::<RenetError>::update_system)
+    pub fn get_clear_event_system() -> SystemConfig {
+        Events::<RenetError>::update_system.into_config()
     }
 }
 
-fn has_resource<T: Resource>(resource: Option<Res<T>>) -> ShouldRun {
-    match resource.is_some() {
-        true => ShouldRun::Yes,
-        false => ShouldRun::No,
-    }
-}
-
-pub fn run_if_client_connected(client: Option<Res<RenetClient>>) -> ShouldRun {
+pub fn client_connecting(client: Option<Res<RenetClient>>) -> bool {
     match client {
-        Some(client) if client.is_connected() => ShouldRun::Yes,
-        _ => ShouldRun::No,
+        Some(client) => !client.is_connected(),
+        None => false,
+    }
+}
+
+pub fn client_connected(client: Option<Res<RenetClient>>) -> bool {
+    match client {
+        Some(client) => client.is_connected(),
+        None => false,
     }
 }
 

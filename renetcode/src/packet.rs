@@ -344,7 +344,7 @@ fn get_additional_data(prefix: u8, protocol_id: u64) -> [u8; 13 + 8 + 1] {
 }
 
 fn decode_prefix(value: u8) -> (u8, usize) {
-    ((value & 0xF) as u8, (value >> 4) as usize)
+    ((value & 0xF), (value >> 4) as usize)
 }
 
 fn encode_prefix(value: u8, sequence: u64) -> u8 {
