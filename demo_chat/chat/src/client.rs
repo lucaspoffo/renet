@@ -92,7 +92,7 @@ fn update_lobby(sender: Sender<Vec<LobbyListing>>) {
 }
 
 fn lobby_list_request(client: &reqwest::blocking::Client) -> Result<Vec<LobbyListing>, reqwest::Error> {
-    let res = client.get("http://localhost:7000/server").send()?;
+    let res = client.get("http://127.0.0.1:7000/server").send()?;
     res.error_for_status_ref()?;
     let lobby_list: Vec<LobbyListing> = res.json()?;
 
@@ -106,7 +106,7 @@ pub fn connect_token_request(
 ) -> Result<(), Box<dyn Error>> {
     let client = reqwest::blocking::Client::new();
     let res = client
-        .post(format!("http://localhost:7000/server/{server_id}/connect"))
+        .post(format!("http://127.0.0.1:7000/server/{server_id}/connect"))
         .json(&request_connection)
         .send()?;
     if let Err(e) = res.error_for_status_ref() {
