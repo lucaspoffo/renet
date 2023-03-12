@@ -1,5 +1,17 @@
 # Renet changelog
 
+## 0.0.11 - 2023-03-12
+### Added ⭐
+* BevyRenet: updated bevy to version 0.10. [(PR)](https://github.com/lucaspoffo/renet/pull/77) by [Shatur](https://github.com/Shatur)
+* Renet, Renetcode, BevyRenet: add client.is_connecting(). [(commit)](https://github.com/lucaspoffo/renet/commit/88834d4d2c9708ecec0c7f2997ca52b2b4d56641)
+* Renet: allow to send empty messages again, this was a bad change since some serialization methods can serialize to empty messages. [(commit)](https://github.com/lucaspoffo/renet/commit/1e287018c7201ec339406a8dd6483714ade7f0ba)
+
+### Changed 🛠️
+* Renetcode: rename client.connected() with client.is_connected() for consistency. [(commit)](https://github.com/lucaspoffo/renet/commit/88834d4d2c9708ecec0c7f2997ca52b2b4d56641)
+
+### Contributors 🙏
+* [Shatur](https://github.com/Shatur)
+
 ## 0.0.10 - 2022-11-18
 ### Added ⭐
 * Added function `client_addr`, `user_data`, `is_client_connected`, `max_clients`, `connected_clients` for `RenetServer`, some utilities from `NetcodeServer`. [(commit)](https://github.com/lucaspoffo/renet/commit/576962e53a2e2b74f8f3c8355ae2abf706826f73) [(commit)](https://github.com/lucaspoffo/renet/commit/dff1fc5785ac2b82309b92477c90a250feb3af55)

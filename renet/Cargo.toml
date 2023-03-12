@@ -1,6 +1,6 @@
 [package]
 name = "renet"
-version = "0.0.10"
+version = "0.0.11"
 description = "Server/Client network library for multiplayer games with authentication and connection management"
 keywords = ["gamedev", "networking"]
 repository = "https://github.com/lucaspoffo/renet"
@@ -13,8 +13,8 @@ edition = "2021"
 bevy = ["dep:bevy_ecs"]
 
 [dependencies]
-rechannel = { path = "../rechannel", version = "0.0.6" }
-renetcode = { path = "../renetcode", version = "0.0.6" }
+rechannel = { path = "../rechannel", version = "0.0.7" }
+renetcode = { path = "../renetcode", version = "0.0.7" }
 log = "0.4.17"
 bevy_ecs = { version = "0.10.0", optional = true }
 

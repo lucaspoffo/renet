@@ -14,7 +14,7 @@ Bevy renet is a small layer over the `renet` crate, it adds systems to call the 
 #### Server
 ```rust
 let mut app = App::new();
-app.add_plugin(RenetServerPlugin);
+app.add_plugin(RenetServerPlugin::default());
 
 let server = RenetServer::new(...);
 app.insert_resource(server);
@@ -59,7 +59,7 @@ fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
 #### Client
 ```rust
 let mut app = App::new();
-app.add_plugin(RenetClientPlugin);
+app.add_plugin(RenetClientPlugin::default());
 
 let client = RenetClient::new(...);
 app.insert_resource(client);
@@ -97,6 +97,7 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 
 |bevy|bevy_renet|
 |---|---|
+|0.10|0.0.7|
 |0.9|0.0.6|
 |0.8|0.0.5|
 |0.7|0.0.4|
