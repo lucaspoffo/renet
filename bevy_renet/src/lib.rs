@@ -129,7 +129,7 @@ impl RenetClientPlugin {
 
 pub fn client_connecting(client: Option<Res<RenetClient>>) -> bool {
     match client {
-        Some(client) => !client.is_connected(),
+        Some(client) => client.is_connecting(),
         None => false,
     }
 }

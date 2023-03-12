@@ -706,7 +706,7 @@ mod tests {
             _ => unreachable!(),
         };
 
-        assert!(!client.connected());
+        assert!(!client.is_connected());
         let (client_packet, _) = client.update(Duration::ZERO).unwrap();
         let result = server.process_packet(client_addr, client_packet);
 
@@ -724,7 +724,7 @@ mod tests {
             _ => unreachable!(),
         };
 
-        assert!(client.connected());
+        assert!(client.is_connected());
 
         for _ in 0..3 {
             let payload = [7u8; 300];
@@ -762,9 +762,9 @@ mod tests {
             ServerResult::ClientDisconnected {
                 payload: Some(payload), ..
             } => {
-                assert!(client.connected());
+                assert!(client.is_connected());
                 assert!(client.process_packet(payload).is_none());
-                assert!(!client.connected());
+                assert!(!client.is_connected());
             }
             _ => unreachable!(),
         }

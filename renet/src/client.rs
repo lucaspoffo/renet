@@ -106,8 +106,12 @@ impl RenetClient {
         self.netcode_client.client_id()
     }
 
+    pub fn is_connecting(&self) -> bool {
+        self.netcode_client.is_connecting()
+    }
+
     pub fn is_connected(&self) -> bool {
-        self.netcode_client.connected()
+        self.netcode_client.is_connected()
     }
 
     /// If the client is disconnected, returns the reason.
@@ -161,7 +165,7 @@ impl RenetClient {
 
     /// Send packets to the server.
     pub fn send_packets(&mut self) -> Result<(), RenetError> {
-        if self.netcode_client.connected() {
+        if self.netcode_client.is_connected() {
             let packets = self.reliable_connection.get_packets_to_send()?;
             for packet in packets.into_iter() {
                 let (addr, payload) = self.netcode_client.generate_payload_packet(&packet)?;
