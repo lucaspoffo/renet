@@ -72,6 +72,8 @@ impl<T: Clone> SequenceBuffer<T> {
             return None;
         }
 
+        // If the new element has a greater sequence
+        // Remove old sequences that between the current sequence and the new one
         if sequence_greater_than(sequence.wrapping_add(1), self.sequence) {
             self.remove_entries(u32::from(sequence));
             self.sequence = sequence.wrapping_add(1);
