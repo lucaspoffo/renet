@@ -3,6 +3,7 @@
 ## 0.0.11 - 2023-03-12
 ### Added ⭐
 * BevyRenet: updated bevy to version 0.10. [(PR)](https://github.com/lucaspoffo/renet/pull/77) by [Shatur](https://github.com/Shatur)
+* RenetVisualizer: updated to egui 0.21.
 * Renet, Renetcode, BevyRenet: add client.is_connecting(). [(commit)](https://github.com/lucaspoffo/renet/commit/88834d4d2c9708ecec0c7f2997ca52b2b4d56641)
 * Renet: allow to send empty messages again, this was a bad change since some serialization methods can serialize to empty messages. [(commit)](https://github.com/lucaspoffo/renet/commit/1e287018c7201ec339406a8dd6483714ade7f0ba)
 
@@ -26,7 +27,6 @@
 ### Changed 🛠️
 * Renetcode: remove `client_id` argument when creating an RenetClient. [(commit)](https://github.com/lucaspoffo/renet/commit/b2affb5d5659f4744faf8802c0718cc38c53f011)
 * Rechannel: rename block channel to chunk channel, this makes clear what the channel does: the message is sliced in multiple chunks so it can be sent in multiple frames. Also, it is not confused with "blocking" thread/logic.
- 
 
 ### Fixed 🐛
 * Rechannel: when sending an empty message, this now gives an error. [(commit)](https://github.com/lucaspoffo/renet/commit/210c752c30d059408aa5765bb91749cbeae27ced)
