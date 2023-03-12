@@ -20,5 +20,3 @@ pub use server::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent};
 // Reused in the renet_visualizer crate
 #[doc(hidden)]
 pub use circular_buffer::CircularBuffer;
-
-const NUM_DISCONNECT_PACKETS_TO_SEND: u32 = 5;

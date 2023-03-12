@@ -1,7 +1,7 @@
 use crate::{
     error::{DisconnectionReason, RenetError},
     network_info::{ClientPacketInfo, NetworkInfo, PacketInfo},
-    RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
+    RenetConnectionConfig,
 };
 
 use log::debug;
@@ -127,10 +127,8 @@ impl RenetClient {
     pub fn disconnect(&mut self) {
         match self.netcode_client.disconnect() {
             Ok((addr, payload)) => {
-                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    if let Err(e) = send_to(self.current_time, &self.socket, &mut self.client_packet_info, payload, addr) {
-                        log::error!("failed to send disconnect packet to server: {}", e);
-                    }
+                if let Err(e) = send_to(self.current_time, &self.socket, &mut self.client_packet_info, payload, addr) {
+                    log::error!("failed to send disconnect packet to server: {}", e);
                 }
             }
             Err(e) => log::error!("failed to generate disconnect packet: {}", e),

@@ -278,7 +278,10 @@ impl SendChannel for SendChunkChannel {
                             *num_acked_slices += 1;
                             log::trace!(
                                 "Acked SliceMessage {} from chunk_id {}. ({}/{})",
-                                slice_id, self.chunk_id, num_acked_slices, num_slices
+                                slice_id,
+                                self.chunk_id,
+                                num_acked_slices,
+                                num_slices
                             );
                         }
                     }
@@ -395,7 +398,8 @@ impl ReceiveChunkChannel {
             };
             log::trace!(
                 "Receiving chunk message with id {} with {} slices.",
-                message.chunk_id, message.num_slices
+                message.chunk_id,
+                message.num_slices
             );
         }
 
@@ -464,7 +468,10 @@ impl ReceiveChunkChannel {
                     chunk_data[start..end].copy_from_slice(&message.data);
                     log::trace!(
                         "Received slice {} from chunk {}. ({}/{})",
-                        slice_id, chunk_id, num_received_slices, num_slices
+                        slice_id,
+                        chunk_id,
+                        num_received_slices,
+                        num_slices
                     );
                 }
 

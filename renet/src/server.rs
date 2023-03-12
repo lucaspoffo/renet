@@ -1,6 +1,6 @@
 use crate::{
     network_info::{ClientPacketInfo, NetworkInfo, PacketInfo},
-    RenetConnectionConfig, NUM_DISCONNECT_PACKETS_TO_SEND,
+    RenetConnectionConfig,
 };
 
 use std::{
@@ -227,9 +227,7 @@ impl RenetServer {
                     Ok(packet) => match self.netcode_server.generate_payload_packet(client_id, &packet) {
                         Err(e) => error!("Failed to encrypt disconnect packet: {}", e),
                         Ok((addr, payload)) => {
-                            for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                                self.socket.send_to(payload, addr)?;
-                            }
+                            self.socket.send_to(payload, addr)?;
                         }
                     },
                 }
@@ -363,9 +361,7 @@ fn handle_server_result(
             reliable_server.remove_connection(&client_id);
             packet_infos.remove(&addr);
             if let Some(payload) = payload {
-                for _ in 0..NUM_DISCONNECT_PACKETS_TO_SEND {
-                    socket.send_to(payload, addr)?;
-                }
+                socket.send_to(payload, addr)?;
             }
         }
     }
