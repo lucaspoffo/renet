@@ -10,7 +10,7 @@ use crate::{
     sequence_buffer::{sequence_less_than, SequenceBuffer},
     timer::Timer,
 };
-use log::{debug, error, info};
+use log::{debug, error};
 
 use super::{ReceiveChannel, SendChannel};
 
@@ -192,7 +192,7 @@ impl SendChunkChannel {
                     available_bytes -= message_size;
                     resend_timer.reset(current_time);
 
-                    info!(
+                    log::trace!(
                         "Generated SliceMessage {} from chunk_id {}. ({}/{})",
                         message.slice_id,
                         self.chunk_id,
@@ -276,7 +276,7 @@ impl SendChannel for SendChunkChannel {
                         if !acked[slice_id as usize] {
                             acked[slice_id as usize] = true;
                             *num_acked_slices += 1;
-                            info!(
+                            log::trace!(
                                 "Acked SliceMessage {} from chunk_id {}. ({}/{})",
                                 slice_id, self.chunk_id, num_acked_slices, num_slices
                             );
@@ -285,7 +285,7 @@ impl SendChannel for SendChunkChannel {
 
                     if num_acked_slices == num_slices {
                         self.sending = Sending::No;
-                        info!("Finished sending chunk message {}.", self.chunk_id);
+                        log::trace!("Finished sending chunk message {}.", self.chunk_id);
                         self.chunk_id = self.chunk_id.wrapping_add(1);
                     }
                 }
@@ -393,7 +393,7 @@ impl ReceiveChunkChannel {
                 received: vec![false; num_slices],
                 chunk_data: vec![0; num_slices * self.slice_size],
             };
-            info!(
+            log::trace!(
                 "Receiving chunk message with id {} with {} slices.",
                 message.chunk_id, message.num_slices
             );
@@ -462,14 +462,14 @@ impl ReceiveChunkChannel {
                     };
 
                     chunk_data[start..end].copy_from_slice(&message.data);
-                    info!(
+                    log::trace!(
                         "Received slice {} from chunk {}. ({}/{})",
                         slice_id, chunk_id, num_received_slices, num_slices
                     );
                 }
 
                 if *num_received_slices == *num_slices {
-                    info!("Received all slices for chunk {}.", chunk_id);
+                    log::trace!("Received all slices for chunk {}.", chunk_id);
                     let message = mem::take(chunk_data);
                     let last_chunk_id = *chunk_id;
                     self.last_chunk_id = Some(last_chunk_id);
