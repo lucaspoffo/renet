@@ -214,10 +214,10 @@ impl NetcodeServer {
 
         let connect_token = PrivateConnectToken::decode(&data, self.protocol_id, expire_timestamp, &xnonce, &self.connect_key)?;
 
-        let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.public_address));
-        if !in_host_list {
-            return Err(NetcodeError::NotInHostList);
-        }
+        // let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.public_address));
+        // if !in_host_list {
+        //     return Err(NetcodeError::NotInHostList);
+        // }
 
         let addr_already_connected = find_client_mut_by_addr(&mut self.clients, addr).is_some();
         let id_already_connected = find_client_mut_by_id(&mut self.clients, connect_token.client_id).is_some();
