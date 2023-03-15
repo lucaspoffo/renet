@@ -283,34 +283,34 @@ impl RemoteConnection {
         }
 
         if !channels_packet_data.is_empty() {
-            self.sequence = self.sequence.wrapping_add(1);
-            let packet_size = bincode::options().serialized_size(&channels_packet_data)?;
-            let ack_data = self.received_buffer.ack_data(self.received_buffer.sequence().wrapping_sub(1));
+            // self.sequence = self.sequence.wrapping_add(1);
+            // let packet_size = bincode::options().serialized_size(&channels_packet_data)?;
+            // let ack_data = self.received_buffer.ack_data(self.received_buffer.sequence().wrapping_sub(1));
 
-            let sent_packet = SentPacket::new(self.current_time);
-            self.sent_buffer.insert(sequence, sent_packet);
+            // let sent_packet = SentPacket::new(self.current_time);
+            // self.sent_buffer.insert(sequence, sent_packet);
 
-            let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above {
-                build_fragments(channels_packet_data, sequence, ack_data, &self.config.fragment_config)?
-            } else {
-                let packet = Packet::Normal {
-                    sequence,
-                    ack_data,
-                    channels_packet_data,
-                };
-                let packet = bincode::options().serialize(&packet)?;
-                vec![packet]
-            };
+            // let packets: Vec<Payload> = if packet_size > self.config.fragment_config.fragment_above {
+            //     build_fragments(channels_packet_data, sequence, ack_data, &self.config.fragment_config)?
+            // } else {
+            //     let packet = Packet::Normal {
+            //         sequence,
+            //         ack_data,
+            //         channels_packet_data,
+            //     };
+            //     let packet = bincode::options().serialize(&packet)?;
+            //     vec![packet]
+            // };
 
-            self.heartbeat_timer.reset(self.current_time);
-            return Ok(packets);
+            // self.heartbeat_timer.reset(self.current_time);
+            // return Ok(packets);
         } else if self.heartbeat_timer.is_finished(self.current_time) {
-            let ack_data = self.received_buffer.ack_data(self.received_buffer.sequence().wrapping_sub(1));
-            let packet = Packet::Heartbeat { ack_data };
-            let packet = bincode::options().serialize(&packet)?;
+            // let ack_data = self.received_buffer.ack_data(self.received_buffer.sequence().wrapping_sub(1));
+            // let packet = Packet::Heartbeat { ack_data };
+            // let packet = bincode::options().serialize(&packet)?;
 
-            self.heartbeat_timer.reset(self.current_time);
-            return Ok(vec![packet]);
+            // self.heartbeat_timer.reset(self.current_time);
+            // return Ok(vec![packet]);
         }
 
         // TODO: should we return Option<Vec>?

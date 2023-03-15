@@ -1,18 +1,70 @@
 use crate::packet::AckData;
 
+pub(crate) trait Sequence: PartialEq + Eq + Default + Clone + Copy {
+    fn greater_than(s1: Self, s2: Self) -> bool;
+    fn less_than(s1: Self, s2: Self) -> bool;
+    fn index(sequence: Self, entries: usize) -> usize;
+    fn can_discard_sequence(&self, sequence: Self, entries_len: usize) -> bool;
+    fn next(&self) -> Self;
+}
+
+impl Sequence for u16 {
+    fn less_than(s1: Self, s2: Self) -> bool {
+        Self::greater_than(s2, s1)
+    }
+
+    fn greater_than(s1: Self, s2: Self) -> bool {
+        ((s1 > s2) && (s1 - s2 <= 32768)) || ((s1 < s2) && (s2 - s1 > 32768))
+    }
+
+    fn index(sequence: Self, entries: usize) -> usize {
+        sequence as usize % entries
+    }
+
+    fn can_discard_sequence(&self, sequence: u16, entries_len: usize) -> bool {
+        Self::less_than(sequence, self.wrapping_sub(entries_len as u16))
+    }
+
+    fn next(&self) -> Self {
+        self.wrapping_add(1)
+    }
+}
+
+impl Sequence for u64 {
+    fn less_than(s1: Self, s2: Self) -> bool {
+        s1 < s2
+    }
+
+    fn greater_than(s1: Self, s2: Self) -> bool {
+        s1 > s2
+    }
+
+    fn index(sequence: Self, entries: usize) -> usize {
+        sequence as usize % entries
+    }
+
+    fn can_discard_sequence(&self, sequence: u64, entries_len: usize) -> bool {
+        sequence.wrapping_add(entries_len as u64) < *self
+    }
+
+    fn next(&self) -> Self {
+        self.wrapping_add(1)
+    }
+}
+
 #[derive(Debug)]
-pub(crate) struct SequenceBuffer<T> {
-    sequence: u16,
-    entry_sequences: Box<[Option<u16>]>,
+pub(crate) struct SequenceBuffer<T, N=u16> {
+    next_sequence: N,
+    entry_sequences: Box<[Option<N>]>,
     entries: Box<[Option<T>]>,
 }
 
-impl<T: Clone> SequenceBuffer<T> {
+impl<T: Clone, N: Sequence> SequenceBuffer<T, N> {
     pub fn with_capacity(size: usize) -> Self {
         assert!(size > 0, "tried to initialize SequenceBuffer with 0 size");
 
         Self {
-            sequence: 0,
+            next_sequence: N::default(),
             entry_sequences: vec![None; size].into_boxed_slice(),
             entries: vec![None; size].into_boxed_slice(),
         }
@@ -22,7 +74,7 @@ impl<T: Clone> SequenceBuffer<T> {
         self.entries.len()
     }
 
-    pub fn get_mut(&mut self, sequence: u16) -> Option<&mut T> {
+    pub fn get_mut(&mut self, sequence: N) -> Option<&mut T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
             return self.entries[index].as_mut();
@@ -31,7 +83,7 @@ impl<T: Clone> SequenceBuffer<T> {
     }
 
     #[allow(dead_code)]
-    pub fn get(&self, sequence: u16) -> Option<&T> {
+    pub fn get(&self, sequence: N) -> Option<&T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
             return self.entries[index].as_ref();
@@ -39,7 +91,7 @@ impl<T: Clone> SequenceBuffer<T> {
         None
     }
 
-    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: u16, f: F) -> Option<&mut T> {
+    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, sequence: N, f: F) -> Option<&mut T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
             self.entries[index].as_mut()
@@ -49,17 +101,17 @@ impl<T: Clone> SequenceBuffer<T> {
     }
 
     #[inline]
-    pub fn index(&self, sequence: u16) -> usize {
-        sequence as usize % self.entries.len()
+    pub fn index(&self, sequence: N) -> usize {
+        N::index(sequence, self.entries.len())
     }
 
-    pub fn available(&self, sequence: u16) -> bool {
+    pub fn available(&self, sequence: N) -> bool {
         let index = self.index(sequence);
         self.entry_sequences[index].is_none()
     }
 
     /// Returns whether or not we have previously inserted an entry for the given sequence number.
-    pub fn exists(&self, sequence: u16) -> bool {
+    pub fn exists(&self, sequence: N) -> bool {
         let index = self.index(sequence);
         if let Some(s) = self.entry_sequences[index] {
             return s == sequence;
@@ -67,16 +119,20 @@ impl<T: Clone> SequenceBuffer<T> {
         false
     }
 
-    pub fn insert(&mut self, sequence: u16, data: T) -> Option<&mut T> {
-        if sequence_less_than(sequence, self.sequence.wrapping_sub(self.entry_sequences.len() as u16)) {
+    pub fn insert(&mut self, sequence: N, data: T) -> Option<&mut T> {
+        if self.next_sequence.can_discard_sequence(sequence, self.entry_sequences.len()) {
             return None;
         }
 
         // If the new element has a greater sequence
-        // Remove old sequences that between the current sequence and the new one
-        if sequence_greater_than(sequence.wrapping_add(1), self.sequence) {
-            self.remove_entries(u32::from(sequence));
-            self.sequence = sequence.wrapping_add(1);
+        // Remove old sequences that are between the current sequence and the new one
+        if N::greater_than(sequence.next(), self.next_sequence) {
+            let mut next = self.next_sequence;
+            while next != sequence {
+                self.remove(next);
+                next = next.next();
+            }
+            self.next_sequence = sequence.next();
         }
 
         let index = self.index(sequence);
@@ -85,25 +141,7 @@ impl<T: Clone> SequenceBuffer<T> {
         self.entries[index].as_mut()
     }
 
-    fn remove_entries(&mut self, mut finish_sequence: u32) {
-        let start_sequence = u32::from(self.sequence);
-        if finish_sequence < start_sequence {
-            finish_sequence += 65536;
-        }
-
-        if finish_sequence - start_sequence < self.entry_sequences.len() as u32 {
-            for sequence in start_sequence..=finish_sequence {
-                self.remove(sequence as u16);
-            }
-        } else {
-            for index in 0..self.entry_sequences.len() {
-                self.entries[index] = None;
-                self.entry_sequences[index] = None;
-            }
-        }
-    }
-
-    pub fn remove(&mut self, sequence: u16) -> Option<T> {
+    pub fn remove(&mut self, sequence: N) -> Option<T> {
         if self.exists(sequence) {
             let index = self.index(sequence);
             self.entry_sequences[index] = None;
@@ -114,23 +152,8 @@ impl<T: Clone> SequenceBuffer<T> {
     }
 
     #[inline]
-    pub fn sequence(&self) -> u16 {
-        self.sequence
-    }
-
-    pub fn ack_data(&self, sequence: u16) -> AckData {
-        let mut ack_bits = 0;
-        let mut mask = 1;
-
-        for i in 0..32 {
-            let previous_sequence = sequence.wrapping_sub(i);
-            if self.exists(previous_sequence) {
-                ack_bits |= mask;
-            }
-            mask <<= 1;
-        }
-
-        AckData { ack: sequence, ack_bits }
+    pub fn sequence(&self) -> N {
+        self.next_sequence
     }
 }
 
@@ -155,33 +178,33 @@ mod tests {
 
     #[test]
     fn max_sequence_not_exists_by_default() {
-        let buffer: SequenceBuffer<DataStub> = SequenceBuffer::with_capacity(8);
-        assert!(!buffer.exists(u16::max_value()));
+        let buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(8);
+        assert!(!buffer.exists(u64::max_value()));
     }
 
     #[test]
     fn insert() {
-        let mut buffer = SequenceBuffer::with_capacity(2);
+        let mut buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(2);
         buffer.insert(0, DataStub).unwrap();
         assert!(buffer.exists(0));
     }
 
     #[test]
     fn remove() {
-        let mut buffer = SequenceBuffer::with_capacity(2);
+        let mut buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(2);
         buffer.insert(0, DataStub).unwrap();
         let removed = buffer.remove(0);
         assert!(removed.is_some());
         assert!(!buffer.exists(0));
     }
 
-    fn count_entries(buffer: &SequenceBuffer<DataStub>) -> usize {
+    fn count_entries(buffer: &SequenceBuffer<DataStub, u64>) -> usize {
         buffer.entry_sequences.iter().flatten().count()
     }
 
     #[test]
     fn insert_over_older_entries() {
-        let mut buffer = SequenceBuffer::with_capacity(8);
+        let mut buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(8);
         buffer.insert(8, DataStub).unwrap();
         buffer.insert(0, DataStub);
         assert!(!buffer.exists(0));
@@ -194,37 +217,37 @@ mod tests {
 
     #[test]
     fn insert_old_entries() {
-        let mut buffer = SequenceBuffer::with_capacity(8);
+        let mut buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(8);
         buffer.insert(11, DataStub);
         buffer.insert(2, DataStub);
         assert!(!buffer.exists(2));
 
-        buffer.insert(u16::max_value(), DataStub);
-        assert!(!buffer.exists(u16::max_value()));
+        buffer.insert(u64::max_value(), DataStub);
+        assert!(!buffer.exists(u64::max_value()));
 
         assert_eq!(count_entries(&buffer), 1);
     }
 
-    #[test]
-    fn ack_bits() {
-        let mut buffer = SequenceBuffer::with_capacity(64);
-        buffer.insert(0, DataStub).unwrap();
-        buffer.insert(1, DataStub).unwrap();
-        buffer.insert(3, DataStub).unwrap();
-        buffer.insert(4, DataStub).unwrap();
-        buffer.insert(5, DataStub).unwrap();
-        buffer.insert(7, DataStub).unwrap();
-        buffer.insert(30, DataStub).unwrap();
-        buffer.insert(31, DataStub).unwrap();
-        let ack_data = buffer.ack_data(buffer.sequence().wrapping_sub(1));
+    // #[test]
+    // fn ack_bits() {
+    //     let mut buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(64);
+    //     buffer.insert(0, DataStub).unwrap();
+    //     buffer.insert(1, DataStub).unwrap();
+    //     buffer.insert(3, DataStub).unwrap();
+    //     buffer.insert(4, DataStub).unwrap();
+    //     buffer.insert(5, DataStub).unwrap();
+    //     buffer.insert(7, DataStub).unwrap();
+    //     buffer.insert(30, DataStub).unwrap();
+    //     buffer.insert(31, DataStub).unwrap();
+    //     let ack_data = buffer.ack_data(buffer.sequence().wrapping_sub(1));
 
-        assert_eq!(ack_data.ack, 31);
-        assert_eq!(ack_data.ack_bits, 0b11011101000000000000000000000011u32);
-    }
+    //     assert_eq!(ack_data.ack, 31);
+    //     assert_eq!(ack_data.ack_bits, 0b11011101000000000000000000000011u32);
+    // }
 
     #[test]
     fn available() {
-        let mut buffer = SequenceBuffer::with_capacity(2);
+        let mut buffer: SequenceBuffer<DataStub, u64> = SequenceBuffer::with_capacity(2);
         buffer.insert(0, DataStub).unwrap();
         buffer.insert(1, DataStub).unwrap();
         assert!(!buffer.available(2));

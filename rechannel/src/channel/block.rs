@@ -174,7 +174,6 @@ impl SendChunkChannel {
 
                     let start = slice_id * self.slice_size;
                     let end = if slice_id == *num_slices - 1 { data.len() } else { (slice_id + 1) * self.slice_size };
-
                     let data = data[start..end].to_vec();
 
                     let message = SliceMessage {

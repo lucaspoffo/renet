@@ -9,6 +9,9 @@ mod timer;
 mod new_channel;
 mod another_channel;
 
+mod channel_send;
+mod channel_receive;
+
 pub use bytes::Bytes;
 pub use packet::disconnect_packet;
 pub use reassembly_fragment::FragmentConfig;
