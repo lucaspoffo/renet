@@ -6,7 +6,7 @@ use std::{
 use bytes::Bytes;
 
 use crate::{
-    another_channel::{Slice, SmallMessage, SLICE_SIZE},
+    another_channel::{Slice, SLICE_SIZE},
     error::ChannelError,
 };
 
@@ -27,23 +27,11 @@ enum ReliableOrder {
     },
 }
 
-struct ReceiveChannel {
-    unreliable_messages: VecDeque<Bytes>,
-    unreliable_slices: HashMap<u64, SliceConstructor>,
-    unreliable_slices_last_received: HashMap<u64, Duration>,
-    reliable_slices: HashMap<u64, SliceConstructor>,
-    reliable_messages: BTreeMap<u64, Bytes>,
-    next_reliable_message_id: u64,
-    oldest_unacked_packet: u64,
-    reliable_order: ReliableOrder,
-    error: Option<ChannelError>,
-}
-
 impl SliceConstructor {
     fn new(message_id: u64, num_slices: usize) -> Self {
         SliceConstructor {
             message_id,
-            num_slices: num_slices,
+            num_slices,
             num_received_slices: 0,
             received: vec![false; num_slices as usize],
             sliced_data: vec![0; num_slices as usize * SLICE_SIZE],
@@ -102,146 +90,55 @@ impl SliceConstructor {
     }
 }
 
-impl ReceiveChannel {
-    fn new() -> Self {
-        Self {
-            unreliable_slices: HashMap::new(),
-            unreliable_slices_last_received: HashMap::new(),
-            unreliable_messages: VecDeque::new(),
-            reliable_slices: HashMap::new(),
-            reliable_messages: BTreeMap::new(),
-            next_reliable_message_id: 0,
-            oldest_unacked_packet: 0,
-            reliable_order: ReliableOrder::Ordered,
-            error: None,
-        }
-    }
-
-    fn process_message(&mut self, message: SmallMessage, current_time: Duration) {
-        match message {
-            SmallMessage::Reliable { message_id, payload } => {
-                if !self.reliable_messages.contains_key(&message_id) {
-                    self.reliable_messages.insert(message_id, payload.into());
-                }
-            }
-            SmallMessage::Unreliable { payload } => {
-                self.unreliable_messages.push_back(payload.into());
-            }
-        }
-    }
-
-    fn process_reliable_slice(&mut self, slice: Slice, current_time: Duration) {
-        if self.reliable_messages.contains_key(&slice.message_id) || slice.message_id < self.next_reliable_message_id {
-            // Message already assembled
-            return;
-        }
-
-        let slice_constructor = self
-            .reliable_slices
-            .entry(slice.message_id)
-            .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
-
-        match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
-            Err(e) => self.error = Some(e),
-            Ok(Some(message)) => {
-                self.reliable_slices.remove(&slice.message_id);
-                self.reliable_messages.insert(slice.message_id, message);
-            }
-            Ok(None) => {}
-        }
-    }
-
-    fn process_unreliable_slice(&mut self, slice: Slice, current_time: Duration) {
-        let slice_constructor = self
-            .unreliable_slices
-            .entry(slice.message_id)
-            .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
-
-        match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
-            Err(e) => self.error = Some(e),
-            Ok(Some(message)) => {
-                self.unreliable_slices.remove(&slice.message_id);
-                self.unreliable_slices_last_received.remove(&slice.message_id);
-                self.unreliable_messages.push_back(message);
-            }
-            Ok(None) => {
-                self.unreliable_slices_last_received.insert(slice.message_id, current_time);
-            }
-        }
-    }
-
-    pub fn receive_unreliable(&mut self) -> Option<Bytes> {
-        self.unreliable_messages.pop_front()
-    }
-
-    pub fn receive_reliable(&mut self) -> Option<Bytes> {
-        match self.reliable_order {
-            ReliableOrder::Ordered => {
-                let next_message_id = self.next_reliable_message_id;
-                if !self.reliable_messages.contains_key(&next_message_id) {
-                    return None;
-                }
-
-                self.next_reliable_message_id += 1;
-                self.reliable_messages.remove(&next_message_id)
-            }
-            ReliableOrder::Unordered { .. } => {
-                let (_, message) = self.reliable_messages.pop_first().unzip();
-                message
-            }
-        }
-    }
-}
-
 struct ReceiveChannelUnreliable {
-    unreliable_messages: VecDeque<Bytes>,
-    unreliable_slices: HashMap<u64, SliceConstructor>,
-    unreliable_slices_last_received: HashMap<u64, Duration>,
+    messages: VecDeque<Bytes>,
+    slices: HashMap<u64, SliceConstructor>,
+    slices_last_received: HashMap<u64, Duration>,
     error: Option<ChannelError>,
 }
 
 impl ReceiveChannelUnreliable {
     fn new() -> Self {
         Self {
-            unreliable_slices: HashMap::new(),
-            unreliable_slices_last_received: HashMap::new(),
-            unreliable_messages: VecDeque::new(),
+            slices: HashMap::new(),
+            slices_last_received: HashMap::new(),
+            messages: VecDeque::new(),
             error: None,
         }
     }
 
     fn process_message(&mut self, message: Bytes) {
-        self.unreliable_messages.push_back(message.into());
+        self.messages.push_back(message.into());
     }
 
     fn process_slice(&mut self, slice: Slice, current_time: Duration) {
         let slice_constructor = self
-            .unreliable_slices
+            .slices
             .entry(slice.message_id)
             .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
 
         match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
             Err(e) => self.error = Some(e),
             Ok(Some(message)) => {
-                self.unreliable_slices.remove(&slice.message_id);
-                self.unreliable_slices_last_received.remove(&slice.message_id);
-                self.unreliable_messages.push_back(message);
+                self.slices.remove(&slice.message_id);
+                self.slices_last_received.remove(&slice.message_id);
+                self.messages.push_back(message);
             }
             Ok(None) => {
-                self.unreliable_slices_last_received.insert(slice.message_id, current_time);
+                self.slices_last_received.insert(slice.message_id, current_time);
             }
         }
     }
 
     pub fn receive_message(&mut self) -> Option<Bytes> {
-        self.unreliable_messages.pop_front()
+        self.messages.pop_front()
     }
 }
 
 struct ReceiveChannelUnreliableSequenced {
-    unreliable_messages: BTreeMap<u64, Bytes>,
-    unreliable_slices: HashMap<u64, SliceConstructor>,
-    unreliable_slices_last_received: HashMap<u64, Duration>,
+    messages: BTreeMap<u64, Bytes>,
+    slices: HashMap<u64, SliceConstructor>,
+    slices_last_received: HashMap<u64, Duration>,
     next_message_id: u64,
     error: Option<ChannelError>,
 }
@@ -249,9 +146,9 @@ struct ReceiveChannelUnreliableSequenced {
 impl ReceiveChannelUnreliableSequenced {
     fn new() -> Self {
         Self {
-            unreliable_slices: HashMap::new(),
-            unreliable_slices_last_received: HashMap::new(),
-            unreliable_messages: BTreeMap::new(),
+            slices: HashMap::new(),
+            slices_last_received: HashMap::new(),
+            messages: BTreeMap::new(),
             next_message_id: 0,
             error: None,
         }
@@ -263,7 +160,7 @@ impl ReceiveChannelUnreliableSequenced {
             return;
         }
 
-        self.unreliable_messages.insert(message_id, message.into());
+        self.messages.insert(message_id, message.into());
     }
 
     fn process_slice(&mut self, slice: Slice, current_time: Duration) {
@@ -273,32 +170,32 @@ impl ReceiveChannelUnreliableSequenced {
         }
 
         let slice_constructor = self
-            .unreliable_slices
+            .slices
             .entry(slice.message_id)
             .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
 
         match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
             Err(e) => self.error = Some(e),
             Ok(Some(message)) => {
-                self.unreliable_slices.remove(&slice.message_id);
-                self.unreliable_slices_last_received.remove(&slice.message_id);
-                self.unreliable_messages.insert(slice.message_id, message);
+                self.slices.remove(&slice.message_id);
+                self.slices_last_received.remove(&slice.message_id);
+                self.messages.insert(slice.message_id, message);
             }
             Ok(None) => {
-                self.unreliable_slices_last_received.insert(slice.message_id, current_time);
+                self.slices_last_received.insert(slice.message_id, current_time);
             }
         }
     }
 
     pub fn receive_message(&mut self) -> Option<Bytes> {
-        let Some((message_id, message)) = self.unreliable_messages.pop_first() else {
+        let Some((message_id, message)) = self.messages.pop_first() else {
             return None;    
         };
 
         // Remove any old slices still being assembled 
         for i in self.next_message_id..message_id {
-            self.unreliable_slices.remove(&i);
-            self.unreliable_slices_last_received.remove(&i);
+            self.slices.remove(&i);
+            self.slices_last_received.remove(&i);
         }
 
         self.next_message_id = message_id + 1;
@@ -308,10 +205,9 @@ impl ReceiveChannelUnreliableSequenced {
 
 
 struct ReceiveChannelReliable {
-    reliable_slices: HashMap<u64, SliceConstructor>,
-    reliable_messages: BTreeMap<u64, Bytes>,
-    next_reliable_message_id: u64,
-    oldest_unacked_packet: u64,
+    slices: HashMap<u64, SliceConstructor>,
+    messages: BTreeMap<u64, Bytes>,
+    next_message_id: u64,
     reliable_order: ReliableOrder,
     error: Option<ChannelError>,
 }
@@ -319,56 +215,77 @@ struct ReceiveChannelReliable {
 impl ReceiveChannelReliable {
     fn new() -> Self {
         Self {
-            reliable_slices: HashMap::new(),
-            reliable_messages: BTreeMap::new(),
-            next_reliable_message_id: 0,
-            oldest_unacked_packet: 0,
+            slices: HashMap::new(),
+            messages: BTreeMap::new(),
+            next_message_id: 0,
             reliable_order: ReliableOrder::Ordered,
             error: None,
         }
     }
 
     fn process_message(&mut self, message: Bytes, message_id: u64) {
-                if !self.reliable_messages.contains_key(&message_id) {
-                    self.reliable_messages.insert(message_id, message);
+        match &mut self.reliable_order {
+            ReliableOrder::Ordered => {
+                if !self.messages.contains_key(&message_id) {
+                    self.messages.insert(message_id, message);
                 }
+            },
+            ReliableOrder::Unordered { most_recent_message_id, received_messages } => {
+                if *most_recent_message_id < message_id {
+                    *most_recent_message_id = message_id;
+                }
+                if !received_messages.contains(&message_id) {
+                    received_messages.insert(message_id);
+                    self.messages.insert(message_id, message);
+                }
+            },
+        }
     }
 
-    fn process_reliable_slice(&mut self, slice: Slice, current_time: Duration) {
-        if self.reliable_messages.contains_key(&slice.message_id) || slice.message_id < self.next_reliable_message_id {
+    fn process_reliable_slice(&mut self, slice: Slice) {
+        if self.messages.contains_key(&slice.message_id) || slice.message_id < self.next_message_id {
             // Message already assembled
             return;
         }
 
         let slice_constructor = self
-            .reliable_slices
+            .slices
             .entry(slice.message_id)
             .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
 
         match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
             Err(e) => self.error = Some(e),
             Ok(Some(message)) => {
-                self.reliable_slices.remove(&slice.message_id);
-                self.reliable_messages.insert(slice.message_id, message);
+                self.process_message(message, slice.message_id);
             }
             Ok(None) => {}
         }
     }
 
     pub fn receive_message(&mut self) -> Option<Bytes> {
-        match self.reliable_order {
+        match &mut self.reliable_order {
             ReliableOrder::Ordered => {
-                let next_message_id = self.next_reliable_message_id;
-                if !self.reliable_messages.contains_key(&next_message_id) {
+                let next_message_id = self.next_message_id;
+                if !self.messages.contains_key(&next_message_id) {
                     return None;
                 }
 
-                self.next_reliable_message_id += 1;
-                self.reliable_messages.remove(&next_message_id)
+                self.next_message_id += 1;
+                self.messages.remove(&next_message_id)
             }
-            ReliableOrder::Unordered { .. } => {
-                let (_, message) = self.reliable_messages.pop_first().unzip();
-                message
+            ReliableOrder::Unordered { received_messages, .. } => {
+                let Some((message_id, message)) = self.messages.pop_first() else {
+                    return None;
+                };
+                
+                if self.next_message_id == message_id {
+                    while received_messages.contains(&self.next_message_id) {
+                        received_messages.remove(&message_id);
+                        self.next_message_id += 1;
+                    }
+                }
+                
+                Some(message)
             }
         }
     }

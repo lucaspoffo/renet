@@ -125,7 +125,6 @@ impl Connection {
             Packet::MessageSlice {
                 packet_sequence,
                 channel_id,
-                reliable,
                 slice,
             } => {
                 self.add_pending_ack(packet_sequence);
