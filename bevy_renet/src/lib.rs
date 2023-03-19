@@ -7,6 +7,15 @@ use bevy::{
 
 use renet::{RenetClient, RenetError, RenetServer, ServerEvent};
 
+/// Set for networking systems.
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub enum RenetSet {
+    /// Runs when server resource available.
+    Server,
+    /// Runs when client resource available.
+    Client,
+}
+
 pub struct RenetServerPlugin {
     /// If this option is set to false,
     /// you need to manually clear the bevy events for RenetError and ServerEvent.
@@ -40,16 +49,10 @@ impl Plugin for RenetServerPlugin {
         app.init_resource::<Events<ServerEvent>>();
         app.init_resource::<Events<RenetError>>();
 
-        app.add_system(
-            Self::update_system
-                .in_base_set(CoreSet::PreUpdate)
-                .run_if(resource_exists::<RenetServer>()),
-        )
-        .add_system(
-            Self::send_packets_system
-                .in_base_set(CoreSet::PostUpdate)
-                .run_if(resource_exists::<RenetServer>()),
-        );
+        app.configure_set(RenetSet::Server.run_if(resource_exists::<RenetServer>()));
+
+        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(RenetSet::Server))
+            .add_system(Self::send_packets_system.in_base_set(CoreSet::PostUpdate).in_set(RenetSet::Server));
 
         if self.clear_events {
             app.add_systems(Self::get_clear_event_systems().in_base_set(CoreSet::PreUpdate));
@@ -61,16 +64,10 @@ impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Events<RenetError>>();
 
-        app.add_system(
-            Self::update_system
-                .in_base_set(CoreSet::PreUpdate)
-                .run_if(resource_exists::<RenetClient>()),
-        )
-        .add_system(
-            Self::send_packets_system
-                .in_base_set(CoreSet::PostUpdate)
-                .run_if(resource_exists::<RenetClient>()),
-        );
+        app.configure_set(RenetSet::Client.run_if(resource_exists::<RenetClient>()));
+
+        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(RenetSet::Client))
+            .add_system(Self::send_packets_system.in_base_set(CoreSet::PostUpdate).in_set(RenetSet::Client));
 
         if self.clear_events {
             app.add_system(
