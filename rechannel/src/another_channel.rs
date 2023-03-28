@@ -1,26 +1,16 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap},
     ops::Range,
     time::Duration,
 };
 
 use bytes::Bytes;
 
-use crate::{
-    error::ChannelError,
+use crate::channels::{
+    reliable::{ReceiveChannelReliable, SendChannelReliable},
+    unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable},
+    unreliable_sequenced::{ReceiveChannelUnreliableSequenced, SendChannelUnreliableSequenced},
 };
-
-pub const SLICE_SIZE: usize = 1200;
-
-struct Ack {
-    channel_id: u8,
-    most_recent_packet: u64,
-}
-
-pub enum SmallMessage {
-    Reliable { message_id: u64, payload: Bytes },
-    Unreliable { payload: Bytes },
-}
 
 #[derive(Debug, Clone)]
 pub struct Slice {
@@ -32,19 +22,23 @@ pub struct Slice {
 
 #[derive(Debug, Clone)]
 enum PacketSent {
-    ReliableMessages { channel_id: u8, message_ids: Vec<u64> },
-    ReliableSliceMessage { channel_id: u8, message_id: u64, slice_index: u64 },
+    ReliableMessages {
+        channel_id: u8,
+        message_ids: Vec<u64>,
+    },
+    ReliableSliceMessage {
+        channel_id: u8,
+        message_id: u64,
+        slice_index: usize,
+    },
     // When an ack packet is acknowledged,
     // We remove all Ack ranges below the largest_acked sent by it
-    Ack { largest_acked_packet: u64 },
+    Ack {
+        largest_acked_packet: u64,
+    },
 }
 
 pub enum Packet {
-    Normal {
-        packet_sequence: u64,
-        channel_id: u8,
-        messages: Vec<SmallMessage>,
-    },
     SmallReliable {
         packet_sequence: u64,
         channel_id: u8,
@@ -53,12 +47,12 @@ pub enum Packet {
     SmallUnreliable {
         packet_sequence: u64,
         channel_id: u8,
-        messages: Vec<Bytes>
+        messages: Vec<Bytes>,
     },
     SmallUnreliableSequenced {
         packet_sequence: u64,
         channel_id: u8,
-        messages: Vec<(u64, Bytes)>
+        messages: Vec<(u64, Bytes)>,
     },
     MessageSlice {
         packet_sequence: u64,
@@ -72,55 +66,81 @@ pub enum Packet {
     Disconnect,
 }
 
-struct PendingMessage {
-    payload: Bytes,
-    last_sent: Option<Duration>,
-}
-
-struct PendingSlicedMessage {
-    payload: Bytes,
-    num_slices: usize,
-    current_slice_id: usize,
-    num_acked_slices: usize,
-    acked: Vec<bool>,
-    last_sent: Vec<Option<Duration>>,
-}
-
 struct Connection {
     // packet_sequence: u64,
     // packets_sent: SequenceBuffer<PacketSent>,
     sent_packets: BTreeMap<u64, PacketSent>,
+    // Pending acks are saved as ranges,
+    // new acks create a new range or are appended to already created
     pending_acks: Vec<Range<u64>>,
-    // receive_channels: HashMap<u8, ReceiveChannel>,
-    // send_channels: HashMap<u8, ReceiveChannel>,
+    send_unreliable_channels: HashMap<u8, SendChannelUnreliable>,
+    receive_unreliable_channels: HashMap<u8, ReceiveChannelUnreliable>,
+    send_unreliable_sequenced_channels: HashMap<u8, SendChannelUnreliableSequenced>,
+    receive_unreliable_sequenced_channels: HashMap<u8, ReceiveChannelUnreliableSequenced>,
+    send_reliable_channels: HashMap<u8, SendChannelReliable>,
+    receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
 }
 
 impl Connection {
     fn new() -> Self {
         Self {
-            // send_channels: HashMap::new(),
             sent_packets: BTreeMap::new(),
             pending_acks: Vec::new(),
-            // receive_channels: HashMap::new(),
+            send_unreliable_channels: todo!(),
+            receive_unreliable_channels: todo!(),
+            send_unreliable_sequenced_channels: todo!(),
+            receive_unreliable_sequenced_channels: todo!(),
+            send_reliable_channels: todo!(),
+            receive_reliable_channels: todo!(),
         }
     }
 
     fn process_packet(&mut self, packet: Packet, current_time: Duration) {
         match packet {
-            Packet::Normal {
+            Packet::SmallReliable {
                 packet_sequence,
                 channel_id,
                 messages,
             } => {
                 self.add_pending_ack(packet_sequence);
-                // let Some(receive_channel) = self.receive_channels.get_mut(&channel_id) else {
-                    // Receive message without channel, should error
-                    // return;
-                // };
+                let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
+                    // TODO: self.error = channel not found;
+                    return;
+                };
 
-                // for message in messages {
-                    // receive_channel.process_message(message, current_time);
-                // }
+                for (message_id, message) in messages {
+                    channel.process_message(message, message_id);
+                }
+            }
+            Packet::SmallUnreliable {
+                packet_sequence,
+                channel_id,
+                messages,
+            } => {
+                self.add_pending_ack(packet_sequence);
+                let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
+                    // TODO: self.error = channel not found;
+                    return;
+                };
+
+                for message in messages {
+                    channel.process_message(message);
+                }
+            }
+            Packet::SmallUnreliableSequenced {
+                packet_sequence,
+                channel_id,
+                messages,
+            } => {
+                self.add_pending_ack(packet_sequence);
+                let Some(channel) = self.receive_unreliable_sequenced_channels.get_mut(&channel_id) else {
+                    // TODO: self.error = channel not found;
+                    return;
+                };
+
+                for (message_id, message) in messages {
+                    channel.process_message(message, message_id);
+                }
             }
             Packet::MessageSlice {
                 packet_sequence,
@@ -128,15 +148,15 @@ impl Connection {
                 slice,
             } => {
                 self.add_pending_ack(packet_sequence);
-                // let Some(receive_channel) = self.receive_channels.get_mut(&channel_id) else {
-                    // Receive message without channel, should error
-                    // return;
-                // };
-
-                // match reliable {
-                    // true => receive_channel.process_reliable_slice(slice, current_time),
-                    // false => receive_channel.process_unreliable_slice(slice, current_time),
-                // }
+                if let Some(channel) = self.receive_unreliable_sequenced_channels.get_mut(&channel_id) {
+                    channel.process_slice(slice, current_time);
+                } else if let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) {
+                    channel.process_slice(slice, current_time);
+                } else if let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) {
+                    channel.process_slice(slice);
+                } else {
+                    // TODO: self.error = channel not found;
+                }
             }
             Packet::Ack {
                 packet_sequence,
@@ -144,25 +164,41 @@ impl Connection {
             } => {
                 self.add_pending_ack(packet_sequence);
 
+                // Create list with just new acks
+                // This prevents DoS from huge ack ranges
+                let mut new_acks: Vec<u64> = Vec::new();
                 for range in ack_ranges {
-                    for packet_sequence in range {
-                        if let Some(sent_packet) = self.sent_packets.remove(&packet_sequence) {
-                            match sent_packet {
-                                PacketSent::ReliableMessages { channel_id, message_ids } => {
-                                    // let send_channel = self.send_channels.get_mut(&channel_id).unwrap();
-                                },
-                                PacketSent::ReliableSliceMessage { channel_id, message_id, slice_index } => todo!(),
-                                PacketSent::Ack { largest_acked_packet } => {
-                                    self.acked_largest(largest_acked_packet);
-                                },
+                    for (&sequence, _) in self.sent_packets.range(range) {
+                        new_acks.push(sequence)
+                    }
+                }
+
+                for packet_sequence in new_acks {
+                    let sent_packet = self.sent_packets.remove(&packet_sequence).unwrap();
+
+                    match sent_packet {
+                        PacketSent::ReliableMessages { channel_id, message_ids } => {
+                            let reliable_channel = self.send_reliable_channels.get_mut(&channel_id).unwrap();
+                            for message_id in message_ids {
+                                reliable_channel.process_message_ack(message_id);
                             }
+                        }
+                        PacketSent::ReliableSliceMessage {
+                            channel_id,
+                            message_id,
+                            slice_index,
+                        } => {
+                            let reliable_channel = self.send_reliable_channels.get_mut(&channel_id).unwrap();
+                            reliable_channel.process_slice_message_ack(message_id, slice_index);
+                        }
+                        PacketSent::Ack { largest_acked_packet } => {
+                            self.acked_largest(largest_acked_packet);
                         }
                     }
                 }
             }
             Packet::Disconnect => todo!(),
         }
-        // Ack logic
     }
 
     fn add_pending_ack(&mut self, sequence: u64) {

@@ -1,4 +1,5 @@
 pub mod channel;
+mod channels;
 pub mod error;
 mod packet;
 mod reassembly_fragment;
@@ -8,9 +9,6 @@ pub mod server;
 mod timer;
 mod new_channel;
 mod another_channel;
-
-mod channel_send;
-mod channel_receive;
 
 pub use bytes::Bytes;
 pub use packet::disconnect_packet;
