@@ -44,28 +44,17 @@ impl SendChannelUnreliable {
 
     fn get_messages_to_send(&mut self, packet_sequence: &mut u64) -> Vec<Packet> {
         let mut packets: Vec<Packet> = vec![];
-
         let mut small_messages: Vec<Bytes> = vec![];
         let mut small_messages_bytes = 0;
 
-        let generate_normal_packet = |messages: &mut Vec<Bytes>, packets: &mut Vec<Packet>, packet_sequence: u64| {
-            let messages = std::mem::take(messages);
+        while let Some(message) = self.unreliable_messages.pop_front() {
+            if message.len() > SLICE_SIZE {
+                let num_slices = message.len() / SLICE_SIZE;
 
-            packets.push(Packet::SmallUnreliable {
-                packet_sequence,
-                channel_id: self.channel_id,
-                messages,
-            });
-        };
-
-        while let Some(unreliable_message) = self.unreliable_messages.pop_front() {
-            if unreliable_message.len() > SLICE_SIZE {
-                // TODO: refactor this (used in multiple places)
-                let num_slices = unreliable_message.len() / SLICE_SIZE;
                 for slice_index in 0..num_slices {
                     let start = slice_index * SLICE_SIZE;
-                    let end = if slice_index == num_slices - 1 { unreliable_message.len() } else { (slice_index + 1) * SLICE_SIZE };
-                    let payload = unreliable_message.slice(start..end);
+                    let end = if slice_index == num_slices - 1 { message.len() } else { (slice_index + 1) * SLICE_SIZE };
+                    let payload = message.slice(start..end);
 
                     let slice = Slice {
                         message_id: self.sliced_message_id,
@@ -85,25 +74,30 @@ impl SendChannelUnreliable {
 
                 self.sliced_message_id += 1;
             } else {
-                // FIXME: use const
-                if small_messages_bytes + unreliable_message.len() > 1200 {
-                    generate_normal_packet(&mut small_messages, &mut packets, *packet_sequence);
+                if small_messages_bytes + message.len() > SLICE_SIZE {
+                    packets.push(Packet::SmallUnreliable {
+                        packet_sequence: *packet_sequence,
+                        channel_id: self.channel_id,
+                        messages: std::mem::take(&mut small_messages),
+                    });
                     small_messages_bytes = 0;
                     *packet_sequence += 1;
                 }
 
-                small_messages_bytes += unreliable_message.len();
-                small_messages.push(unreliable_message);
+                small_messages_bytes += message.len();
+                small_messages.push(message);
             }
         }
 
         // Generate final packet for remaining small messages
         if !small_messages.is_empty() {
-            generate_normal_packet(&mut small_messages, &mut packets, *packet_sequence);
+            packets.push(Packet::SmallUnreliable {
+                packet_sequence: *packet_sequence,
+                channel_id: self.channel_id,
+                messages: std::mem::take(&mut small_messages),
+            });
             *packet_sequence += 1;
         }
-
-        self.memory_usage_bytes = 0;
 
         packets
     }

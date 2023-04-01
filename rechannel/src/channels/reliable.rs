@@ -14,11 +14,11 @@ use super::{ChannelConfig, SliceConstructor, SLICE_SIZE};
 
 enum UnackedMessage {
     Small {
-        payload: Bytes,
+        message: Bytes,
         last_sent: Option<Duration>,
     },
     Sliced {
-        payload: Bytes,
+        message: Bytes,
         num_slices: usize,
         num_acked_slices: usize,
         acked: Vec<bool>,
@@ -60,7 +60,7 @@ impl UnackedMessage {
         let num_slices = payload.len() / SLICE_SIZE;
 
         Self::Sliced {
-            payload,
+            message: payload,
             num_slices,
             num_acked_slices: 0,
             acked: vec![false; num_slices],
@@ -86,48 +86,37 @@ impl SendChannelReliable {
     pub fn get_messages_to_send(&mut self, packet_sequence: &mut u64, current_time: Duration) -> Vec<Packet> {
         let mut packets: Vec<Packet> = vec![];
 
-        let mut normal_messages: Vec<(u64, Bytes)> = vec![];
-        let mut normal_messages_bytes = 0;
+        let mut small_messages: Vec<(u64, Bytes)> = vec![];
+        let mut small_messages_bytes = 0;
 
-        let mut generate_normal_packet = |messages: &mut Vec<(u64, Bytes)>, packets: &mut Vec<Packet>, packet_sequence: &mut u64| {
-            let messages = std::mem::take(messages);
-
-            packets.push(Packet::SmallReliable {
-                packet_sequence: packet_sequence.clone(),
-                channel_id: self.channel_id,
-                messages,
-            });
-            *packet_sequence += 1;
-            normal_messages_bytes = 0;
-        };
-
-        let should_send = |last_sent: Option<Duration>| {
-            if let Some(last_sent) = last_sent {
-                return current_time - last_sent >= self.resend_time;
-            }
-            true
-        };
+        let should_send = |last_sent: Option<Duration>| last_sent.map_or(true, |last_sent| current_time - last_sent >= self.resend_time);
 
         for (&message_id, unacked_message) in self.unacked_messages.iter_mut() {
             match unacked_message {
-                UnackedMessage::Small { payload, last_sent } => {
+                UnackedMessage::Small { message, last_sent } => {
                     if !should_send(*last_sent) {
                         continue;
                     }
 
                     // Generate packet with small messages if you cannot fit
-                    // if normal_messages_bytes + message.serialized_size() > MAX_PACKET_SIZE {
-                    // generate_normal_packet();
-                    // }
+                    if small_messages_bytes + message.len() + 2 > SLICE_SIZE {
+                        packets.push(Packet::SmallReliable {
+                            packet_sequence: *packet_sequence,
+                            channel_id: self.channel_id,
+                            messages: std::mem::take(&mut small_messages),
+                        });
+                        small_messages_bytes = 0;
+                        *packet_sequence += 1;
+                    }
 
-                    // normal_messages_bytes += message.serilized_size();
-                    normal_messages.push((message_id, payload.clone()));
+                    small_messages_bytes += message.len() + 2;
+                    small_messages.push((message_id, message.clone()));
                     *last_sent = Some(current_time);
 
                     continue;
                 }
                 UnackedMessage::Sliced {
-                    payload,
+                    message,
                     num_slices,
                     acked,
                     last_sent,
@@ -143,9 +132,9 @@ impl SendChannelReliable {
                         }
 
                         let start = i * SLICE_SIZE;
-                        let end = if i == *num_slices - 1 { payload.len() } else { (i + 1) * SLICE_SIZE };
+                        let end = if i == *num_slices - 1 { message.len() } else { (i + 1) * SLICE_SIZE };
 
-                        let payload = payload.slice(start..end);
+                        let payload = message.slice(start..end);
 
                         let slice = Slice {
                             message_id,
@@ -168,8 +157,13 @@ impl SendChannelReliable {
         }
 
         // Generate final packet for remaining small messages
-        if !normal_messages.is_empty() {
-            generate_normal_packet(&mut normal_messages, &mut packets, packet_sequence);
+        if !small_messages.is_empty() {
+            packets.push(Packet::SmallReliable {
+                packet_sequence: *packet_sequence,
+                channel_id: self.channel_id,
+                messages: std::mem::take(&mut small_messages),
+            });
+            *packet_sequence += 1;
         }
 
         packets
@@ -186,10 +180,7 @@ impl SendChannelReliable {
         let unacked_message = if message.len() > SLICE_SIZE {
             UnackedMessage::new_sliced(message)
         } else {
-            UnackedMessage::Small {
-                payload: message,
-                last_sent: None,
-            }
+            UnackedMessage::Small { message, last_sent: None }
         };
 
         self.unacked_messages.insert(self.next_reliable_message_id, unacked_message);
@@ -199,7 +190,7 @@ impl SendChannelReliable {
     pub fn process_message_ack(&mut self, message_id: u64) {
         if self.unacked_messages.contains_key(&message_id) {
             let unacked_message = self.unacked_messages.remove(&message_id).unwrap();
-            let UnackedMessage::Small { payload, .. } = unacked_message else {
+            let UnackedMessage::Small { message: payload, .. } = unacked_message else {
                 unreachable!("called ack on small message but found sliced");
             };
             self.memory_usage_bytes -= payload.len();
@@ -211,7 +202,7 @@ impl SendChannelReliable {
             return;
         };
 
-        let UnackedMessage::Sliced { payload, num_slices, num_acked_slices, acked, .. } = unacked_message else {
+        let UnackedMessage::Sliced { message: payload, num_slices, num_acked_slices, acked, .. } = unacked_message else {
             unreachable!("called ack on sliced message but found small");
         };
 
@@ -269,15 +260,15 @@ impl ReceiveChannelReliable {
                 if *most_recent_message_id < message_id {
                     *most_recent_message_id = message_id;
                 }
-                if !received_messages.contains(&message_id) {
-                    received_messages.insert(message_id);
 
+                if !received_messages.contains(&message_id) {
                     self.memory_usage_bytes += message.len();
                     if self.max_memory_usage_bytes < self.memory_usage_bytes {
                         // FIXME: use correct error ::MaxMemoryReached
                         self.error = Some(ChannelError::SendQueueFull);
                     }
 
+                    received_messages.insert(message_id);
                     self.messages.insert(message_id, message);
                 }
             }

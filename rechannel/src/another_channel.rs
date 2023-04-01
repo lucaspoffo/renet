@@ -9,7 +9,6 @@ use bytes::Bytes;
 use crate::channels::{
     reliable::{ReceiveChannelReliable, SendChannelReliable},
     unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable},
-    unreliable_sequenced::{ReceiveChannelUnreliableSequenced, SendChannelUnreliableSequenced},
 };
 
 #[derive(Debug, Clone)]
@@ -49,11 +48,6 @@ pub enum Packet {
         channel_id: u8,
         messages: Vec<Bytes>,
     },
-    SmallUnreliableSequenced {
-        packet_sequence: u64,
-        channel_id: u8,
-        messages: Vec<(u64, Bytes)>,
-    },
     MessageSlice {
         packet_sequence: u64,
         channel_id: u8,
@@ -75,8 +69,6 @@ struct Connection {
     pending_acks: Vec<Range<u64>>,
     send_unreliable_channels: HashMap<u8, SendChannelUnreliable>,
     receive_unreliable_channels: HashMap<u8, ReceiveChannelUnreliable>,
-    send_unreliable_sequenced_channels: HashMap<u8, SendChannelUnreliableSequenced>,
-    receive_unreliable_sequenced_channels: HashMap<u8, ReceiveChannelUnreliableSequenced>,
     send_reliable_channels: HashMap<u8, SendChannelReliable>,
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
 }
@@ -86,12 +78,10 @@ impl Connection {
         Self {
             sent_packets: BTreeMap::new(),
             pending_acks: Vec::new(),
-            send_unreliable_channels: todo!(),
-            receive_unreliable_channels: todo!(),
-            send_unreliable_sequenced_channels: todo!(),
-            receive_unreliable_sequenced_channels: todo!(),
-            send_reliable_channels: todo!(),
-            receive_reliable_channels: todo!(),
+            send_unreliable_channels: HashMap::new(),
+            receive_unreliable_channels: HashMap::new(),
+            send_reliable_channels: HashMap::new(),
+            receive_reliable_channels: HashMap::new(),
         }
     }
 
@@ -127,30 +117,13 @@ impl Connection {
                     channel.process_message(message);
                 }
             }
-            Packet::SmallUnreliableSequenced {
-                packet_sequence,
-                channel_id,
-                messages,
-            } => {
-                self.add_pending_ack(packet_sequence);
-                let Some(channel) = self.receive_unreliable_sequenced_channels.get_mut(&channel_id) else {
-                    // TODO: self.error = channel not found;
-                    return;
-                };
-
-                for (message_id, message) in messages {
-                    channel.process_message(message, message_id);
-                }
-            }
             Packet::MessageSlice {
                 packet_sequence,
                 channel_id,
                 slice,
             } => {
                 self.add_pending_ack(packet_sequence);
-                if let Some(channel) = self.receive_unreliable_sequenced_channels.get_mut(&channel_id) {
-                    channel.process_slice(slice, current_time);
-                } else if let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) {
+                if let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) {
                     channel.process_slice(slice, current_time);
                 } else if let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) {
                     channel.process_slice(slice);

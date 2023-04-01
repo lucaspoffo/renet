@@ -7,7 +7,7 @@ use super::SLICE_SIZE;
 #[derive(Debug, Clone)]
 pub struct SliceConstructor {
     message_id: u64,
-    num_slices: usize,
+    pub num_slices: usize,
     num_received_slices: usize,
     received: Vec<bool>,
     sliced_data: Vec<u8>,
