@@ -15,6 +15,7 @@ log = "0.4.17"
 serde = { version = "1.0", features = [ "derive" ] } 
 bincode = "1.3.1"
 bytes = { version = "1.1", features = ["serde"] }
+octets = "0.2"
 
 [dev-dependencies]
 env_logger = "0.9.0"

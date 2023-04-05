@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, btree_map},
     time::Duration,
 };
 
@@ -30,7 +30,6 @@ pub struct SendChannelReliable {
     channel_id: u8,
     unacked_messages: BTreeMap<u64, UnackedMessage>,
     next_reliable_message_id: u64,
-    oldest_unacked_message_id: u64,
     resend_time: Duration,
     max_memory_usage_bytes: usize,
     memory_usage_bytes: usize,
@@ -75,7 +74,6 @@ impl SendChannelReliable {
             channel_id,
             unacked_messages: BTreeMap::new(),
             next_reliable_message_id: 0,
-            oldest_unacked_message_id: 0,
             resend_time,
             max_memory_usage_bytes,
             memory_usage_bytes: 0,
