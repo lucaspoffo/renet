@@ -1,11 +1,7 @@
-use crate::reassembly_fragment::FragmentError;
-
-use serde::{Deserialize, Serialize};
-
 use std::fmt;
 
 /// Possibles reasons for a disconnection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisconnectionReason {
     /// Connection terminated by server
     DisconnectedByServer,
@@ -20,7 +16,7 @@ pub enum DisconnectionReason {
 }
 
 /// Possibles errors that can occur in a channel.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelError {
     /// The reliable channel with given Id is out of sync
     ReliableChannelOutOfSync,
@@ -74,9 +70,8 @@ pub enum RechannelError {
     ChannelMaxMessagesLimit,
     ClientDisconnected(DisconnectionReason),
     ClientNotFound,
-    /// An error occurred when processing a fragmented packet
-    FragmentError(FragmentError),
-    BincodeError(bincode::Error),
+    Serialization,
+    ChannelNotFound(u8),
 }
 
 impl std::error::Error for RechannelError {}
@@ -89,20 +84,9 @@ impl fmt::Display for RechannelError {
             ChannelMaxMessagesLimit => write!(fmt, "the channel has reached the maximum messages capacity"),
             ClientNotFound => write!(fmt, "client with given id was not found"),
             ClientDisconnected(reason) => write!(fmt, "client is disconnected: {}", reason),
-            BincodeError(ref bincode_err) => write!(fmt, "{}", bincode_err),
-            FragmentError(ref fragment_error) => write!(fmt, "{}", fragment_error),
+            Serialization => write!(fmt, "failed to (de)serialize"),
+            ChannelNotFound(channel_id)=> write!(fmt, "channel {channel_id} was not found"),
+
         }
-    }
-}
-
-impl From<bincode::Error> for RechannelError {
-    fn from(inner: bincode::Error) -> Self {
-        RechannelError::BincodeError(inner)
-    }
-}
-
-impl From<FragmentError> for RechannelError {
-    fn from(inner: FragmentError) -> Self {
-        RechannelError::FragmentError(inner)
     }
 }

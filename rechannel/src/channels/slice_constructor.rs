@@ -4,6 +4,14 @@ use crate::error::ChannelError;
 
 use super::SLICE_SIZE;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Slice {
+    pub message_id: u64,
+    pub slice_index: usize,
+    pub num_slices: usize,
+    pub payload: Bytes,
+}
+
 #[derive(Debug, Clone)]
 pub struct SliceConstructor {
     message_id: u64,

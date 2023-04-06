@@ -45,9 +45,9 @@ const NETCODE_ADDRESS_IPV6: u8 = 2;
 
 const NETCODE_CONNECT_TOKEN_PRIVATE_BYTES: usize = 1024;
 /// The maximum number of bytes that a netcode packet can contain.
-pub const NETCODE_MAX_PACKET_BYTES: usize = 1300;
+pub const NETCODE_MAX_PACKET_BYTES: usize = 1400;
 /// The maximum number of bytes that a payload can have when generating a payload packet.
-pub const NETCODE_MAX_PAYLOAD_BYTES: usize = 1200;
+pub const NETCODE_MAX_PAYLOAD_BYTES: usize = 1300;
 
 /// The number of bytes in a private key;
 pub const NETCODE_KEY_BYTES: usize = 32;

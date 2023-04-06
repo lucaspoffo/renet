@@ -41,12 +41,13 @@ fn main() {
     env_logger::init();
     println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
     let args: Vec<String> = std::env::args().collect();
+    // let args = vec!["", "client", "5000", "test"];
 
     let exec_type = &args[1];
-    match exec_type.as_str() {
+    match exec_type.as_ref() {
         "client" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
-            let username = Username(args[3].clone());
+            let username = Username(args[3].to_string());
             client(server_addr, username);
         }
         "server" => {
@@ -93,8 +94,8 @@ fn server(addr: SocketAddr) {
         }
 
         for client_id in server.clients_id().into_iter() {
-            while let Some(message) = server.receive_message(client_id, DefaultChannel::Reliable) {
-                let text = String::from_utf8(message).unwrap();
+            while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
+                let text = String::from_utf8(message.to_vec()).unwrap();
                 let username = usernames.get(&client_id).unwrap();
                 println!("Client {} ({}) sent text: {}", username, client_id, text);
                 let text = format!("{}: {}", username, text);
@@ -103,7 +104,7 @@ fn server(addr: SocketAddr) {
         }
 
         for text in received_messages.iter() {
-            server.broadcast_message(DefaultChannel::Reliable, text.as_bytes().to_vec());
+            server.broadcast_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec());
         }
 
         server.send_packets().unwrap();
@@ -132,13 +133,13 @@ fn client(server_addr: SocketAddr, username: Username) {
         last_updated = now;
         if client.is_connected() {
             match stdin_channel.try_recv() {
-                Ok(text) => client.send_message(DefaultChannel::Reliable, text.as_bytes().to_vec()),
+                Ok(text) => client.send_message(DefaultChannel::ReliableOrdered, text.repeat(10).as_bytes().to_vec()),
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
             }
 
-            while let Some(text) = client.receive_message(DefaultChannel::Reliable) {
-                let text = String::from_utf8(text).unwrap();
+            while let Some(text) = client.receive_message(DefaultChannel::ReliableOrdered) {
+                let text = String::from_utf8(text.to_vec()).unwrap();
                 println!("{}", text);
             }
         }

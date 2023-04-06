@@ -1,17 +1,15 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, btree_map},
+    collections::{btree_map, BTreeMap, BTreeSet, HashMap},
     time::Duration,
 };
 
 use bytes::Bytes;
 
-use crate::{
-    another_channel::{Packet, Slice},
-    error::ChannelError,
-};
+use crate::{error::ChannelError, packet::Packet};
 
-use super::{ChannelConfig, SliceConstructor, SLICE_SIZE};
+use super::{slice_constructor::Slice, ChannelConfig, SliceConstructor, SLICE_SIZE};
 
+#[derive(Debug)]
 enum UnackedMessage {
     Small {
         message: Bytes,
@@ -26,6 +24,7 @@ enum UnackedMessage {
     },
 }
 
+#[derive(Debug)]
 pub struct SendChannelReliable {
     channel_id: u8,
     unacked_messages: BTreeMap<u64, UnackedMessage>,
@@ -36,6 +35,7 @@ pub struct SendChannelReliable {
     error: Option<ChannelError>,
 }
 
+#[derive(Debug)]
 enum ReliableOrder {
     Ordered,
     Unordered {
@@ -44,7 +44,9 @@ enum ReliableOrder {
     },
 }
 
+#[derive(Debug)]
 pub struct ReceiveChannelReliable {
+    channel_id: u8,
     slices: HashMap<u64, SliceConstructor>,
     messages: BTreeMap<u64, Bytes>,
     next_message_id: u64,
@@ -56,7 +58,7 @@ pub struct ReceiveChannelReliable {
 
 impl UnackedMessage {
     fn new_sliced(payload: Bytes) -> Self {
-        let num_slices = payload.len() / SLICE_SIZE;
+        let num_slices = (payload.len() + SLICE_SIZE - 1) / SLICE_SIZE;
 
         Self::Sliced {
             message: payload,
@@ -82,6 +84,10 @@ impl SendChannelReliable {
     }
 
     pub fn get_messages_to_send(&mut self, packet_sequence: &mut u64, current_time: Duration) -> Vec<Packet> {
+        if self.unacked_messages.is_empty() {
+            return vec![];
+        }
+
         let mut packets: Vec<Packet> = vec![];
 
         let mut small_messages: Vec<(u64, Bytes)> = vec![];
@@ -141,7 +147,7 @@ impl SendChannelReliable {
                             payload,
                         };
 
-                        packets.push(Packet::MessageSlice {
+                        packets.push(Packet::ReliableSlice {
                             packet_sequence: *packet_sequence,
                             channel_id: self.channel_id,
                             slice,
@@ -226,12 +232,20 @@ impl SendChannelReliable {
 }
 
 impl ReceiveChannelReliable {
-    pub fn new(max_memory_usage_bytes: usize) -> Self {
+    pub fn new(channel_id: u8, max_memory_usage_bytes: usize, ordered: bool) -> Self {
+        let reliable_order = match ordered {
+            true => ReliableOrder::Ordered,
+            false => ReliableOrder::Unordered {
+                most_recent_message_id: 0,
+                received_messages: BTreeSet::new(),
+            },
+        };
         Self {
+            channel_id,
             slices: HashMap::new(),
             messages: BTreeMap::new(),
             next_message_id: 0,
-            reliable_order: ReliableOrder::Ordered,
+            reliable_order,
             memory_usage_bytes: 0,
             max_memory_usage_bytes,
             error: None,
@@ -239,6 +253,11 @@ impl ReceiveChannelReliable {
     }
 
     pub fn process_message(&mut self, message: Bytes, message_id: u64) {
+        if message_id < self.next_message_id {
+            // Discard old message already received
+            return;
+        }
+
         match &mut self.reliable_order {
             ReliableOrder::Ordered => {
                 if !self.messages.contains_key(&message_id) {
@@ -304,13 +323,13 @@ impl ReceiveChannelReliable {
     pub fn receive_message(&mut self) -> Option<Bytes> {
         match &mut self.reliable_order {
             ReliableOrder::Ordered => {
-                let next_message_id = self.next_message_id;
-                if !self.messages.contains_key(&next_message_id) {
+                let Some(message) = self.messages.remove(&self.next_message_id) else {
                     return None;
-                }
+                };
 
                 self.next_message_id += 1;
-                self.messages.remove(&next_message_id)
+                self.memory_usage_bytes -= message.len();
+                Some(message)
             }
             ReliableOrder::Unordered { received_messages, .. } => {
                 let Some((message_id, message)) = self.messages.pop_first() else {
@@ -324,6 +343,7 @@ impl ReceiveChannelReliable {
                     }
                 }
 
+                self.memory_usage_bytes -= message.len();
                 Some(message)
             }
         }
@@ -332,8 +352,6 @@ impl ReceiveChannelReliable {
 
 #[cfg(test)]
 mod tests {
-    use crate::packet;
-
     use super::*;
 
     #[test]
@@ -342,7 +360,7 @@ mod tests {
         let mut sequence: u64 = 0;
         let mut current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
-        let mut recv = ReceiveChannelReliable::new(max_memory);
+        let mut recv = ReceiveChannelReliable::new(0, max_memory, true);
         let mut send = SendChannelReliable::new(0, resend_time, max_memory);
 
         let message1 = vec![1, 2, 3];
@@ -391,7 +409,7 @@ mod tests {
         let mut sequence: u64 = 0;
         let mut current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
-        let mut recv = ReceiveChannelReliable::new(max_memory);
+        let mut recv = ReceiveChannelReliable::new(0, max_memory, true);
         let mut send = SendChannelReliable::new(0, resend_time, max_memory);
 
         let message = vec![5; SLICE_SIZE * 3];
@@ -400,7 +418,7 @@ mod tests {
 
         let packets = send.get_messages_to_send(&mut sequence, current_time);
         for packet in packets {
-            let Packet::MessageSlice { channel_id: 0, slice, .. } = packet else {
+            let Packet::ReliableSlice { channel_id: 0, slice, .. } = packet else {
                 unreachable!();
             };
             recv.process_slice(slice);
@@ -433,7 +451,7 @@ mod tests {
         let mut sequence: u64 = 0;
         let current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
-        let mut recv = ReceiveChannelReliable::new(99);
+        let mut recv = ReceiveChannelReliable::new(0, 99, true);
         let mut send = SendChannelReliable::new(0, resend_time, 101);
 
         let message = vec![5; 100];

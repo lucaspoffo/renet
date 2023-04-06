@@ -71,7 +71,7 @@ impl RenetClient {
         };
 
         let netcode_client = NetcodeClient::new(current_time, connect_token);
-        let client_packet_info = ClientPacketInfo::new(config.bandwidth_smoothing_factor);
+        let client_packet_info = ClientPacketInfo::new(0.05);
 
         Ok(Self {
             current_time,
@@ -107,7 +107,7 @@ impl RenetClient {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.netcode_client.connected()
+        self.netcode_client.is_connected()
     }
 
     /// If the client is disconnected, returns the reason.
@@ -138,7 +138,7 @@ impl RenetClient {
     }
 
     /// Receive a message from the server over a channel.
-    pub fn receive_message<I: Into<u8>>(&mut self, channel_id: I) -> Option<Vec<u8>> {
+    pub fn receive_message<I: Into<u8>>(&mut self, channel_id: I) -> Option<Bytes> {
         self.reliable_connection.receive_message(channel_id)
     }
 
@@ -148,22 +148,22 @@ impl RenetClient {
     }
 
     /// Verifies if a message can be sent to the server over a channel.
-    pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
-        self.reliable_connection.can_send_message(channel_id)
-    }
+    // pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
+    //     self.reliable_connection.can_send_message(channel_id)
+    // }
 
-    pub fn network_info(&self) -> NetworkInfo {
-        NetworkInfo {
-            sent_kbps: self.client_packet_info.sent_kbps,
-            received_kbps: self.client_packet_info.received_kbps,
-            rtt: self.reliable_connection.rtt(),
-            packet_loss: self.reliable_connection.packet_loss(),
-        }
-    }
+    // pub fn network_info(&self) -> NetworkInfo {
+    //     NetworkInfo {
+    //         sent_kbps: self.client_packet_info.sent_kbps,
+    //         received_kbps: self.client_packet_info.received_kbps,
+    //         rtt: self.reliable_connection.rtt(),
+    //         packet_loss: self.reliable_connection.packet_loss(),
+    //     }
+    // }
 
     /// Send packets to the server.
     pub fn send_packets(&mut self) -> Result<(), RenetError> {
-        if self.netcode_client.connected() {
+        if self.netcode_client.is_connected() {
             let packets = self.reliable_connection.get_packets_to_send()?;
             for packet in packets.into_iter() {
                 let (addr, payload) = self.netcode_client.generate_payload_packet(&packet)?;

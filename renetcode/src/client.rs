@@ -91,7 +91,7 @@ impl NetcodeClient {
         }
     }
 
-    pub fn connected(&self) -> bool {
+    pub fn is_connected(&self) -> bool {
         self.state == ClientState::Connected
     }
 
