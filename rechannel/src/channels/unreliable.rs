@@ -5,9 +5,11 @@ use std::{
 
 use bytes::Bytes;
 
-use crate::{error::ChannelError, packet::Packet};
-
-use super::{slice_constructor::Slice, SliceConstructor, SLICE_SIZE};
+use super::{SliceConstructor, SLICE_SIZE};
+use crate::{
+    error::ChannelError,
+    packet::{Packet, Slice},
+};
 
 #[derive(Debug)]
 pub struct SendChannelUnreliable {
@@ -16,7 +18,6 @@ pub struct SendChannelUnreliable {
     sliced_message_id: u64,
     max_memory_usage_bytes: usize,
     memory_usage_bytes: usize,
-    error: Option<ChannelError>,
 }
 
 #[derive(Debug)]
@@ -27,7 +28,6 @@ pub struct ReceiveChannelUnreliable {
     slices_last_received: HashMap<u64, Duration>,
     max_memory_usage_bytes: usize,
     memory_usage_bytes: usize,
-    error: Option<ChannelError>,
 }
 
 impl SendChannelUnreliable {
@@ -38,7 +38,6 @@ impl SendChannelUnreliable {
             sliced_message_id: 0,
             max_memory_usage_bytes,
             memory_usage_bytes: 0,
-            error: None,
         }
     }
 
@@ -97,7 +96,10 @@ impl SendChannelUnreliable {
 
     pub fn send_message(&mut self, message: Bytes) {
         if self.max_memory_usage_bytes < self.memory_usage_bytes + message.len() {
-            // TODO: log::warm
+            log::warn!(
+                "dropped unreliable message sent because channel {} is memory limited",
+                self.channel_id
+            );
             return;
         }
 
@@ -115,13 +117,15 @@ impl ReceiveChannelUnreliable {
             messages: VecDeque::new(),
             memory_usage_bytes: 0,
             max_memory_usage_bytes,
-            error: None,
         }
     }
 
     pub fn process_message(&mut self, message: Bytes) {
         if self.max_memory_usage_bytes < self.memory_usage_bytes + message.len() {
-            // FIXME: log::warn dropped message
+            log::warn!(
+                "dropped unreliable message received because channel {} is memory limited",
+                self.channel_id
+            );
             return;
         }
 
@@ -129,12 +133,15 @@ impl ReceiveChannelUnreliable {
         self.messages.push_back(message.into());
     }
 
-    pub fn process_slice(&mut self, slice: Slice, current_time: Duration) {
+    pub fn process_slice(&mut self, slice: Slice, current_time: Duration) -> Result<(), ChannelError> {
         if !self.slices.contains_key(&slice.message_id) {
             let message_len = slice.num_slices * SLICE_SIZE;
             if self.max_memory_usage_bytes < self.memory_usage_bytes + message_len {
-                // FIXME: log::warn dropped message
-                return;
+                log::warn!(
+                    "dropped unreliable message sent because channel {} is memory limited",
+                    self.channel_id
+                );
+                return Ok(());
             }
 
             self.memory_usage_bytes += message_len;
@@ -145,19 +152,17 @@ impl ReceiveChannelUnreliable {
             .entry(slice.message_id)
             .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
 
-        match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
-            Err(e) => self.error = Some(e),
-            Ok(Some(message)) => {
-                self.slices.remove(&slice.message_id);
-                self.slices_last_received.remove(&slice.message_id);
-                self.memory_usage_bytes -= slice.num_slices * SLICE_SIZE;
-                self.memory_usage_bytes += message.len();
-                self.messages.push_back(message);
-            }
-            Ok(None) => {
-                self.slices_last_received.insert(slice.message_id, current_time);
-            }
+        if let Some(message) = slice_constructor.process_slice(slice.slice_index, &slice.payload)? {
+            self.slices.remove(&slice.message_id);
+            self.slices_last_received.remove(&slice.message_id);
+            self.memory_usage_bytes -= slice.num_slices * SLICE_SIZE;
+            self.memory_usage_bytes += message.len();
+            self.messages.push_back(message);
+        } else {
+            self.slices_last_received.insert(slice.message_id, current_time);
         }
+
+        Ok(())
     }
 
     pub fn receive_message(&mut self) -> Option<Bytes> {
@@ -222,7 +227,7 @@ mod tests {
             let Packet::UnreliableSlice { channel_id: 0, slice } = packet else {
                 unreachable!();
             };
-            recv.process_slice(slice, current_time);
+            recv.process_slice(slice, current_time).unwrap();
         }
 
         let new_message = recv.receive_message().unwrap();

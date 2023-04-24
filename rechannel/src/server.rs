@@ -1,4 +1,4 @@
-use crate::error::{DisconnectionReason, RechannelError};
+use crate::error::{ClientNotFound, ConnectionError};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, RemoteConnection};
 use std::collections::HashMap;
@@ -8,16 +8,14 @@ use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct RechannelServer {
-    current_time: Duration,
     connections: HashMap<u64, RemoteConnection>,
     connection_config: ConnectionConfig,
-    disconnections: Vec<(u64, DisconnectionReason)>,
+    disconnections: Vec<(u64, ConnectionError)>,
 }
 
 impl RechannelServer {
-    pub fn new(current_time: Duration, connection_config: ConnectionConfig) -> Self {
+    pub fn new(connection_config: ConnectionConfig) -> Self {
         Self {
-            current_time,
             connections: HashMap::new(),
             connection_config,
             disconnections: Vec::new(),
@@ -30,7 +28,7 @@ impl RechannelServer {
             return;
         }
 
-        let connection = RemoteConnection::new(self.current_time, self.connection_config.clone());
+        let connection = RemoteConnection::new(self.connection_config.clone());
         self.connections.insert(connection_id, connection);
     }
 
@@ -39,7 +37,7 @@ impl RechannelServer {
         !self.connections.is_empty()
     }
 
-    pub fn disconnected_client(&mut self) -> Option<(u64, DisconnectionReason)> {
+    pub fn disconnected_client(&mut self) -> Option<(u64, ConnectionError)> {
         self.disconnections.pop()
     }
 
@@ -64,8 +62,7 @@ impl RechannelServer {
 
     pub fn disconnect(&mut self, connection_id: u64) {
         if self.connections.remove(&connection_id).is_some() {
-            self.disconnections
-                .push((connection_id, DisconnectionReason::DisconnectedByServer));
+            self.disconnections.push((connection_id, ConnectionError::DisconnectedByServer));
         }
     }
 
@@ -105,7 +102,7 @@ impl RechannelServer {
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, connection_id: u64, channel_id: I, message: B) {
         match self.connections.get_mut(&connection_id) {
             Some(connection) => connection.send_message(channel_id, message),
-            None => log::error!("Tried to send message to disconnected client {:?}", connection_id),
+            None => log::error!("Tried to send a message to invalid client {:?}", connection_id),
         }
     }
 
@@ -127,25 +124,24 @@ impl RechannelServer {
     pub fn update_connections(&mut self, duration: Duration) {
         for (&connection_id, connection) in self.connections.iter_mut() {
             connection.advance_time(duration);
-            if connection.update().is_err() {
-                let reason = connection.disconnected().unwrap();
-                self.disconnections.push((connection_id, reason));
+            if let Some(e) = connection.error() {
+                self.disconnections.push((connection_id, e));
             }
         }
-        self.connections.retain(|_, c| c.is_connected());
+        self.connections.retain(|_, c| !c.has_error());
     }
 
-    pub fn get_packets_to_send(&mut self, connection_id: u64) -> Result<Vec<Payload>, RechannelError> {
+    pub fn get_packets_to_send(&mut self, connection_id: u64) -> Result<Vec<Payload>, ClientNotFound> {
         match self.connections.get_mut(&connection_id) {
-            Some(connection) => connection.get_packets_to_send(),
-            None => Err(RechannelError::ClientNotFound),
+            Some(connection) => Ok(connection.get_packets_to_send()),
+            None => Err(ClientNotFound),
         }
     }
 
-    pub fn process_packet_from(&mut self, payload: &[u8], connection_id: u64) -> Result<(), RechannelError> {
+    pub fn process_packet_from(&mut self, payload: &[u8], connection_id: u64) -> Result<(), ClientNotFound> {
         match self.connections.get_mut(&connection_id) {
-            Some(connection) => connection.process_packet(payload),
-            None => Err(RechannelError::ClientNotFound),
+            Some(connection) => Ok(connection.process_packet(payload)),
+            None => Err(ClientNotFound),
         }
     }
 }

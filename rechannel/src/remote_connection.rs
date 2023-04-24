@@ -1,23 +1,16 @@
 use crate::channels::reliable::{ReceiveChannelReliable, SendChannelReliable};
 use crate::channels::unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable};
 use crate::channels::{ChannelConfig, SendType};
-use crate::error::{DisconnectionReason, RechannelError};
+use crate::error::ConnectionError;
 use crate::packet::{Packet, Payload};
 use bytes::Bytes;
-use log::error;
 use octets::OctetsMut;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::time::Duration;
 
-#[derive(Debug)]
-enum ConnectionState {
-    Connected,
-    Disconnected { reason: DisconnectionReason },
-}
-
-const REQUEST_ACK_TIME: Duration = Duration::from_millis(1000);
+const REQUEST_ACK_TIME: Duration = Duration::from_millis(333);
 
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
@@ -54,7 +47,6 @@ impl Default for ConnectionConfig {
 
 #[derive(Debug)]
 pub struct RemoteConnection {
-    state: ConnectionState,
     packet_sequence: u64,
     current_time: Duration,
     sent_packets: BTreeMap<u64, PacketSent>,
@@ -63,35 +55,28 @@ pub struct RemoteConnection {
     receive_unreliable_channels: HashMap<u8, ReceiveChannelUnreliable>,
     send_reliable_channels: HashMap<u8, SendChannelReliable>,
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
-    should_generate_ack: bool,
-    last_ack_received_at: Duration, // rtt: f32,
-                                    // packet_loss: f32,
-                                    // acks: Vec<u16>,
+    should_send_ack: bool,
+    last_ack_received_at: Duration,
+    error: Option<ConnectionError>,
+    // rtt: f32,
+    // packet_loss: f32,
 }
 
 impl RemoteConnection {
-    pub fn new(current_time: Duration, config: ConnectionConfig) -> Self {
+    pub fn new(config: ConnectionConfig) -> Self {
         let mut send_unreliable_channels = HashMap::new();
         let mut send_reliable_channels = HashMap::new();
         for channel_config in config.send_channels_config.iter() {
             match channel_config.send_type {
                 SendType::Unreliable => {
                     let channel = SendChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
-                    let old_channel = send_unreliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(
-                        old_channel.is_none(),
-                        "already exists send channel with id {}",
-                        channel_config.channel_id
-                    );
+                    let old = send_unreliable_channels.insert(channel_config.channel_id, channel);
+                    assert!(old.is_none(), "already exists send channel {}", channel_config.channel_id);
                 }
                 SendType::ReliableOrdered { resend_time } | SendType::ReliableUnordered { resend_time } => {
                     let channel = SendChannelReliable::new(channel_config.channel_id, resend_time, channel_config.max_memory_usage_bytes);
-                    let old_channel = send_reliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(
-                        old_channel.is_none(),
-                        "already exists send channel with id {}",
-                        channel_config.channel_id
-                    );
+                    let old = send_reliable_channels.insert(channel_config.channel_id, channel);
+                    assert!(old.is_none(), "already exists send channel {}", channel_config.channel_id);
                 }
             }
         }
@@ -102,46 +87,34 @@ impl RemoteConnection {
             match channel_config.send_type {
                 SendType::Unreliable => {
                     let channel = ReceiveChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
-                    let old_channel = receive_unreliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(
-                        old_channel.is_none(),
-                        "already exists receive channel with id {}",
-                        channel_config.channel_id
-                    );
+                    let old = receive_unreliable_channels.insert(channel_config.channel_id, channel);
+                    assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
                 }
                 SendType::ReliableOrdered { .. } => {
                     let channel = ReceiveChannelReliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes, true);
-                    let old_channel = receive_reliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(
-                        old_channel.is_none(),
-                        "already exists receive channel with id {}",
-                        channel_config.channel_id
-                    );
+                    let old = receive_reliable_channels.insert(channel_config.channel_id, channel);
+                    assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
                 }
                 SendType::ReliableUnordered { .. } => {
                     let channel = ReceiveChannelReliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes, false);
-                    let old_channel = receive_reliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(
-                        old_channel.is_none(),
-                        "already exists receive channel with id {}",
-                        channel_config.channel_id
-                    );
+                    let old = receive_reliable_channels.insert(channel_config.channel_id, channel);
+                    assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
                 }
             }
         }
 
         Self {
-            state: ConnectionState::Connected,
             packet_sequence: 0,
-            current_time,
+            current_time: Duration::ZERO,
             sent_packets: BTreeMap::new(),
             pending_acks: Vec::new(),
             send_unreliable_channels,
             receive_unreliable_channels,
             send_reliable_channels,
             receive_reliable_channels,
-            should_generate_ack: false,
-            last_ack_received_at: current_time,
+            should_send_ack: false,
+            last_ack_received_at: Duration::ZERO,
+            error: None,
         }
     }
 
@@ -153,26 +126,13 @@ impl RemoteConnection {
     //     self.packet_loss
     // }
 
-    pub fn is_connected(&self) -> bool {
-        matches!(self.state, ConnectionState::Connected)
+    #[inline]
+    pub fn has_error(&self) -> bool {
+        self.error.is_some()
     }
 
-    pub fn disconnected(&self) -> Option<DisconnectionReason> {
-        match self.state {
-            ConnectionState::Disconnected { reason } => Some(reason),
-            _ => None,
-        }
-    }
-
-    pub fn disconnect(&mut self) {
-        if matches!(self.state, ConnectionState::Disconnected { .. }) {
-            error!("Trying to disconnect an already disconnected client.");
-            return;
-        }
-
-        self.state = ConnectionState::Disconnected {
-            reason: DisconnectionReason::DisconnectedByClient,
-        };
+    pub fn error(&self) -> Option<ConnectionError> {
+        self.error
     }
 
     // pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
@@ -181,9 +141,15 @@ impl RemoteConnection {
     // }
 
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
+        if self.has_error() {
+            return;
+        }
+
         let channel_id = channel_id.into();
         if let Some(reliable_channel) = self.send_reliable_channels.get_mut(&channel_id) {
-            reliable_channel.send_message(message.into());
+            if let Err(error) = reliable_channel.send_message(message.into()) {
+                self.error = Some(ConnectionError::SendChannelError { channel_id, error });
+            }
         } else if let Some(unreliable_channel) = self.send_unreliable_channels.get_mut(&channel_id) {
             unreliable_channel.send_message(message.into());
         } else {
@@ -192,6 +158,10 @@ impl RemoteConnection {
     }
 
     pub fn receive_message<I: Into<u8>>(&mut self, channel_id: I) -> Option<Bytes> {
+        if self.has_error() {
+            return None;
+        }
+
         let channel_id = channel_id.into();
         if let Some(reliable_channel) = self.receive_reliable_channels.get_mut(&channel_id) {
             reliable_channel.receive_message()
@@ -206,38 +176,19 @@ impl RemoteConnection {
         self.current_time += duration;
     }
 
-    pub fn update(&mut self) -> Result<(), RechannelError> {
-        //     if let Some(reason) = self.disconnected() {
-        //         return Err(RechannelError::ClientDisconnected(reason));
-        //     }
+    pub fn process_packet(&mut self, packet: &[u8]) {
+        if self.has_error() {
+            return;
+        }
 
-        //     for (&channel_id, send_channel) in self.send_channels.iter() {
-        //         if let Some(error) = send_channel.error() {
-        //             let reason = DisconnectionReason::SendChannelError { channel_id, error };
-        //             self.state = ConnectionState::Disconnected { reason };
-        //             return Err(RechannelError::ClientDisconnected(reason));
-        //         }
-        //     }
-
-        //     for (&channel_id, receive_channel) in self.receive_channels.iter() {
-        //         if let Some(error) = receive_channel.error() {
-        //             let reason = DisconnectionReason::ReceiveChannelError { channel_id, error };
-        //             self.state = ConnectionState::Disconnected { reason };
-        //             return Err(RechannelError::ClientDisconnected(reason));
-        //         }
-        //     }
-
-        Ok(())
-    }
-
-    pub fn process_packet(&mut self, packet: &[u8]) -> Result<(), RechannelError> {
         let mut octets = octets::Octets::with_slice(packet);
         let Ok(packet) = Packet::from_bytes(&mut octets) else {
-            return Err(RechannelError::Serialization);
+            self.error = Some(ConnectionError::PacketDeserialization);
+            return;
         };
 
         if packet.is_ack_eliciting() {
-            self.should_generate_ack = true;
+            self.should_send_ack = true;
         }
 
         match packet {
@@ -248,8 +199,8 @@ impl RemoteConnection {
             } => {
                 self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
-                    // TODO: self.error = channel not found;
-                    return Err(RechannelError::ChannelNotFound(channel_id));
+                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    return;
                 };
 
                 for (message_id, message) in messages {
@@ -258,8 +209,8 @@ impl RemoteConnection {
             }
             Packet::SmallUnreliable { channel_id, messages } => {
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
-                    // TODO: self.error = channel not found;
-                    return Err(RechannelError::ChannelNotFound(channel_id));
+                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    return;
                 };
 
                 for message in messages {
@@ -273,16 +224,16 @@ impl RemoteConnection {
             } => {
                 self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
-                    // TODO: self.error = channel not found;
-                    return Err(RechannelError::ChannelNotFound(channel_id));
+                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    return;
                 };
 
                 channel.process_slice(slice);
             }
             Packet::UnreliableSlice { channel_id, slice } => {
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
-                    // TODO: self.error = channel not found;
-                    return Err(RechannelError::ChannelNotFound(channel_id));
+                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    return;
                 };
 
                 channel.process_slice(slice, self.current_time);
@@ -330,12 +281,13 @@ impl RemoteConnection {
             Packet::RequestAck => {}
             Packet::Disconnect => {}
         }
-
-        Ok(())
     }
 
-    pub fn get_packets_to_send(&mut self) -> Result<Vec<Payload>, RechannelError> {
+    pub fn get_packets_to_send(&mut self) -> Vec<Payload> {
         let mut packets: Vec<Packet> = vec![];
+        if self.has_error() {
+            return vec![];
+        }
 
         for channel in self.send_unreliable_channels.values_mut() {
             packets.append(&mut channel.get_messages_to_send());
@@ -345,13 +297,13 @@ impl RemoteConnection {
             packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence, self.current_time));
         }
 
-        if !self.pending_acks.is_empty() && self.should_generate_ack {
+        if !self.pending_acks.is_empty() && self.should_send_ack {
+            self.should_send_ack = false;
             let ack_packet = Packet::Ack {
                 packet_sequence: self.packet_sequence,
                 ack_ranges: self.pending_acks.clone(),
             };
             self.packet_sequence += 1;
-            self.should_generate_ack = false;
             packets.push(ack_packet);
         }
 
@@ -407,11 +359,14 @@ impl RemoteConnection {
         let mut serialized_packets = Vec::with_capacity(packets.len());
         for packet in packets {
             let mut oct = OctetsMut::with_slice(&mut buffer);
-            let len = packet.to_bytes(&mut oct).map_err(|_| RechannelError::Serialization)?;
+            let Ok(len) = packet.to_bytes(&mut oct) else {
+                self.error = Some(ConnectionError::PacketSerialization);
+                return vec![];
+            };
             serialized_packets.push(buffer[..len].to_vec());
         }
 
-        Ok(serialized_packets)
+        serialized_packets
     }
 
     fn add_pending_ack(&mut self, sequence: u64) {
@@ -454,6 +409,11 @@ impl RemoteConnection {
         // New sequence was not before or adjacent to any range
         // Add new range with only this sequence at the end
         self.pending_acks.push(sequence..sequence + 1);
+
+        // Limit to 64 pending ranges
+        if self.pending_acks.len() > 64 {
+            self.pending_acks.remove(0);
+        }
     }
 
     fn acked_largest(&mut self, largest_ack: u64) {
@@ -489,7 +449,7 @@ mod tests {
 
     #[test]
     fn pending_acks() {
-        let mut connection = RemoteConnection::new(Duration::ZERO, ConnectionConfig::default());
+        let mut connection = RemoteConnection::new(ConnectionConfig::default());
         connection.add_pending_ack(3);
         assert_eq!(connection.pending_acks, vec![3..4]);
 
@@ -517,7 +477,7 @@ mod tests {
 
     #[test]
     fn ack_pending_acks() {
-        let mut connection = RemoteConnection::new(Duration::ZERO, ConnectionConfig::default());
+        let mut connection = RemoteConnection::new(ConnectionConfig::default());
         for i in 0..10 {
             connection.add_pending_ack(i);
         }

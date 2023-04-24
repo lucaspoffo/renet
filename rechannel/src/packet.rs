@@ -1,34 +1,48 @@
 use bytes::Bytes;
 use std::ops::Range;
 
-use crate::channels::slice_constructor::Slice;
-
 pub type Payload = Vec<u8>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Slice {
+    pub message_id: u64,
+    pub slice_index: usize,
+    pub num_slices: usize,
+    pub payload: Bytes,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Packet {
+    // Small messages in a reliable channel are aggregated and sent in this packet
     SmallReliable {
         packet_sequence: u64,
         channel_id: u8,
         messages: Vec<(u64, Bytes)>,
     },
+    // Small messages in a unreliable channel are aggregated and sent in this packet
     SmallUnreliable {
         channel_id: u8,
         messages: Vec<Bytes>,
     },
+    // A big unreliable message is sliced in multiples slice packets
     UnreliableSlice {
         channel_id: u8,
         slice: Slice,
     },
+    // A big reliable messages is sliced in multiples slice packets
     ReliableSlice {
         packet_sequence: u64,
         channel_id: u8,
         slice: Slice,
     },
+    // Contains the packets that were acked
+    // Acks are saved in multiples ranges, all values in the ranges are considered acked.
     Ack {
         packet_sequence: u64,
         ack_ranges: Vec<Range<u64>>,
     },
+    // Request an ack packet to be sent back
+    // FIXME: instead of requesting use a timer to send one every 300 ms
     RequestAck,
     Disconnect,
 }
@@ -40,6 +54,7 @@ impl Packet {
             _ => false,
         }
     }
+
     pub fn to_bytes(&self, b: &mut octets::OctetsMut) -> Result<usize, octets::BufferTooShortError> {
         let before = b.cap();
 

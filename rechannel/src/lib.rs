@@ -6,7 +6,8 @@ pub mod server;
 
 pub use bytes::Bytes;
 
-use std::{fmt::Debug, hash::Hash};
-
-pub trait ClientId: Copy + Debug + Hash + Eq {}
-impl<T> ClientId for T where T: Copy + Debug + Hash + Eq {}
+// TODO: rtt
+// TODO: packet loss
+// TODO: bandwidth ( circle buffer SentInfo per tick)
+// TODO: channel priority: Vec<ChannelPriority>
+// enum ChannelPriority { Reliable(index: u8), Unreliable(index: u8) }

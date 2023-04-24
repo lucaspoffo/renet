@@ -1,13 +1,15 @@
 use std::{
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     time::Duration,
 };
 
 use bytes::Bytes;
 
-use crate::{error::ChannelError, packet::Packet};
-
-use super::{slice_constructor::Slice, ChannelConfig, SliceConstructor, SLICE_SIZE};
+use super::{SliceConstructor, SLICE_SIZE};
+use crate::{
+    error::ChannelError,
+    packet::{Packet, Slice},
+};
 
 #[derive(Debug)]
 enum UnackedMessage {
@@ -32,7 +34,6 @@ pub struct SendChannelReliable {
     resend_time: Duration,
     max_memory_usage_bytes: usize,
     memory_usage_bytes: usize,
-    error: Option<ChannelError>,
 }
 
 #[derive(Debug)]
@@ -53,7 +54,6 @@ pub struct ReceiveChannelReliable {
     reliable_order: ReliableOrder,
     memory_usage_bytes: usize,
     max_memory_usage_bytes: usize,
-    error: Option<ChannelError>,
 }
 
 impl UnackedMessage {
@@ -79,7 +79,6 @@ impl SendChannelReliable {
             resend_time,
             max_memory_usage_bytes,
             memory_usage_bytes: 0,
-            error: None,
         }
     }
 
@@ -173,11 +172,9 @@ impl SendChannelReliable {
         packets
     }
 
-    pub fn send_message(&mut self, message: Bytes) {
+    pub fn send_message(&mut self, message: Bytes) -> Result<(), ChannelError> {
         if self.memory_usage_bytes + message.len() > self.max_memory_usage_bytes {
-            // FIXME: use correct error ::MaxMemoryReached
-            self.error = Some(ChannelError::SendQueueFull);
-            return;
+            return Err(ChannelError::ReliableChannelMaxMemoryReached);
         }
 
         self.memory_usage_bytes += message.len();
@@ -189,6 +186,8 @@ impl SendChannelReliable {
 
         self.unacked_messages.insert(self.next_reliable_message_id, unacked_message);
         self.next_reliable_message_id += 1;
+
+        Ok(())
     }
 
     pub fn process_message_ack(&mut self, message_id: u64) {
@@ -206,7 +205,7 @@ impl SendChannelReliable {
             return;
         };
 
-        let UnackedMessage::Sliced { message: payload, num_slices, num_acked_slices, acked, .. } = unacked_message else {
+        let UnackedMessage::Sliced { message, num_slices, num_acked_slices, acked, .. } = unacked_message else {
             unreachable!("called ack on sliced message but found small");
         };
 
@@ -217,15 +216,8 @@ impl SendChannelReliable {
         acked[slice_index] = true;
         *num_acked_slices += 1;
 
-        // TODO: actually divide the payload into slices, and then we can drop individual slices when acked
-        // if slice_index == *num_slices - 1 {
-        //     self.unacked_bytes -= payload.len() - (slice_index + 1) * SLICE_SIZE;
-        // } else {
-        //     self.unacked_bytes -= SLICE_SIZE;
-        // }
-
         if *num_acked_slices == *num_slices {
-            self.memory_usage_bytes -= payload.len();
+            self.memory_usage_bytes -= message.len();
             self.unacked_messages.remove(&message_id);
         }
     }
@@ -248,14 +240,13 @@ impl ReceiveChannelReliable {
             reliable_order,
             memory_usage_bytes: 0,
             max_memory_usage_bytes,
-            error: None,
         }
     }
 
-    pub fn process_message(&mut self, message: Bytes, message_id: u64) {
+    pub fn process_message(&mut self, message: Bytes, message_id: u64) -> Result<(), ChannelError> {
         if message_id < self.next_message_id {
             // Discard old message already received
-            return;
+            return Ok(());
         }
 
         match &mut self.reliable_order {
@@ -263,8 +254,7 @@ impl ReceiveChannelReliable {
                 if !self.messages.contains_key(&message_id) {
                     self.memory_usage_bytes += message.len();
                     if self.max_memory_usage_bytes < self.memory_usage_bytes {
-                        // FIXME: use correct error ::MaxMemoryReached
-                        self.error = Some(ChannelError::SendQueueFull);
+                        return Err(ChannelError::ReliableChannelMaxMemoryReached);
                     }
 
                     self.messages.insert(message_id, message);
@@ -281,8 +271,7 @@ impl ReceiveChannelReliable {
                 if !received_messages.contains(&message_id) {
                     self.memory_usage_bytes += message.len();
                     if self.max_memory_usage_bytes < self.memory_usage_bytes {
-                        // FIXME: use correct error ::MaxMemoryReached
-                        self.error = Some(ChannelError::SendQueueFull);
+                        return Err(ChannelError::ReliableChannelMaxMemoryReached);
                     }
 
                     received_messages.insert(message_id);
@@ -290,34 +279,36 @@ impl ReceiveChannelReliable {
                 }
             }
         }
+
+        Ok(())
     }
 
-    pub fn process_slice(&mut self, slice: Slice) {
+    pub fn process_slice(&mut self, slice: Slice) -> Result<(), ChannelError> {
         if self.messages.contains_key(&slice.message_id) || slice.message_id < self.next_message_id {
             // Message already assembled
-            return;
+            return Ok(());
         }
 
-        let slice_constructor = self.slices.entry(slice.message_id).or_insert_with(|| {
+        if !self.slices.contains_key(&slice.message_id) {
             self.memory_usage_bytes += slice.num_slices * SLICE_SIZE;
             if self.max_memory_usage_bytes < self.memory_usage_bytes {
-                // FIXME: use correct error ::MaxMemoryReached
-                self.error = Some(ChannelError::SendQueueFull);
+                return Err(ChannelError::ReliableChannelMaxMemoryReached);
             }
-
-            SliceConstructor::new(slice.message_id, slice.num_slices)
-        });
-
-        match slice_constructor.process_slice(slice.slice_index, &slice.payload) {
-            Err(e) => self.error = Some(e),
-            Ok(Some(message)) => {
-                // Memory usage is readded with the exactly message size
-                self.memory_usage_bytes -= slice.num_slices * SLICE_SIZE;
-                self.process_message(message, slice.message_id);
-                self.slices.remove(&slice.message_id);
-            }
-            Ok(None) => {}
         }
+
+        let slice_constructor = self
+            .slices
+            .entry(slice.message_id)
+            .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
+
+        if let Some(message) = slice_constructor.process_slice(slice.slice_index, &slice.payload)? {
+            // Memory usage is readded with the exactly message size
+            self.memory_usage_bytes -= slice.num_slices * SLICE_SIZE;
+            self.process_message(message, slice.message_id)?;
+            self.slices.remove(&slice.message_id);
+        }
+
+        Ok(())
     }
 
     pub fn receive_message(&mut self) -> Option<Bytes> {
@@ -366,8 +357,8 @@ mod tests {
         let message1 = vec![1, 2, 3];
         let message2 = vec![3, 4, 5];
 
-        send.send_message(message1.clone().into());
-        send.send_message(message2.clone().into());
+        send.send_message(message1.clone().into()).unwrap();
+        send.send_message(message2.clone().into()).unwrap();
 
         let packets = send.get_messages_to_send(&mut sequence, current_time);
         for packet in packets {
@@ -375,7 +366,7 @@ mod tests {
                 unreachable!();
             };
             for (message, message_id) in messages {
-                recv.process_message(message_id, message);
+                recv.process_message(message_id, message).unwrap();
             }
         }
 
@@ -414,14 +405,14 @@ mod tests {
 
         let message = vec![5; SLICE_SIZE * 3];
 
-        send.send_message(message.clone().into());
+        send.send_message(message.clone().into()).unwrap();
 
         let packets = send.get_messages_to_send(&mut sequence, current_time);
         for packet in packets {
             let Packet::ReliableSlice { channel_id: 0, slice, .. } = packet else {
                 unreachable!();
             };
-            recv.process_slice(slice);
+            recv.process_slice(slice).unwrap();
         }
 
         let new_message = recv.receive_message().unwrap();
@@ -456,7 +447,8 @@ mod tests {
 
         let message = vec![5; 100];
 
-        send.send_message(message.clone().into());
+        // Can send one message without reaching memory limit
+        send.send_message(message.clone().into()).unwrap();
 
         let packets = send.get_messages_to_send(&mut sequence, current_time);
         for packet in packets {
@@ -464,15 +456,16 @@ mod tests {
                 unreachable!();
             };
             for (message, message_id) in messages {
-                recv.process_message(message_id, message);
+                let Err(e) = recv.process_message(message_id, message) else {
+                    unreachable!();
+                };
+                assert_eq!(e, ChannelError::ReliableChannelMaxMemoryReached);
             }
         }
 
-        // TODO: match with exact error
-        assert!(recv.error.is_some());
-
-        assert!(send.error.is_none());
-        send.send_message(message.clone().into());
-        assert!(send.error.is_some());
+        let Err(send_err) = send.send_message(message.clone().into()) else {
+            unreachable!()
+        };
+        assert_eq!(send_err, ChannelError::ReliableChannelMaxMemoryReached);
     }
 }

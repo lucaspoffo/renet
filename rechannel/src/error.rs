@@ -2,13 +2,15 @@ use std::fmt;
 
 /// Possibles reasons for a disconnection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DisconnectionReason {
-    /// Connection terminated by server
+pub enum ConnectionError {
+    /// Client was disconnected by the server
     DisconnectedByServer,
-    /// Connection terminated by client
-    DisconnectedByClient,
-    /// Channel with given Id was not found
-    InvalidChannelId(u8),
+    /// Failed to serialize packet
+    PacketSerialization,
+    /// Failed to deserialize packet
+    PacketDeserialization,
+    /// Received message from channel with invalid id
+    ReceivedInvalidChannelId(u8),
     /// Error occurred in a send channel
     SendChannelError { channel_id: u8, error: ChannelError },
     /// Error occurred in a receive channel
@@ -18,17 +20,8 @@ pub enum DisconnectionReason {
 /// Possibles errors that can occur in a channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelError {
-    /// The reliable channel with given Id is out of sync
-    ReliableChannelOutOfSync,
-    /// The channel send queue has reach it's maximum
-    SendQueueFull,
-    /// Error occurred during (de)serialization
-    // TODO: rename to SerializationFailure
-    FailedToSerialize,
-    /// Tried to send a message that is above the channel max message size.
-    SentMessageAboveMaxSize,
-    /// Received a message above above the channel max message size.
-    ReceivedMessageAboveMaxSize,
+    /// Reliable channel reached maximum allowed memory
+    ReliableChannelMaxMemoryReached,
     /// Received an invalid slice message in a block channel.
     InvalidSliceMessage,
 }
@@ -38,24 +31,21 @@ impl fmt::Display for ChannelError {
         use ChannelError::*;
 
         match *self {
-            ReliableChannelOutOfSync => write!(fmt, "reliable channel out of sync"),
-            SendQueueFull => write!(fmt, "send queue was full"),
-            FailedToSerialize => write!(fmt, "failed to serialize or deserialize"),
-            SentMessageAboveMaxSize => write!(fmt, "sent message above the channel max message size"),
-            ReceivedMessageAboveMaxSize => write!(fmt, "received message above the channel max message size"),
-            InvalidSliceMessage => write!(fmt, "received an invalid slice message in a block channel"),
+            ReliableChannelMaxMemoryReached => write!(fmt, "reliable channel memory usage was exausted"),
+            InvalidSliceMessage => write!(fmt, "received an invalid slice packet"),
         }
     }
 }
 
-impl fmt::Display for DisconnectionReason {
+impl fmt::Display for ConnectionError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use DisconnectionReason::*;
+        use ConnectionError::*;
 
         match *self {
             DisconnectedByServer => write!(fmt, "connection terminated by server"),
-            DisconnectedByClient => write!(fmt, "connection terminated by client"),
-            InvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
+            PacketSerialization => write!(fmt, "failed to serialize packet"),
+            PacketDeserialization => write!(fmt, "failed to deserialize packet"),
+            ReceivedInvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
             SendChannelError { channel_id, error } => write!(fmt, "send channel {} with error: {}", channel_id, error),
             ReceiveChannelError { channel_id, error } => write!(fmt, "receive channel {} with error: {}", channel_id, error),
         }
@@ -65,28 +55,12 @@ impl fmt::Display for DisconnectionReason {
 impl std::error::Error for ChannelError {}
 
 #[derive(Debug)]
-pub enum RechannelError {
-    /// The channel has reached the maximum messages capacity defined in the channel configuration
-    ChannelMaxMessagesLimit,
-    ClientDisconnected(DisconnectionReason),
-    ClientNotFound,
-    Serialization,
-    ChannelNotFound(u8),
-}
+pub struct ClientNotFound;
 
-impl std::error::Error for RechannelError {}
+impl std::error::Error for ClientNotFound {}
 
-impl fmt::Display for RechannelError {
+impl fmt::Display for ClientNotFound {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use RechannelError::*;
-
-        match *self {
-            ChannelMaxMessagesLimit => write!(fmt, "the channel has reached the maximum messages capacity"),
-            ClientNotFound => write!(fmt, "client with given id was not found"),
-            ClientDisconnected(reason) => write!(fmt, "client is disconnected: {}", reason),
-            Serialization => write!(fmt, "failed to (de)serialize"),
-            ChannelNotFound(channel_id)=> write!(fmt, "channel {channel_id} was not found"),
-
-        }
+        write!(fmt, "client with given id was not found")
     }
 }
