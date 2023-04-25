@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::time::Duration;
 
-const REQUEST_ACK_TIME: Duration = Duration::from_millis(333);
+const ACK_FORCE_SEND_TIME: Duration = Duration::from_millis(300);
 
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
@@ -56,7 +56,7 @@ pub struct RemoteConnection {
     send_reliable_channels: HashMap<u8, SendChannelReliable>,
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
     should_send_ack: bool,
-    last_ack_received_at: Duration,
+    last_ack_sent_at: Duration,
     error: Option<ConnectionError>,
     // rtt: f32,
     // packet_loss: f32,
@@ -113,7 +113,7 @@ impl RemoteConnection {
             send_reliable_channels,
             receive_reliable_channels,
             should_send_ack: false,
-            last_ack_received_at: Duration::ZERO,
+            last_ack_sent_at: Duration::ZERO,
             error: None,
         }
     }
@@ -251,7 +251,6 @@ impl RemoteConnection {
                 packet_sequence,
                 ack_ranges,
             } => {
-                self.last_ack_received_at = self.current_time;
                 self.add_pending_ack(packet_sequence);
 
                 // Create list with just new acks
@@ -287,8 +286,6 @@ impl RemoteConnection {
                     }
                 }
             }
-            Packet::RequestAck => {}
-            Packet::Disconnect => {}
         }
     }
 
@@ -306,7 +303,9 @@ impl RemoteConnection {
             packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence, self.current_time));
         }
 
-        if !self.pending_acks.is_empty() && self.should_send_ack {
+        let force_ack_send = self.last_ack_sent_at + ACK_FORCE_SEND_TIME < self.current_time;
+        if !self.pending_acks.is_empty() && (self.should_send_ack || force_ack_send) {
+            self.last_ack_sent_at = self.current_time;
             self.should_send_ack = false;
             let ack_packet = Packet::Ack {
                 packet_sequence: self.packet_sequence,
@@ -354,13 +353,6 @@ impl RemoteConnection {
                     self.sent_packets.insert(*packet_sequence, PacketSent::Ack { largest_acked_packet });
                 }
                 _ => {}
-            }
-        }
-
-        let has_ack_eliciting_packet = packets.iter().any(Packet::is_ack_eliciting);
-        if !has_ack_eliciting_packet && !self.sent_packets.is_empty() {
-            if self.last_ack_received_at + REQUEST_ACK_TIME < self.current_time {
-                packets.push(Packet::RequestAck);
             }
         }
 

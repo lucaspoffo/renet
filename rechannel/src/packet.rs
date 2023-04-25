@@ -41,16 +41,12 @@ pub enum Packet {
         packet_sequence: u64,
         ack_ranges: Vec<Range<u64>>,
     },
-    // Request an ack packet to be sent back
-    // FIXME: instead of requesting use a timer to send one every 300 ms
-    RequestAck,
-    Disconnect,
 }
 
 impl Packet {
     pub fn is_ack_eliciting(&self) -> bool {
         match self {
-            Packet::SmallReliable { .. } | Packet::ReliableSlice { .. } | Packet::RequestAck => true,
+            Packet::SmallReliable { .. } | Packet::ReliableSlice { .. } => true,
             _ => false,
         }
     }
@@ -155,12 +151,6 @@ impl Packet {
 
                     previous_range_start = range.start;
                 }
-            }
-            Packet::RequestAck => {
-                b.put_u8(5)?;
-            }
-            Packet::Disconnect => {
-                b.put_u8(6)?;
             }
         }
 
@@ -288,14 +278,6 @@ impl Packet {
                     ack_ranges: ranges,
                 })
             }
-            5 => {
-                // Request Ack
-                Ok(Packet::RequestAck)
-            }
-            6 => {
-                // Disconnect
-                Ok(Packet::Disconnect)
-            }
             _ => Err(octets::BufferTooShortError), // TODO: correct error (invalid packet type)
         }
     }
@@ -393,19 +375,6 @@ mod tests {
             packet_sequence: 0,
             ack_ranges: vec![3..7, 10..20, 30..100],
         };
-
-        let mut b = octets::OctetsMut::with_slice(&mut buffer);
-        packet.to_bytes(&mut b).unwrap();
-
-        let mut b = octets::Octets::with_slice(&buffer);
-        let recv_packet = Packet::from_bytes(&mut b).unwrap();
-        assert_eq!(packet, recv_packet);
-    }
-
-    #[test]
-    fn serialize_disconnect_packet() {
-        let mut buffer = [0u8; 1300];
-        let packet = Packet::Disconnect;
 
         let mut b = octets::OctetsMut::with_slice(&mut buffer);
         packet.to_bytes(&mut b).unwrap();
