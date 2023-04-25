@@ -302,7 +302,7 @@ impl ReceiveChannelReliable {
             .or_insert_with(|| SliceConstructor::new(slice.message_id, slice.num_slices));
 
         if let Some(message) = slice_constructor.process_slice(slice.slice_index, &slice.payload)? {
-            // Memory usage is readded with the exactly message size
+            // Memory usage is re-added with the exactly message size
             self.memory_usage_bytes -= slice.num_slices * SLICE_SIZE;
             self.process_message(message, slice.message_id)?;
             self.slices.remove(&slice.message_id);

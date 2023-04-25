@@ -204,7 +204,10 @@ impl RemoteConnection {
                 };
 
                 for (message_id, message) in messages {
-                    channel.process_message(message, message_id);
+                    if let Err(error) = channel.process_message(message, message_id) {
+                        self.error = Some(ConnectionError::ReceiveChannelError { channel_id, error });
+                        return;
+                    }
                 }
             }
             Packet::SmallUnreliable { channel_id, messages } => {
@@ -228,7 +231,10 @@ impl RemoteConnection {
                     return;
                 };
 
-                channel.process_slice(slice);
+                if let Err(error) = channel.process_slice(slice) {
+                    self.error = Some(ConnectionError::ReceiveChannelError { channel_id, error });
+                    return;
+                }
             }
             Packet::UnreliableSlice { channel_id, slice } => {
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
@@ -236,7 +242,10 @@ impl RemoteConnection {
                     return;
                 };
 
-                channel.process_slice(slice, self.current_time);
+                if let Err(error) = channel.process_slice(slice, self.current_time) {
+                    self.error = Some(ConnectionError::ReceiveChannelError { channel_id, error });
+                    return;
+                }
             }
             Packet::Ack {
                 packet_sequence,
