@@ -109,6 +109,8 @@ impl NetcodeClientTransport {
                     }
                 },
             }
+            
+            // Ignore packet to send because we already sent one
             _ = self.netcode_client.disconnect();
         }
 

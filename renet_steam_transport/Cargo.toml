@@ -6,4 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-steamworks = "0.9"
+steamworks = { path = "../../steamworks-rs" }
+rechannel = { path = "../rechannel", version = "0.0.6" }
+log = "0.4.17"
