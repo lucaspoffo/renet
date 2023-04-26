@@ -57,7 +57,7 @@ pub struct RemoteConnection {
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
     should_send_ack: bool,
     last_ack_sent_at: Duration,
-    error: Option<ConnectionError>,
+    pub(crate) error: Option<ConnectionError>,
     // rtt: f32,
     // packet_loss: f32,
 }

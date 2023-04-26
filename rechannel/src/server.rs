@@ -10,7 +10,6 @@ use bytes::Bytes;
 pub struct RechannelServer {
     connections: HashMap<u64, RemoteConnection>,
     connection_config: ConnectionConfig,
-    disconnections: Vec<(u64, ConnectionError)>,
 }
 
 impl RechannelServer {
@@ -18,7 +17,6 @@ impl RechannelServer {
         Self {
             connections: HashMap::new(),
             connection_config,
-            disconnections: Vec::new(),
         }
     }
 
@@ -37,10 +35,6 @@ impl RechannelServer {
         !self.connections.is_empty()
     }
 
-    pub fn disconnected_client(&mut self) -> Option<(u64, ConnectionError)> {
-        self.disconnections.pop()
-    }
-
     // pub fn client_rtt(&self, connection_id: C) -> f32 {
     //     match self.connections.get(&connection_id) {
     //         Some(connection) => connection.rtt(),
@@ -55,20 +49,23 @@ impl RechannelServer {
     //     }
     // }
 
-    /// Similar to disconnect but does not emit an event
     pub fn remove_connection(&mut self, connection_id: u64) {
         self.connections.remove(&connection_id);
     }
 
     pub fn disconnect(&mut self, connection_id: u64) {
-        if self.connections.remove(&connection_id).is_some() {
-            self.disconnections.push((connection_id, ConnectionError::DisconnectedByServer));
+        if let Some(connection) = self.connections.get_mut(&connection_id) {
+            if !connection.has_error() {
+                connection.error = Some(ConnectionError::DisconnectedByServer);
+            }
         }
     }
 
     pub fn disconnect_all(&mut self) {
-        for connection_id in self.connections_id().iter() {
-            self.disconnect(*connection_id);
+        for connection in self.connections.values_mut() {
+            if !connection.has_error() {
+                connection.error = Some(ConnectionError::DisconnectedByServer);
+            }
         }
     }
 
@@ -114,21 +111,21 @@ impl RechannelServer {
     }
 
     pub fn connections_id(&self) -> Vec<u64> {
-        self.connections.keys().copied().collect()
+        self.connections.iter().filter(|(_, c)| !c.has_error()).map(|(id, _)| *id).collect()
+    }
+
+    pub fn disconnections_id(&self) -> Vec<u64> {
+        self.connections.iter().filter(|(_, c)| c.has_error()).map(|(id, _)| *id).collect()
     }
 
     pub fn is_connected(&self, connection_id: u64) -> bool {
         self.connections.contains_key(&connection_id)
     }
 
-    pub fn update_connections(&mut self, duration: Duration) {
-        for (&connection_id, connection) in self.connections.iter_mut() {
+    pub fn advance_time(&mut self, duration: Duration) {
+        for connection in self.connections.values_mut() {
             connection.advance_time(duration);
-            if let Some(e) = connection.error() {
-                self.disconnections.push((connection_id, e));
-            }
         }
-        self.connections.retain(|_, c| !c.has_error());
     }
 
     pub fn get_packets_to_send(&mut self, connection_id: u64) -> Result<Vec<Payload>, ClientNotFound> {
