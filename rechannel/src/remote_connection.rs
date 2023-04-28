@@ -68,8 +68,7 @@ pub struct RemoteConnection {
     stats: ConnectionStats,
     last_ack_sent_at: Duration,
     pub(crate) error: Option<ConnectionError>,
-    // rtt: f32,
-    // packet_loss: f32,
+    rtt: f64,
 }
 
 impl RemoteConnection {
@@ -125,13 +124,14 @@ impl RemoteConnection {
             stats: ConnectionStats::new(),
             should_send_ack: false,
             last_ack_sent_at: Duration::ZERO,
+            rtt: 0.0,
             error: None,
         }
     }
 
-    // pub fn rtt(&self) -> f32 {
-    //     self.rtt
-    // }
+    pub fn rtt(&self) -> f64 {
+        self.rtt
+    }
 
     pub fn packet_loss(&self) -> f64 {
         self.stats.packet_loss()
@@ -296,6 +296,13 @@ impl RemoteConnection {
                 for packet_sequence in new_acks {
                     let sent_packet = self.sent_packets.remove(&packet_sequence).unwrap();
                     self.stats.acked_packet(sent_packet.sent_at, self.current_time);
+
+                    let rtt = (self.current_time - sent_packet.sent_at).as_secs_f64();
+                    if self.rtt < f64::EPSILON {
+                        self.rtt = rtt;
+                    } else {
+                        self.rtt = self.rtt * 0.875 + rtt * 0.125;
+                    }
 
                     match sent_packet.info {
                         PacketSentInfo::ReliableMessages { channel_id, message_ids } => {
