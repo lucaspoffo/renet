@@ -35,19 +35,33 @@ impl RechannelServer {
         !self.connections.is_empty()
     }
 
-    // pub fn client_rtt(&self, connection_id: C) -> f32 {
-    //     match self.connections.get(&connection_id) {
-    //         Some(connection) => connection.rtt(),
-    //         None => 0.0,
-    //     }
-    // }
+    pub fn rtt(&self, connection_id: u64) -> f64 {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.rtt(),
+            None => 0.0,
+        }
+    }
 
-    // pub fn client_packet_loss(&self, connection_id: C) -> f32 {
-    //     match self.connections.get(&connection_id) {
-    //         Some(connection) => connection.packet_loss(),
-    //         None => 0.0,
-    //     }
-    // }
+    pub fn packet_loss(&self, connection_id: u64) -> f64 {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.packet_loss(),
+            None => 0.0,
+        }
+    }
+
+    pub fn bytes_sent_per_sec(&self, connection_id: u64) -> f64 {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.bytes_sent_per_sec(),
+            None => 0.0,
+        }
+    }
+
+    pub fn bytes_received_per_sec(&self, connection_id: u64) -> f64 {
+        match self.connections.get(&connection_id) {
+            Some(connection) => connection.bytes_received_per_sec(),
+            None => 0.0,
+        }
+    }
 
     pub fn remove_connection(&mut self, connection_id: u64) {
         self.connections.remove(&connection_id);
