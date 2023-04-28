@@ -3,6 +3,7 @@ pub mod error;
 mod packet;
 pub mod remote_connection;
 pub mod server;
+mod connection_stats;
 
 pub use bytes::Bytes;
 

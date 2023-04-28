@@ -1,6 +1,7 @@
 use crate::channels::reliable::{ReceiveChannelReliable, SendChannelReliable};
 use crate::channels::unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable};
 use crate::channels::{ChannelConfig, SendType};
+use crate::connection_stats::ConnectionStats;
 use crate::error::ConnectionError;
 use crate::packet::{Packet, Payload};
 use bytes::Bytes;
@@ -56,6 +57,7 @@ pub struct RemoteConnection {
     send_reliable_channels: HashMap<u8, SendChannelReliable>,
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
     should_send_ack: bool,
+    stats: ConnectionStats,
     last_ack_sent_at: Duration,
     pub(crate) error: Option<ConnectionError>,
     // rtt: f32,
@@ -112,6 +114,7 @@ impl RemoteConnection {
             receive_unreliable_channels,
             send_reliable_channels,
             receive_reliable_channels,
+            stats: ConnectionStats::new(),
             should_send_ack: false,
             last_ack_sent_at: Duration::ZERO,
             error: None,
@@ -174,6 +177,7 @@ impl RemoteConnection {
 
     pub fn advance_time(&mut self, duration: Duration) {
         self.current_time += duration;
+        self.stats.update(self.current_time);
     }
 
     pub fn process_packet(&mut self, packet: &[u8]) {
@@ -181,6 +185,7 @@ impl RemoteConnection {
             return;
         }
 
+        self.stats.received_packet(packet.len() as u64);
         let mut octets = octets::Octets::with_slice(packet);
         let Ok(packet) = Packet::from_bytes(&mut octets) else {
             self.error = Some(ConnectionError::PacketDeserialization);
@@ -358,14 +363,18 @@ impl RemoteConnection {
 
         let mut buffer = [0u8; 1400];
         let mut serialized_packets = Vec::with_capacity(packets.len());
+        let mut bytes_sent: u64 = 0;
         for packet in packets {
             let mut oct = OctetsMut::with_slice(&mut buffer);
             let Ok(len) = packet.to_bytes(&mut oct) else {
                 self.error = Some(ConnectionError::PacketSerialization);
                 return vec![];
             };
+            bytes_sent += len as u64;
             serialized_packets.push(buffer[..len].to_vec());
         }
+
+        self.stats.sent_packets(serialized_packets.len() as u64, bytes_sent);
 
         serialized_packets
     }
