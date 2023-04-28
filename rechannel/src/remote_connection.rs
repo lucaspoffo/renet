@@ -1,6 +1,6 @@
 use crate::channels::reliable::{ReceiveChannelReliable, SendChannelReliable};
 use crate::channels::unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable};
-use crate::channels::{ChannelConfig, SendType};
+use crate::channels::{ChannelConfig, DefaultChannel, SendType};
 use crate::connection_stats::ConnectionStats;
 use crate::error::ConnectionError;
 use crate::packet::{Packet, Payload};
@@ -48,8 +48,8 @@ enum PacketSentInfo {
 impl Default for ConnectionConfig {
     fn default() -> Self {
         Self {
-            send_channels_config: vec![],
-            receive_channels_config: vec![],
+            send_channels_config: DefaultChannel::config(),
+            receive_channels_config: DefaultChannel::config(),
         }
     }
 }

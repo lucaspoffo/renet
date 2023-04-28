@@ -88,7 +88,7 @@ impl ConnectionStats {
             let mut sum: u64 = self.packets_sent.iter().sum();
 
             // Ignore the current and last 2 resolutions,
-            // because the message or the its ack could be in flight
+            // because the message or its ack could be in flight
             sum -= self.packets_sent[self.current_index];
             sum -= self.packets_sent[(self.current_index + SIZE - 1) % SIZE];
             sum -= self.packets_sent[(self.current_index + SIZE - 2) % SIZE];
