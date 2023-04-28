@@ -21,11 +21,13 @@ pub enum Packet {
     },
     // Small messages in a unreliable channel are aggregated and sent in this packet
     SmallUnreliable {
+        packet_sequence: u64,
         channel_id: u8,
         messages: Vec<Bytes>,
     },
     // A big unreliable message is sliced in multiples slice packets
     UnreliableSlice {
+        packet_sequence: u64,
         channel_id: u8,
         slice: Slice,
     },
@@ -61,8 +63,8 @@ impl Packet {
                 messages,
             } => {
                 b.put_u8(0)?;
-                b.put_u8(*channel_id)?;
                 b.put_varint(*packet_sequence)?;
+                b.put_u8(*channel_id)?;
                 b.put_u16(messages.len() as u16)?;
                 for (message_id, message) in messages {
                     b.put_varint(*message_id)?;
@@ -70,8 +72,9 @@ impl Packet {
                     b.put_bytes(message)?;
                 }
             }
-            Packet::SmallUnreliable { channel_id, messages } => {
+            Packet::SmallUnreliable { packet_sequence, channel_id, messages } => {
                 b.put_u8(1)?;
+                b.put_varint(*packet_sequence)?;
                 b.put_u8(*channel_id)?;
                 b.put_u16(messages.len() as u16)?;
                 for message in messages {
@@ -85,16 +88,17 @@ impl Packet {
                 slice,
             } => {
                 b.put_u8(2)?;
-                b.put_u8(*channel_id)?;
                 b.put_varint(*packet_sequence)?;
+                b.put_u8(*channel_id)?;
                 b.put_varint(slice.message_id)?;
                 b.put_varint(slice.slice_index as u64)?;
                 b.put_varint(slice.num_slices as u64)?;
                 b.put_varint(slice.payload.len() as u64)?;
                 b.put_bytes(&slice.payload)?;
             }
-            Packet::UnreliableSlice { channel_id, slice } => {
+            Packet::UnreliableSlice { packet_sequence, channel_id, slice } => {
                 b.put_u8(3)?;
+                b.put_varint(*packet_sequence)?;
                 b.put_u8(*channel_id)?;
                 b.put_varint(slice.message_id)?;
                 b.put_varint(slice.slice_index as u64)?;
@@ -162,8 +166,8 @@ impl Packet {
         match packet_type {
             0 => {
                 // SmallReliable
-                let channel_id = b.get_u8()?;
                 let packet_sequence = b.get_varint()?;
+                let channel_id = b.get_u8()?;
                 let messages_len = b.get_u16()?;
                 let mut messages: Vec<(u64, Bytes)> = Vec::with_capacity(64);
                 for _ in 0..messages_len {
@@ -181,6 +185,7 @@ impl Packet {
             }
             1 => {
                 // SmallUnreliable
+                let packet_sequence = b.get_varint()?;
                 let channel_id = b.get_u8()?;
                 let messages_len = b.get_u16()?;
                 let mut messages: Vec<Bytes> = Vec::with_capacity(64);
@@ -189,12 +194,12 @@ impl Packet {
                     messages.push(payload.to_vec().into());
                 }
 
-                Ok(Packet::SmallUnreliable { channel_id, messages })
+                Ok(Packet::SmallUnreliable { packet_sequence, channel_id, messages })
             }
             2 => {
                 // ReliableSlice
-                let channel_id = b.get_u8()?;
                 let packet_sequence = b.get_varint()?;
+                let channel_id = b.get_u8()?;
                 let message_id = b.get_varint()?;
                 let slice_index = b.get_varint()? as usize;
                 let num_slices = b.get_varint()? as usize;
@@ -214,6 +219,7 @@ impl Packet {
             }
             3 => {
                 // UnreliableSlice
+                let packet_sequence = b.get_varint()?;
                 let channel_id = b.get_u8()?;
                 let message_id = b.get_varint()?;
                 let slice_index = b.get_varint()? as usize;
@@ -226,7 +232,7 @@ impl Packet {
                     num_slices,
                     payload: payload.to_vec().into(),
                 };
-                Ok(Packet::UnreliableSlice { channel_id, slice })
+                Ok(Packet::UnreliableSlice { packet_sequence, channel_id, slice })
             }
             4 => {
                 // Ack
@@ -310,6 +316,7 @@ mod tests {
     fn serialize_small_unreliable_packet() {
         let mut buffer = [0u8; 1300];
         let packet = Packet::SmallUnreliable {
+            packet_sequence: 0,
             channel_id: 0,
             messages: vec![vec![0, 0, 0].into(), vec![1, 1, 1].into(), vec![2, 2, 2].into()],
         };
@@ -350,6 +357,7 @@ mod tests {
         let mut buffer = [0u8; 1300];
 
         let packet = Packet::UnreliableSlice {
+            packet_sequence: 0,
             channel_id: 0,
             slice: Slice {
                 message_id: 0,

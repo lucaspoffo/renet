@@ -20,7 +20,15 @@ pub struct ConnectionConfig {
 }
 
 #[derive(Debug, Clone)]
-enum PacketSent {
+struct PacketSent {
+    sent_at: Duration,
+    info: PacketSentInfo,
+}
+
+#[derive(Debug, Clone)]
+enum PacketSentInfo {
+    // No need to track info for unreliable messages
+    None,
     ReliableMessages {
         channel_id: u8,
         message_ids: Vec<u64>,
@@ -125,9 +133,17 @@ impl RemoteConnection {
     //     self.rtt
     // }
 
-    // pub fn packet_loss(&self) -> f32 {
-    //     self.packet_loss
-    // }
+    pub fn packet_loss(&self) -> f64 {
+        self.stats.packet_loss()
+    }
+
+    pub fn bytes_sent_per_sec(&self) -> f64 {
+        self.stats.bytes_sent_per_second(self.current_time)
+    }
+
+    pub fn bytes_received_per_sec(&self) -> f64 {
+        self.stats.bytes_received_per_second(self.current_time)
+    }
 
     #[inline]
     pub fn has_error(&self) -> bool {
@@ -215,7 +231,12 @@ impl RemoteConnection {
                     }
                 }
             }
-            Packet::SmallUnreliable { channel_id, messages } => {
+            Packet::SmallUnreliable {
+                packet_sequence,
+                channel_id,
+                messages,
+            } => {
+                self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
                     self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
                     return;
@@ -241,7 +262,12 @@ impl RemoteConnection {
                     return;
                 }
             }
-            Packet::UnreliableSlice { channel_id, slice } => {
+            Packet::UnreliableSlice {
+                packet_sequence,
+                channel_id,
+                slice,
+            } => {
+                self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
                     self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
                     return;
@@ -269,15 +295,16 @@ impl RemoteConnection {
 
                 for packet_sequence in new_acks {
                     let sent_packet = self.sent_packets.remove(&packet_sequence).unwrap();
+                    self.stats.acked_packet(sent_packet.sent_at, self.current_time);
 
-                    match sent_packet {
-                        PacketSent::ReliableMessages { channel_id, message_ids } => {
+                    match sent_packet.info {
+                        PacketSentInfo::ReliableMessages { channel_id, message_ids } => {
                             let reliable_channel = self.send_reliable_channels.get_mut(&channel_id).unwrap();
                             for message_id in message_ids {
                                 reliable_channel.process_message_ack(message_id);
                             }
                         }
-                        PacketSent::ReliableSliceMessage {
+                        PacketSentInfo::ReliableSliceMessage {
                             channel_id,
                             message_id,
                             slice_index,
@@ -285,9 +312,10 @@ impl RemoteConnection {
                             let reliable_channel = self.send_reliable_channels.get_mut(&channel_id).unwrap();
                             reliable_channel.process_slice_message_ack(message_id, slice_index);
                         }
-                        PacketSent::Ack { largest_acked_packet } => {
+                        PacketSentInfo::Ack { largest_acked_packet } => {
                             self.acked_largest(largest_acked_packet);
                         }
+                        PacketSentInfo::None => {}
                     }
                 }
             }
@@ -301,7 +329,7 @@ impl RemoteConnection {
         }
 
         for channel in self.send_unreliable_channels.values_mut() {
-            packets.append(&mut channel.get_messages_to_send());
+            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence));
         }
 
         for channel in self.send_reliable_channels.values_mut() {
@@ -320,6 +348,7 @@ impl RemoteConnection {
             packets.push(ack_packet);
         }
 
+        let sent_at = self.current_time;
         for packet in packets.iter() {
             match packet {
                 Packet::SmallReliable {
@@ -329,9 +358,12 @@ impl RemoteConnection {
                 } => {
                     self.sent_packets.insert(
                         *packet_sequence,
-                        PacketSent::ReliableMessages {
-                            channel_id: *channel_id,
-                            message_ids: messages.iter().map(|(id, _)| *id).collect(),
+                        PacketSent {
+                            sent_at,
+                            info: PacketSentInfo::ReliableMessages {
+                                channel_id: *channel_id,
+                                message_ids: messages.iter().map(|(id, _)| *id).collect(),
+                            },
                         },
                     );
                 }
@@ -342,10 +374,31 @@ impl RemoteConnection {
                 } => {
                     self.sent_packets.insert(
                         *packet_sequence,
-                        PacketSent::ReliableSliceMessage {
-                            channel_id: *channel_id,
-                            message_id: slice.message_id,
-                            slice_index: slice.slice_index,
+                        PacketSent {
+                            sent_at,
+                            info: PacketSentInfo::ReliableSliceMessage {
+                                channel_id: *channel_id,
+                                message_id: slice.message_id,
+                                slice_index: slice.slice_index,
+                            },
+                        },
+                    );
+                }
+                Packet::SmallUnreliable { packet_sequence, .. } => {
+                    self.sent_packets.insert(
+                        *packet_sequence,
+                        PacketSent {
+                            sent_at,
+                            info: PacketSentInfo::None,
+                        },
+                    );
+                }
+                Packet::UnreliableSlice { packet_sequence, .. } => {
+                    self.sent_packets.insert(
+                        *packet_sequence,
+                        PacketSent {
+                            sent_at,
+                            info: PacketSentInfo::None,
                         },
                     );
                 }
@@ -355,9 +408,14 @@ impl RemoteConnection {
                 } => {
                     let last_range = ack_ranges.last().unwrap();
                     let largest_acked_packet = last_range.end - 1;
-                    self.sent_packets.insert(*packet_sequence, PacketSent::Ack { largest_acked_packet });
+                    self.sent_packets.insert(
+                        *packet_sequence,
+                        PacketSent {
+                            sent_at,
+                            info: PacketSentInfo::Ack { largest_acked_packet },
+                        },
+                    );
                 }
-                _ => {}
             }
         }
 

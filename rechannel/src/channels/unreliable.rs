@@ -41,7 +41,7 @@ impl SendChannelUnreliable {
         }
     }
 
-    pub fn get_messages_to_send(&mut self) -> Vec<Packet> {
+    pub fn get_messages_to_send(&mut self, packet_sequence: &mut u64) -> Vec<Packet> {
         let mut packets: Vec<Packet> = vec![];
         let mut small_messages: Vec<Bytes> = vec![];
         let mut small_messages_bytes = 0;
@@ -63,18 +63,22 @@ impl SendChannelUnreliable {
                     };
 
                     packets.push(Packet::UnreliableSlice {
+                        packet_sequence: *packet_sequence,
                         channel_id: self.channel_id,
                         slice,
                     });
+                    *packet_sequence += 1;
                 }
 
                 self.sliced_message_id += 1;
             } else {
                 if small_messages_bytes + message.len() > SLICE_SIZE {
                     packets.push(Packet::SmallUnreliable {
+                        packet_sequence: *packet_sequence,
                         channel_id: self.channel_id,
                         messages: std::mem::take(&mut small_messages),
                     });
+                    *packet_sequence += 1;
                     small_messages_bytes = 0;
                 }
 
@@ -86,9 +90,11 @@ impl SendChannelUnreliable {
         // Generate final packet for remaining small messages
         if !small_messages.is_empty() {
             packets.push(Packet::SmallUnreliable {
+                packet_sequence: *packet_sequence,
                 channel_id: self.channel_id,
                 messages: std::mem::take(&mut small_messages),
             });
+            *packet_sequence += 1;
         }
 
         packets
@@ -181,6 +187,7 @@ mod tests {
     #[test]
     fn small_packet() {
         let max_memory: usize = 10000;
+        let mut sequence: u64 = 0;
         let mut recv = ReceiveChannelUnreliable::new(0, max_memory);
         let mut send = SendChannelUnreliable::new(0, max_memory);
 
@@ -190,9 +197,9 @@ mod tests {
         send.send_message(message1.clone().into());
         send.send_message(message2.clone().into());
 
-        let packets = send.get_messages_to_send();
+        let packets = send.get_messages_to_send(&mut sequence);
         for packet in packets {
-            let Packet::SmallUnreliable { channel_id: 0, messages } = packet else {
+            let Packet::SmallUnreliable { channel_id: 0, messages, .. } = packet else {
                 unreachable!();
             };
             for message in messages {
@@ -207,13 +214,14 @@ mod tests {
         assert_eq!(message1, new_message1);
         assert_eq!(message2, new_message2);
 
-        let packets = send.get_messages_to_send();
+        let packets = send.get_messages_to_send(&mut sequence);
         assert!(packets.is_empty());
     }
 
     #[test]
     fn slice_packet() {
         let max_memory: usize = 10000;
+        let mut sequence: u64 = 0;
         let current_time = Duration::ZERO;
         let mut recv = ReceiveChannelUnreliable::new(0, max_memory);
         let mut send = SendChannelUnreliable::new(0, max_memory);
@@ -222,9 +230,9 @@ mod tests {
 
         send.send_message(message.clone().into());
 
-        let packets = send.get_messages_to_send();
+        let packets = send.get_messages_to_send(&mut sequence);
         for packet in packets {
-            let Packet::UnreliableSlice { channel_id: 0, slice } = packet else {
+            let Packet::UnreliableSlice { channel_id: 0, slice, .. } = packet else {
                 unreachable!();
             };
             recv.process_slice(slice, current_time).unwrap();
@@ -235,12 +243,13 @@ mod tests {
 
         assert_eq!(message, new_message);
 
-        let packets = send.get_messages_to_send();
+        let packets = send.get_messages_to_send(&mut sequence);
         assert!(packets.is_empty());
     }
 
     #[test]
     fn max_memory() {
+        let mut sequence: u64 = 0;
         let mut recv = ReceiveChannelUnreliable::new(0, 50);
         let mut send = SendChannelUnreliable::new(0, 40);
 
@@ -249,9 +258,9 @@ mod tests {
         send.send_message(message.clone().into());
         send.send_message(message.clone().into());
 
-        let packets = send.get_messages_to_send();
+        let packets = send.get_messages_to_send(&mut sequence);
         for packet in packets {
-            let Packet::SmallUnreliable { channel_id: 0, messages } = packet else {
+            let Packet::SmallUnreliable { channel_id: 0, messages, .. } = packet else {
                 unreachable!();
             };
 

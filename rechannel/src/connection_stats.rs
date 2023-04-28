@@ -57,7 +57,7 @@ impl ConnectionStats {
         self.packets_acked[Self::index(sent_at)] += 1;
     }
 
-    pub fn sent_bytes_per_second(&self, current_time: Duration) -> f64 {
+    pub fn bytes_sent_per_second(&self, current_time: Duration) -> f64 {
         let mut total_bytes: u64 = self.bytes_sent.iter().sum();
 
         if current_time < WINDOW {
@@ -70,7 +70,7 @@ impl ConnectionStats {
         total_bytes as f64 / (WINDOW - RESOLUTION).as_secs_f64()
     }
 
-    pub fn received_bytes_per_second(&self, current_time: Duration) -> f64 {
+    pub fn bytes_received_per_second(&self, current_time: Duration) -> f64 {
         let mut total_bytes: u64 = self.bytes_received.iter().sum();
 
         if current_time < WINDOW {
@@ -127,7 +127,7 @@ mod tests {
         }
 
         // Check at 1 second
-        assert_eq!(window.sent_bytes_per_second(current_time), 1000.);
+        assert_eq!(window.bytes_sent_per_second(current_time), 1000.);
 
         for _ in 0..50 {
             window.update(current_time);
@@ -138,7 +138,7 @@ mod tests {
         // Check after 6 seconds
         assert_eq!(window.packets_sent, [30; 20]);
         assert_eq!(window.bytes_sent, [300; 20]);
-        assert_eq!(window.sent_bytes_per_second(current_time), 1000.);
+        assert_eq!(window.bytes_sent_per_second(current_time), 1000.);
     }
 
     #[test]
