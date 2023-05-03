@@ -46,11 +46,17 @@ enum PacketSentInfo {
     },
 }
 
+#[derive(Debug)]
+enum ChannelOrder {
+    Reliable(u8),
+    Unreliable(u8)
+}
+
 impl Default for ConnectionConfig {
     fn default() -> Self {
         Self {
-            // At 60 hz, this becomes 1.2 mbps
-            available_bytes_per_tick: 30 * 1024,
+            // At 60 hz, this becomes 2.4 mbps
+            available_bytes_per_tick: 60 * 1024,
             send_channels_config: DefaultChannel::config(),
             receive_channels_config: DefaultChannel::config(),
         }
@@ -63,6 +69,7 @@ pub struct RemoteConnection {
     current_time: Duration,
     sent_packets: BTreeMap<u64, PacketSent>,
     pending_acks: Vec<Range<u64>>,
+    channel_send_order: Vec<ChannelOrder>,
     send_unreliable_channels: HashMap<u8, SendChannelUnreliable>,
     receive_unreliable_channels: HashMap<u8, ReceiveChannelUnreliable>,
     send_reliable_channels: HashMap<u8, SendChannelReliable>,
@@ -79,17 +86,22 @@ impl RemoteConnection {
     pub fn new(config: ConnectionConfig) -> Self {
         let mut send_unreliable_channels = HashMap::new();
         let mut send_reliable_channels = HashMap::new();
+        let mut channel_send_order: Vec<ChannelOrder> = Vec::with_capacity(config.send_channels_config.len());
         for channel_config in config.send_channels_config.iter() {
             match channel_config.send_type {
                 SendType::Unreliable => {
                     let channel = SendChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
                     let old = send_unreliable_channels.insert(channel_config.channel_id, channel);
                     assert!(old.is_none(), "already exists send channel {}", channel_config.channel_id);
+
+                    channel_send_order.push(ChannelOrder::Unreliable(channel_config.channel_id));
                 }
                 SendType::ReliableOrdered { resend_time } | SendType::ReliableUnordered { resend_time } => {
                     let channel = SendChannelReliable::new(channel_config.channel_id, resend_time, channel_config.max_memory_usage_bytes);
                     let old = send_reliable_channels.insert(channel_config.channel_id, channel);
                     assert!(old.is_none(), "already exists send channel {}", channel_config.channel_id);
+
+                    channel_send_order.push(ChannelOrder::Reliable(channel_config.channel_id));
                 }
             }
         }
@@ -121,6 +133,7 @@ impl RemoteConnection {
             current_time: Duration::ZERO,
             sent_packets: BTreeMap::new(),
             pending_acks: Vec::new(),
+            channel_send_order,
             send_unreliable_channels,
             receive_unreliable_channels,
             send_reliable_channels,
@@ -341,12 +354,18 @@ impl RemoteConnection {
         }
 
         let mut available_bytes = self.available_bytes_per_tick;
-        for channel in self.send_unreliable_channels.values_mut() {
-            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence, &mut available_bytes));
-        }
+        for order in self.channel_send_order.iter() {
+            match order {
+                ChannelOrder::Reliable(channel_id) => {
+                    let channel = self.send_reliable_channels.get_mut(channel_id).unwrap();
+                    packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence,  &mut available_bytes, self.current_time));
 
-        for channel in self.send_reliable_channels.values_mut() {
-            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence,  &mut available_bytes, self.current_time));
+                },
+                ChannelOrder::Unreliable(channel_id) => {
+                    let channel = self.send_unreliable_channels.get_mut(channel_id).unwrap();
+                    packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence, &mut available_bytes));
+                },
+            }
         }
 
         let force_ack_send = self.last_ack_sent_at + ACK_FORCE_SEND_TIME < self.current_time;

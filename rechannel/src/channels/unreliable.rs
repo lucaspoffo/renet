@@ -41,7 +41,7 @@ impl SendChannelUnreliable {
         }
     }
 
-    pub fn get_messages_to_send(&mut self, packet_sequence: &mut u64, available_bytes: &mut u64) -> Vec<Packet> {
+    pub fn get_packets_to_send(&mut self, packet_sequence: &mut u64, available_bytes: &mut u64) -> Vec<Packet> {
         let mut packets: Vec<Packet> = vec![];
         let mut small_messages: Vec<Bytes> = vec![];
         let mut small_messages_bytes = 0;
@@ -204,7 +204,7 @@ mod tests {
         send.send_message(message1.clone().into());
         send.send_message(message2.clone().into());
 
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         for packet in packets {
             let Packet::SmallUnreliable { messages, .. } = packet else {
                 unreachable!();
@@ -221,7 +221,7 @@ mod tests {
         assert_eq!(message1, new_message1);
         assert_eq!(message2, new_message2);
 
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert!(packets.is_empty());
     }
 
@@ -238,7 +238,7 @@ mod tests {
 
         send.send_message(message.clone().into());
 
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         for packet in packets {
             let Packet::UnreliableSlice { slice, .. } = packet else {
                 unreachable!();
@@ -251,7 +251,7 @@ mod tests {
 
         assert_eq!(message, new_message);
 
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert!(packets.is_empty());
     }
 
@@ -267,7 +267,7 @@ mod tests {
         send.send_message(message.clone().into());
         send.send_message(message.clone().into());
 
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         for packet in packets {
             let Packet::SmallUnreliable { messages, .. } = packet else {
                 unreachable!();
@@ -294,12 +294,12 @@ mod tests {
 
         // No available bytes
         let mut available_bytes: u64 = 50;
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert_eq!(packets.len(), 0);
 
         // Available space but message was dropped
         let mut available_bytes: u64 = u64::MAX;
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert_eq!(packets.len(), 0);
 
         send.send_message(message.clone());
@@ -307,12 +307,12 @@ mod tests {
 
         // Space for 1 message
         let mut available_bytes: u64 = 100;
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert_eq!(packets.len(), 1);
 
         // Second message was dropped
         let mut available_bytes: u64 = u64::MAX;
-        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes);
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert_eq!(packets.len(), 0);
     }
 }
