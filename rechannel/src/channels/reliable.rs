@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{btree_map, BTreeMap, BTreeSet, HashMap},
     time::Duration,
 };
 
@@ -270,13 +270,13 @@ impl ReceiveChannelReliable {
 
         match &mut self.reliable_order {
             ReliableOrder::Ordered => {
-                if !self.messages.contains_key(&message_id) {
+                if let btree_map::Entry::Vacant(entry) = self.messages.entry(message_id) {
                     self.memory_usage_bytes += message.len();
                     if self.max_memory_usage_bytes < self.memory_usage_bytes {
                         return Err(ChannelError::ReliableChannelMaxMemoryReached);
                     }
 
-                    self.messages.insert(message_id, message);
+                    entry.insert(message);
                 }
             }
             ReliableOrder::Unordered {

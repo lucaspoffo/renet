@@ -142,7 +142,7 @@ impl ReceiveChannelUnreliable {
         }
 
         self.memory_usage_bytes += message.len();
-        self.messages.push_back(message.into());
+        self.messages.push_back(message);
     }
 
     pub fn process_slice(&mut self, slice: Slice, current_time: Duration) -> Result<(), ChannelError> {

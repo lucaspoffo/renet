@@ -47,10 +47,7 @@ pub enum Packet {
 
 impl Packet {
     pub fn is_ack_eliciting(&self) -> bool {
-        match self {
-            Packet::SmallReliable { .. } | Packet::ReliableSlice { .. } => true,
-            _ => false,
-        }
+        matches!(self, Packet::SmallReliable { .. } | Packet::ReliableSlice { .. })
     }
 
     pub fn to_bytes(&self, b: &mut octets::OctetsMut) -> Result<usize, octets::BufferTooShortError> {

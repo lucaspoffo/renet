@@ -290,7 +290,6 @@ impl RemoteConnection {
 
                 if let Err(error) = channel.process_slice(slice) {
                     self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
-                    return;
                 }
             }
             Packet::UnreliableSlice {
@@ -306,7 +305,6 @@ impl RemoteConnection {
 
                 if let Err(error) = channel.process_slice(slice, self.current_time) {
                     self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
-                    return;
                 }
             }
             Packet::Ack {
@@ -529,7 +527,7 @@ impl RemoteConnection {
     }
 
     fn acked_largest(&mut self, largest_ack: u64) {
-        while self.pending_acks.len() != 0 {
+        while !self.pending_acks.is_empty() {
             let range = &mut self.pending_acks[0];
 
             // Largest ack is below the range, stop checking

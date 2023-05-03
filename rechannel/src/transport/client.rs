@@ -12,6 +12,8 @@ use crate::remote_connection::RemoteConnection;
 
 use super::NetcodeTransportError;
 
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ClientAuthentication {
     /// Establishes a safe connection with the server using the [ConnectToken].
     ///
@@ -28,6 +30,7 @@ pub enum ClientAuthentication {
     },
 }
 
+#[derive(Debug)]
 pub struct NetcodeClientTransport {
     socket: UdpSocket,
     netcode_client: NetcodeClient,

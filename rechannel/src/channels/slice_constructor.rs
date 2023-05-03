@@ -18,8 +18,8 @@ impl SliceConstructor {
             message_id,
             num_slices,
             num_received_slices: 0,
-            received: vec![false; num_slices as usize],
-            sliced_data: vec![0; num_slices as usize * SLICE_SIZE],
+            received: vec![false; num_slices],
+            sliced_data: vec![0; num_slices * SLICE_SIZE],
         }
     }
 
@@ -55,7 +55,7 @@ impl SliceConstructor {
                 (slice_index + 1) * SLICE_SIZE
             };
 
-            self.sliced_data[start..end].copy_from_slice(&bytes);
+            self.sliced_data[start..end].copy_from_slice(bytes);
             log::trace!(
                 "Received slice {} from message {}. ({}/{})",
                 slice_index,

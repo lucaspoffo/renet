@@ -11,6 +11,7 @@ use crate::server::RechannelServer;
 use super::NetcodeTransportError;
 
 /// Configuration to establish a secure or unsecure connection with the server.
+#[derive(Debug)]
 pub enum ServerAuthentication {
     /// Establishes a safe connection using a private key for encryption. The private key cannot be
     /// shared with the client. Connections are stablished using
@@ -25,6 +26,7 @@ pub enum ServerAuthentication {
 }
 
 /// Configuration options for the renet server.
+#[derive(Debug)]
 pub struct ServerConfig {
     /// Maximum numbers of clients that can be connected at a time
     pub max_clients: usize,
@@ -39,6 +41,7 @@ pub struct ServerConfig {
     pub authentication: ServerAuthentication,
 }
 
+#[derive(Debug)]
 pub struct NetcodeServerTransport {
     socket: UdpSocket,
     netcode_server: NetcodeServer,

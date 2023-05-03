@@ -178,7 +178,10 @@ impl RechannelServer {
 
     pub fn process_packet_from(&mut self, payload: &[u8], connection_id: u64) -> Result<(), ClientNotFound> {
         match self.connections.get_mut(&connection_id) {
-            Some(connection) => Ok(connection.process_packet(payload)),
+            Some(connection) => {
+                connection.process_packet(payload);
+                Ok(())
+            }
             None => Err(ClientNotFound),
         }
     }
