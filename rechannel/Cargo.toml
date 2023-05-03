@@ -14,6 +14,7 @@ edition = "2021"
 log = "0.4.17"
 bytes = "1.1"
 octets = "0.2"
+renetcode = { path = "../renetcode", version = "0.0.6" }
 
 [dev-dependencies]
 env_logger = "0.9.0"

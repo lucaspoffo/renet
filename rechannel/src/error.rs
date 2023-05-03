@@ -2,8 +2,11 @@ use std::fmt;
 
 /// Possibles reasons for a disconnection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConnectionError {
-    /// Client was disconnected by the server
+pub enum DisconnectReason {
+    Transport,
+    /// Connection was terminated by the server
+    DisconnectedByClient,
+    /// Connection was terminated by the server
     DisconnectedByServer,
     /// Failed to serialize packet
     PacketSerialization,
@@ -12,9 +15,15 @@ pub enum ConnectionError {
     /// Received message from channel with invalid id
     ReceivedInvalidChannelId(u8),
     /// Error occurred in a send channel
-    SendChannelError { channel_id: u8, error: ChannelError },
+    SendChannelError {
+        channel_id: u8,
+        error: ChannelError,
+    },
     /// Error occurred in a receive channel
-    ReceiveChannelError { channel_id: u8, error: ChannelError },
+    ReceiveChannelError {
+        channel_id: u8,
+        error: ChannelError,
+    },
 }
 
 /// Possibles errors that can occur in a channel.
@@ -37,12 +46,14 @@ impl fmt::Display for ChannelError {
     }
 }
 
-impl fmt::Display for ConnectionError {
+impl fmt::Display for DisconnectReason {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use ConnectionError::*;
+        use DisconnectReason::*;
 
         match *self {
-            DisconnectedByServer => write!(fmt, "connection terminated by server"),
+            Transport => write!(fmt, "connection terminated by the transport layer"),
+            DisconnectedByClient => write!(fmt, "connection terminated by the client"),
+            DisconnectedByServer => write!(fmt, "connection terminated by the server"),
             PacketSerialization => write!(fmt, "failed to serialize packet"),
             PacketDeserialization => write!(fmt, "failed to deserialize packet"),
             ReceivedInvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),

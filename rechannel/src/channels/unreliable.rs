@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn available_bytes() {
         let mut sequence: u64 = 0;
-        let mut send = SendChannelUnreliable::new(0,  usize::MAX);
+        let mut send = SendChannelUnreliable::new(0, usize::MAX);
 
         let message: Bytes = vec![0u8; 100].into();
         send.send_message(message.clone());

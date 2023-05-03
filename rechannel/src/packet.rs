@@ -72,7 +72,11 @@ impl Packet {
                     b.put_bytes(message)?;
                 }
             }
-            Packet::SmallUnreliable { packet_sequence, channel_id, messages } => {
+            Packet::SmallUnreliable {
+                packet_sequence,
+                channel_id,
+                messages,
+            } => {
                 b.put_u8(1)?;
                 b.put_varint(*packet_sequence)?;
                 b.put_u8(*channel_id)?;
@@ -96,7 +100,11 @@ impl Packet {
                 b.put_varint(slice.payload.len() as u64)?;
                 b.put_bytes(&slice.payload)?;
             }
-            Packet::UnreliableSlice { packet_sequence, channel_id, slice } => {
+            Packet::UnreliableSlice {
+                packet_sequence,
+                channel_id,
+                slice,
+            } => {
                 b.put_u8(3)?;
                 b.put_varint(*packet_sequence)?;
                 b.put_u8(*channel_id)?;
@@ -194,7 +202,11 @@ impl Packet {
                     messages.push(payload.to_vec().into());
                 }
 
-                Ok(Packet::SmallUnreliable { packet_sequence, channel_id, messages })
+                Ok(Packet::SmallUnreliable {
+                    packet_sequence,
+                    channel_id,
+                    messages,
+                })
             }
             2 => {
                 // ReliableSlice
@@ -232,7 +244,11 @@ impl Packet {
                     num_slices,
                     payload: payload.to_vec().into(),
                 };
-                Ok(Packet::UnreliableSlice { packet_sequence, channel_id, slice })
+                Ok(Packet::UnreliableSlice {
+                    packet_sequence,
+                    channel_id,
+                    slice,
+                })
             }
             4 => {
                 // Ack

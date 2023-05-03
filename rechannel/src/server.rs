@@ -1,15 +1,22 @@
-use crate::error::{ClientNotFound, ConnectionError};
+use crate::error::{ClientNotFound, DisconnectReason};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, RemoteConnection};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use bytes::Bytes;
 
 #[derive(Debug)]
+pub enum ServerEvent {
+    ClientConnected { client_id: u64 },
+    ClientDisconnected { client_id: u64, reason: DisconnectReason },
+}
+
+#[derive(Debug)]
 pub struct RechannelServer {
     connections: HashMap<u64, RemoteConnection>,
     connection_config: ConnectionConfig,
+    events: VecDeque<ServerEvent>,
 }
 
 impl RechannelServer {
@@ -17,6 +24,7 @@ impl RechannelServer {
         Self {
             connections: HashMap::new(),
             connection_config,
+            events: VecDeque::new(),
         }
     }
 
@@ -28,6 +36,11 @@ impl RechannelServer {
 
         let connection = RemoteConnection::new(self.connection_config.clone());
         self.connections.insert(connection_id, connection);
+        self.events.push_back(ServerEvent::ClientConnected { client_id: connection_id })
+    }
+
+    pub fn get_event(&mut self) -> Option<ServerEvent> {
+        self.events.pop_front()
     }
 
     /// Returns whether or not the server has connections
@@ -64,21 +77,27 @@ impl RechannelServer {
     }
 
     pub fn remove_connection(&mut self, connection_id: u64) {
-        self.connections.remove(&connection_id);
+        if let Some(connection) = self.connections.remove(&connection_id) {
+            let reason = connection.disconnect_reason().unwrap_or(DisconnectReason::Transport);
+            self.events.push_back(ServerEvent::ClientDisconnected {
+                client_id: connection_id,
+                reason,
+            });
+        }
     }
 
     pub fn disconnect(&mut self, connection_id: u64) {
         if let Some(connection) = self.connections.get_mut(&connection_id) {
-            if !connection.has_error() {
-                connection.error = Some(ConnectionError::DisconnectedByServer);
+            if connection.is_connected() {
+                connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
             }
         }
     }
 
     pub fn disconnect_all(&mut self) {
         for connection in self.connections.values_mut() {
-            if !connection.has_error() {
-                connection.error = Some(ConnectionError::DisconnectedByServer);
+            if connection.is_connected() {
+                connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
             }
         }
     }
@@ -125,11 +144,19 @@ impl RechannelServer {
     }
 
     pub fn connections_id(&self) -> Vec<u64> {
-        self.connections.iter().filter(|(_, c)| !c.has_error()).map(|(id, _)| *id).collect()
+        self.connections
+            .iter()
+            .filter(|(_, c)| !c.is_disconnected())
+            .map(|(id, _)| *id)
+            .collect()
     }
 
     pub fn disconnections_id(&self) -> Vec<u64> {
-        self.connections.iter().filter(|(_, c)| c.has_error()).map(|(id, _)| *id).collect()
+        self.connections
+            .iter()
+            .filter(|(_, c)| c.is_disconnected())
+            .map(|(id, _)| *id)
+            .collect()
     }
 
     pub fn is_connected(&self, connection_id: u64) -> bool {

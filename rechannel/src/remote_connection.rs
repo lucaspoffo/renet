@@ -2,7 +2,7 @@ use crate::channels::reliable::{ReceiveChannelReliable, SendChannelReliable};
 use crate::channels::unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable};
 use crate::channels::{ChannelConfig, DefaultChannel, SendType};
 use crate::connection_stats::ConnectionStats;
-use crate::error::ConnectionError;
+use crate::error::DisconnectReason;
 use crate::packet::{Packet, Payload};
 use bytes::Bytes;
 use octets::OctetsMut;
@@ -49,7 +49,7 @@ enum PacketSentInfo {
 #[derive(Debug)]
 enum ChannelOrder {
     Reliable(u8),
-    Unreliable(u8)
+    Unreliable(u8),
 }
 
 impl Default for ConnectionConfig {
@@ -78,7 +78,7 @@ pub struct RemoteConnection {
     stats: ConnectionStats,
     last_ack_sent_at: Duration,
     available_bytes_per_tick: u64,
-    pub(crate) error: Option<ConnectionError>,
+    pub(crate) disconnect_reason: Option<DisconnectReason>,
     rtt: f64,
 }
 
@@ -143,7 +143,7 @@ impl RemoteConnection {
             last_ack_sent_at: Duration::ZERO,
             rtt: 0.0,
             available_bytes_per_tick: config.available_bytes_per_tick,
-            error: None,
+            disconnect_reason: None,
         }
     }
 
@@ -164,12 +164,25 @@ impl RemoteConnection {
     }
 
     #[inline]
-    pub fn has_error(&self) -> bool {
-        self.error.is_some()
+    pub fn is_disconnected(&self) -> bool {
+        self.disconnect_reason.is_some()
     }
 
-    pub fn error(&self) -> Option<ConnectionError> {
-        self.error
+    #[inline]
+    pub fn is_connected(&self) -> bool {
+        self.disconnect_reason.is_none()
+    }
+
+    pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
+        self.disconnect_reason
+    }
+
+    pub fn disconnect(&mut self) {
+        if self.disconnect_reason.is_some() {
+            return;
+        }
+
+        self.disconnect_reason = Some(DisconnectReason::DisconnectedByClient);
     }
 
     // pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
@@ -178,14 +191,14 @@ impl RemoteConnection {
     // }
 
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
-        if self.has_error() {
+        if self.is_disconnected() {
             return;
         }
 
         let channel_id = channel_id.into();
         if let Some(reliable_channel) = self.send_reliable_channels.get_mut(&channel_id) {
             if let Err(error) = reliable_channel.send_message(message.into()) {
-                self.error = Some(ConnectionError::SendChannelError { channel_id, error });
+                self.disconnect_reason = Some(DisconnectReason::SendChannelError { channel_id, error });
             }
         } else if let Some(unreliable_channel) = self.send_unreliable_channels.get_mut(&channel_id) {
             unreliable_channel.send_message(message.into());
@@ -195,7 +208,7 @@ impl RemoteConnection {
     }
 
     pub fn receive_message<I: Into<u8>>(&mut self, channel_id: I) -> Option<Bytes> {
-        if self.has_error() {
+        if self.is_disconnected() {
             return None;
         }
 
@@ -215,14 +228,14 @@ impl RemoteConnection {
     }
 
     pub fn process_packet(&mut self, packet: &[u8]) {
-        if self.has_error() {
+        if self.is_disconnected() {
             return;
         }
 
         self.stats.received_packet(packet.len() as u64);
         let mut octets = octets::Octets::with_slice(packet);
         let Ok(packet) = Packet::from_bytes(&mut octets) else {
-            self.error = Some(ConnectionError::PacketDeserialization);
+            self.disconnect_reason = Some(DisconnectReason::PacketDeserialization);
             return;
         };
 
@@ -238,13 +251,13 @@ impl RemoteConnection {
             } => {
                 self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
-                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
                 for (message_id, message) in messages {
                     if let Err(error) = channel.process_message(message, message_id) {
-                        self.error = Some(ConnectionError::ReceiveChannelError { channel_id, error });
+                        self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
                         return;
                     }
                 }
@@ -256,7 +269,7 @@ impl RemoteConnection {
             } => {
                 self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
-                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
@@ -271,12 +284,12 @@ impl RemoteConnection {
             } => {
                 self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
-                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
                 if let Err(error) = channel.process_slice(slice) {
-                    self.error = Some(ConnectionError::ReceiveChannelError { channel_id, error });
+                    self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
                     return;
                 }
             }
@@ -287,12 +300,12 @@ impl RemoteConnection {
             } => {
                 self.add_pending_ack(packet_sequence);
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
-                    self.error = Some(ConnectionError::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
                 if let Err(error) = channel.process_slice(slice, self.current_time) {
-                    self.error = Some(ConnectionError::ReceiveChannelError { channel_id, error });
+                    self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
                     return;
                 }
             }
@@ -349,7 +362,7 @@ impl RemoteConnection {
 
     pub fn get_packets_to_send(&mut self) -> Vec<Payload> {
         let mut packets: Vec<Packet> = vec![];
-        if self.has_error() {
+        if self.is_disconnected() {
             return vec![];
         }
 
@@ -358,13 +371,12 @@ impl RemoteConnection {
             match order {
                 ChannelOrder::Reliable(channel_id) => {
                     let channel = self.send_reliable_channels.get_mut(channel_id).unwrap();
-                    packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence,  &mut available_bytes, self.current_time));
-
-                },
+                    packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence, &mut available_bytes, self.current_time));
+                }
                 ChannelOrder::Unreliable(channel_id) => {
                     let channel = self.send_unreliable_channels.get_mut(channel_id).unwrap();
                     packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence, &mut available_bytes));
-                },
+                }
             }
         }
 
@@ -457,7 +469,7 @@ impl RemoteConnection {
         for packet in packets {
             let mut oct = OctetsMut::with_slice(&mut buffer);
             let Ok(len) = packet.to_bytes(&mut oct) else {
-                self.error = Some(ConnectionError::PacketSerialization);
+                self.disconnect_reason = Some(DisconnectReason::PacketSerialization);
                 return vec![];
             };
             bytes_sent += len as u64;

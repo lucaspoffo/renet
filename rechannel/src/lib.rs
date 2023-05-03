@@ -1,14 +1,10 @@
 pub mod channels;
+mod connection_stats;
 pub mod error;
 mod packet;
 pub mod remote_connection;
 pub mod server;
-mod connection_stats;
+
+pub mod transport;
 
 pub use bytes::Bytes;
-
-// TODO: rtt
-// TODO: packet loss
-// TODO: bandwidth ( circle buffer SentInfo per tick)
-// TODO: channel priority: Vec<ChannelPriority>
-// enum ChannelPriority { Reliable(index: u8), Unreliable(index: u8) }

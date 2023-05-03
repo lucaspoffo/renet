@@ -82,7 +82,6 @@ impl ConnectionStats {
         total_bytes as f64 / (WINDOW - RESOLUTION).as_secs_f64()
     }
 
-
     pub fn packet_loss(&self) -> f64 {
         let total_packets_sent = {
             let mut sum: u64 = self.packets_sent.iter().sum();

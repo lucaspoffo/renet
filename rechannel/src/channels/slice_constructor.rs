@@ -1,7 +1,7 @@
 use bytes::Bytes;
 
-use crate::error::ChannelError;
 use super::SLICE_SIZE;
+use crate::error::ChannelError;
 
 #[derive(Debug, Clone)]
 pub struct SliceConstructor {
