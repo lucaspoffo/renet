@@ -48,7 +48,6 @@ enum ReliableOrder {
 
 #[derive(Debug)]
 pub struct ReceiveChannelReliable {
-    channel_id: u8,
     slices: HashMap<u64, SliceConstructor>,
     messages: BTreeMap<u64, Bytes>,
     next_message_id: u64,
@@ -245,7 +244,7 @@ impl SendChannelReliable {
 }
 
 impl ReceiveChannelReliable {
-    pub fn new(channel_id: u8, max_memory_usage_bytes: usize, ordered: bool) -> Self {
+    pub fn new(max_memory_usage_bytes: usize, ordered: bool) -> Self {
         let reliable_order = match ordered {
             true => ReliableOrder::Ordered,
             false => ReliableOrder::Unordered {
@@ -254,7 +253,6 @@ impl ReceiveChannelReliable {
             },
         };
         Self {
-            channel_id,
             slices: HashMap::new(),
             messages: BTreeMap::new(),
             next_message_id: 0,
@@ -373,7 +371,7 @@ mod tests {
         let mut sequence: u64 = 0;
         let mut current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
-        let mut recv = ReceiveChannelReliable::new(0, max_memory, true);
+        let mut recv = ReceiveChannelReliable::new(max_memory, true);
         let mut send = SendChannelReliable::new(0, resend_time, max_memory);
 
         let message1 = vec![1, 2, 3];
@@ -423,7 +421,7 @@ mod tests {
         let mut sequence: u64 = 0;
         let mut current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
-        let mut recv = ReceiveChannelReliable::new(0, max_memory, true);
+        let mut recv = ReceiveChannelReliable::new(max_memory, true);
         let mut send = SendChannelReliable::new(0, resend_time, max_memory);
 
         let message = vec![5; SLICE_SIZE * 3];
@@ -466,7 +464,7 @@ mod tests {
         let mut sequence: u64 = 0;
         let current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
-        let mut recv = ReceiveChannelReliable::new(0, 99, true);
+        let mut recv = ReceiveChannelReliable::new(99, true);
         let mut send = SendChannelReliable::new(0, resend_time, 101);
 
         let message = vec![5; 100];

@@ -130,7 +130,7 @@ impl Packet {
                 // The ranges would become before serializing:
                 // 20040 5 1 15 10
                 //   |   | |  |  |
-                //   |   | |  |  +-> 10: size of 20017..20020
+                //   |   | |  |  +-> 10: size of 20010..20020
                 //   |   | |  +----> 15: gap between ranges 20010..20020 and 20035..20040
                 //   |   | +--------> 1: remaing number of ranges
                 //   |   +----------> 5: size of 20035..20040

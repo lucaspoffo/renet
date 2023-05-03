@@ -116,12 +116,12 @@ impl RemoteConnection {
                     assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
                 }
                 SendType::ReliableOrdered { .. } => {
-                    let channel = ReceiveChannelReliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes, true);
+                    let channel = ReceiveChannelReliable::new(channel_config.max_memory_usage_bytes, true);
                     let old = receive_reliable_channels.insert(channel_config.channel_id, channel);
                     assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
                 }
                 SendType::ReliableUnordered { .. } => {
-                    let channel = ReceiveChannelReliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes, false);
+                    let channel = ReceiveChannelReliable::new(channel_config.max_memory_usage_bytes, false);
                     let old = receive_reliable_channels.insert(channel_config.channel_id, channel);
                     assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
                 }

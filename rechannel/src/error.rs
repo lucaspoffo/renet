@@ -31,7 +31,7 @@ pub enum DisconnectReason {
 pub enum ChannelError {
     /// Reliable channel reached maximum allowed memory
     ReliableChannelMaxMemoryReached,
-    /// Received an invalid slice message in a block channel.
+    /// Received an invalid slice message in the channel.
     InvalidSliceMessage,
 }
 
