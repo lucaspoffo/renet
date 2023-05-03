@@ -15,6 +15,7 @@ const ACK_FORCE_SEND_TIME: Duration = Duration::from_millis(300);
 
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
+    pub available_bytes_per_tick: u64,
     pub send_channels_config: Vec<ChannelConfig>,
     pub receive_channels_config: Vec<ChannelConfig>,
 }
@@ -48,6 +49,8 @@ enum PacketSentInfo {
 impl Default for ConnectionConfig {
     fn default() -> Self {
         Self {
+            // At 60 hz, this becomes 1.2 mbps
+            available_bytes_per_tick: 30 * 1024,
             send_channels_config: DefaultChannel::config(),
             receive_channels_config: DefaultChannel::config(),
         }
@@ -67,6 +70,7 @@ pub struct RemoteConnection {
     should_send_ack: bool,
     stats: ConnectionStats,
     last_ack_sent_at: Duration,
+    available_bytes_per_tick: u64,
     pub(crate) error: Option<ConnectionError>,
     rtt: f64,
 }
@@ -125,6 +129,7 @@ impl RemoteConnection {
             should_send_ack: false,
             last_ack_sent_at: Duration::ZERO,
             rtt: 0.0,
+            available_bytes_per_tick: config.available_bytes_per_tick,
             error: None,
         }
     }
@@ -335,12 +340,13 @@ impl RemoteConnection {
             return vec![];
         }
 
+        let mut available_bytes = self.available_bytes_per_tick;
         for channel in self.send_unreliable_channels.values_mut() {
-            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence));
+            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence, &mut available_bytes));
         }
 
         for channel in self.send_reliable_channels.values_mut() {
-            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence, self.current_time));
+            packets.append(&mut channel.get_messages_to_send(&mut self.packet_sequence,  &mut available_bytes, self.current_time));
         }
 
         let force_ack_send = self.last_ack_sent_at + ACK_FORCE_SEND_TIME < self.current_time;

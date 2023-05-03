@@ -50,7 +50,7 @@ impl ConnectionStats {
     pub fn acked_packet(&mut self, sent_at: Duration, current_time: Duration) {
         let delta = current_time - sent_at;
         if delta > WINDOW {
-            // Discard old ack
+            // Out of the duration window, discard it
             return;
         }
 

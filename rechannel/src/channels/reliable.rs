@@ -21,6 +21,7 @@ enum UnackedMessage {
         message: Bytes,
         num_slices: usize,
         num_acked_slices: usize,
+        next_slice_to_send: usize,
         acked: Vec<bool>,
         last_sent: Vec<Option<Duration>>,
     },
@@ -64,6 +65,7 @@ impl UnackedMessage {
             message: payload,
             num_slices,
             num_acked_slices: 0,
+            next_slice_to_send: 0,
             acked: vec![false; num_slices],
             last_sent: vec![None; num_slices],
         }
@@ -82,7 +84,7 @@ impl SendChannelReliable {
         }
     }
 
-    pub fn get_messages_to_send(&mut self, packet_sequence: &mut u64, current_time: Duration) -> Vec<Packet> {
+    pub fn get_messages_to_send(&mut self, packet_sequence: &mut u64, available_bytes: &mut u64, current_time: Duration) -> Vec<Packet> {
         if self.unacked_messages.is_empty() {
             return vec![];
         }
@@ -92,14 +94,21 @@ impl SendChannelReliable {
         let mut small_messages: Vec<(u64, Bytes)> = vec![];
         let mut small_messages_bytes = 0;
 
-        let should_send = |last_sent: Option<Duration>| last_sent.map_or(true, |last_sent| current_time - last_sent >= self.resend_time);
-
-        for (&message_id, unacked_message) in self.unacked_messages.iter_mut() {
+        'messages: for (&message_id, unacked_message) in self.unacked_messages.iter_mut() {
             match unacked_message {
                 UnackedMessage::Small { message, last_sent } => {
-                    if !should_send(*last_sent) {
+                    if *available_bytes < message.len() as u64 {
+                        // Skip message, no bytes available to send this message
                         continue;
                     }
+
+                    if let Some(last_sent) = last_sent {
+                        if current_time - *last_sent < self.resend_time {
+                            continue;
+                        }
+                    }
+
+                    *available_bytes -= message.len() as u64;
 
                     // Generate packet with small messages if you cannot fit
                     if small_messages_bytes + message.len() + 2 > SLICE_SIZE {
@@ -123,21 +132,32 @@ impl SendChannelReliable {
                     num_slices,
                     acked,
                     last_sent,
+                    next_slice_to_send,
                     ..
                 } => {
+                    let start_index = *next_slice_to_send;
                     for i in 0..*num_slices {
+                        if *available_bytes < SLICE_SIZE as u64 {
+                            // Skip message, no bytes available to send a slice
+                            continue 'messages;
+                        }
+
+                        let i = (start_index + i) % *num_slices;
                         if acked[i] {
                             continue;
                         }
 
-                        if !should_send(last_sent[i]) {
-                            continue;
+                        if let Some(last_sent) = last_sent[i] {
+                            if current_time - last_sent < self.resend_time {
+                                continue;
+                            }
                         }
 
                         let start = i * SLICE_SIZE;
                         let end = if i == *num_slices - 1 { message.len() } else { (i + 1) * SLICE_SIZE };
 
                         let payload = message.slice(start..end);
+                        *available_bytes -= payload.len() as u64;
 
                         let slice = Slice {
                             message_id,
@@ -154,6 +174,7 @@ impl SendChannelReliable {
 
                         *packet_sequence += 1;
                         last_sent[i] = Some(current_time);
+                        *next_slice_to_send = i + 1 % *num_slices;
                     }
                 }
             }
@@ -348,6 +369,7 @@ mod tests {
     #[test]
     fn small_packet() {
         let max_memory: usize = 10000;
+        let mut available_bytes = u64::MAX;
         let mut sequence: u64 = 0;
         let mut current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
@@ -360,7 +382,7 @@ mod tests {
         send.send_message(message1.clone().into()).unwrap();
         send.send_message(message2.clone().into()).unwrap();
 
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
             let Packet::SmallReliable { packet_sequence: 0, channel_id: 0, messages } = packet else {
                 unreachable!();
@@ -377,12 +399,12 @@ mod tests {
         assert_eq!(message2, new_message2);
 
         // Should not resend anything
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         assert!(packets.is_empty());
 
         current_time += resend_time;
         // Should resend now
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         assert_eq!(packets.len(), 1);
 
         // Should not resend after ack
@@ -390,13 +412,14 @@ mod tests {
         send.process_message_ack(0);
         send.process_message_ack(1);
 
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         assert!(packets.is_empty());
     }
 
     #[test]
     fn slice_packet() {
         let max_memory: usize = 10000;
+        let mut available_bytes = u64::MAX;
         let mut sequence: u64 = 0;
         let mut current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
@@ -407,7 +430,7 @@ mod tests {
 
         send.send_message(message.clone().into()).unwrap();
 
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
             let Packet::ReliableSlice { channel_id: 0, slice, .. } = packet else {
                 unreachable!();
@@ -419,12 +442,12 @@ mod tests {
         assert_eq!(message, new_message);
 
         // Should not resend anything
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         assert!(packets.is_empty());
 
         current_time += resend_time;
         // Should resend now
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         assert_eq!(packets.len(), 3);
 
         // Should not resend after ack
@@ -433,12 +456,13 @@ mod tests {
         send.process_slice_message_ack(0, 1);
         send.process_slice_message_ack(0, 2);
 
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         assert!(packets.is_empty());
     }
 
     #[test]
     fn max_memory() {
+        let mut available_bytes = u64::MAX;
         let mut sequence: u64 = 0;
         let current_time: Duration = Duration::ZERO;
         let resend_time = Duration::from_millis(100);
@@ -450,7 +474,7 @@ mod tests {
         // Can send one message without reaching memory limit
         send.send_message(message.clone().into()).unwrap();
 
-        let packets = send.get_messages_to_send(&mut sequence, current_time);
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
             let Packet::SmallReliable { packet_sequence: 0, channel_id: 0, messages } = packet else {
                 unreachable!();
@@ -467,5 +491,37 @@ mod tests {
             unreachable!()
         };
         assert_eq!(send_err, ChannelError::ReliableChannelMaxMemoryReached);
+    }
+
+    #[test]
+    fn available_bytes() {
+        let mut sequence: u64 = 0;
+        let current_time: Duration = Duration::ZERO;
+        let resend_time = Duration::from_millis(100);
+        let mut send = SendChannelReliable::new(0, resend_time, usize::MAX);
+
+        let message: Bytes = vec![0u8; 100].into();
+        send.send_message(message.clone()).unwrap();
+        send.send_message(message.clone()).unwrap();
+
+        // No available bytes
+        let mut available_bytes: u64 = 50;
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 0);
+
+        // Bytes for 1 message
+        let mut available_bytes: u64 = 100;
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 1);
+
+        // Bytes for 1 message
+        let mut available_bytes: u64 = 100;
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 1);
+
+        // No more messages to send
+        let mut available_bytes: u64 = u64::MAX;
+        let packets = send.get_messages_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 0);
     }
 }
