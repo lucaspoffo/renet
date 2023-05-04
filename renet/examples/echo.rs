@@ -8,8 +8,8 @@ use std::{
 
 use renet::{
     channels::DefaultChannel,
-    remote_connection::{ConnectionConfig, RemoteConnection},
-    server::{RechannelServer, ServerEvent},
+    remote_connection::{ConnectionConfig, RenetClient},
+    server::{RenetServer, ServerEvent},
     transport::{
         client::{ClientAuthentication, NetcodeClientTransport},
         server::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
@@ -69,7 +69,7 @@ const PROTOCOL_ID: u64 = 7;
 
 fn server(addr: SocketAddr) {
     let connection_config = ConnectionConfig::default();
-    let mut server: RechannelServer = RechannelServer::new(connection_config);
+    let mut server: RenetServer = RenetServer::new(connection_config);
 
     let socket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
@@ -126,7 +126,7 @@ fn server(addr: SocketAddr) {
 
 fn client(server_addr: SocketAddr, username: Username) {
     let connection_config = ConnectionConfig::default();
-    let mut client = RemoteConnection::new(connection_config);
+    let mut client = RenetClient::new(connection_config);
 
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();

@@ -1,6 +1,6 @@
 use crate::error::{ClientNotFound, DisconnectReason};
 use crate::packet::Payload;
-use crate::remote_connection::{ConnectionConfig, RemoteConnection};
+use crate::remote_connection::{ConnectionConfig, RenetClient};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
@@ -13,13 +13,13 @@ pub enum ServerEvent {
 }
 
 #[derive(Debug)]
-pub struct RechannelServer {
-    connections: HashMap<u64, RemoteConnection>,
+pub struct RenetServer {
+    connections: HashMap<u64, RenetClient>,
     connection_config: ConnectionConfig,
     events: VecDeque<ServerEvent>,
 }
 
-impl RechannelServer {
+impl RenetServer {
     pub fn new(connection_config: ConnectionConfig) -> Self {
         Self {
             connections: HashMap::new(),
@@ -34,7 +34,7 @@ impl RechannelServer {
             return;
         }
 
-        let connection = RemoteConnection::new(self.connection_config.clone());
+        let connection = RenetClient::new(self.connection_config.clone());
         self.connections.insert(connection_id, connection);
         self.events.push_back(ServerEvent::ClientConnected { client_id: connection_id })
     }

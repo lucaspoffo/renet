@@ -8,7 +8,7 @@ use renetcode::{
     ConnectToken, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
 
-use crate::remote_connection::RemoteConnection;
+use crate::remote_connection::RenetClient;
 
 use super::NetcodeTransportError;
 
@@ -81,7 +81,7 @@ impl NetcodeClientTransport {
         self.netcode_client.disconnected()
     }
 
-    pub fn send_packets(&mut self, connection: &mut RemoteConnection) -> Result<(), NetcodeError> {
+    pub fn send_packets(&mut self, connection: &mut RenetClient) -> Result<(), NetcodeError> {
         if let Some(reason) = self.netcode_client.disconnected() {
             return Err(NetcodeError::Disconnected(reason));
         }
@@ -95,7 +95,7 @@ impl NetcodeClientTransport {
         Ok(())
     }
 
-    pub fn update(&mut self, duration: Duration, connection: &mut RemoteConnection) -> Result<(), NetcodeTransportError> {
+    pub fn update(&mut self, duration: Duration, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnected() {
             return Err(NetcodeError::Disconnected(reason).into());
         }

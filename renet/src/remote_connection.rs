@@ -64,7 +64,7 @@ impl Default for ConnectionConfig {
 }
 
 #[derive(Debug)]
-pub struct RemoteConnection {
+pub struct RenetClient {
     packet_sequence: u64,
     current_time: Duration,
     sent_packets: BTreeMap<u64, PacketSent>,
@@ -82,7 +82,7 @@ pub struct RemoteConnection {
     rtt: f64,
 }
 
-impl RemoteConnection {
+impl RenetClient {
     pub fn new(config: ConnectionConfig) -> Self {
         let mut send_unreliable_channels = HashMap::new();
         let mut send_reliable_channels = HashMap::new();
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn pending_acks() {
-        let mut connection = RemoteConnection::new(ConnectionConfig::default());
+        let mut connection = RenetClient::new(ConnectionConfig::default());
         connection.add_pending_ack(3);
         assert_eq!(connection.pending_acks, vec![3..4]);
 
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn ack_pending_acks() {
-        let mut connection = RemoteConnection::new(ConnectionConfig::default());
+        let mut connection = RenetClient::new(ConnectionConfig::default());
         for i in 0..10 {
             connection.add_pending_ack(i);
         }

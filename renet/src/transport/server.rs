@@ -6,7 +6,7 @@ use std::{
 
 use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
-use crate::server::RechannelServer;
+use crate::server::RenetServer;
 
 use super::NetcodeTransportError;
 
@@ -88,7 +88,7 @@ impl NetcodeServerTransport {
         self.netcode_server.user_data(client_id)
     }
 
-    pub fn update(&mut self, duration: Duration, reliable_server: &mut RechannelServer) -> Result<(), NetcodeTransportError> {
+    pub fn update(&mut self, duration: Duration, reliable_server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         self.netcode_server.update(duration);
 
         loop {
@@ -116,7 +116,7 @@ impl NetcodeServerTransport {
     }
 
     /// Send packets to connected clients.
-    pub fn send_packets(&mut self, reliable_server: &mut RechannelServer) -> Result<(), io::Error> {
+    pub fn send_packets(&mut self, reliable_server: &mut RenetServer) -> Result<(), io::Error> {
         for client_id in reliable_server.connections_id() {
             let packets = reliable_server.get_packets_to_send(client_id).unwrap();
             for packet in packets {
@@ -133,7 +133,7 @@ impl NetcodeServerTransport {
     }
 }
 
-fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliable_server: &mut RechannelServer) -> Result<(), io::Error> {
+fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliable_server: &mut RenetServer) -> Result<(), io::Error> {
     match server_result {
         ServerResult::None => {}
         ServerResult::PacketToSend { payload, addr } => {
