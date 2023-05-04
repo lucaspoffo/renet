@@ -174,7 +174,7 @@ fn client(connect_token: ConnectToken) {
 
         match stdin_channel.try_recv() {
             Ok(text) => {
-                if client.connected() {
+                if client.is_connected() {
                     let (addr, payload) = client.generate_payload_packet(text.as_bytes()).unwrap();
                     udp_socket.send_to(payload, addr).unwrap();
                 } else {
