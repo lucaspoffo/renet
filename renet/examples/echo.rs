@@ -11,9 +11,8 @@ use renet::{
     remote_connection::{ConnectionConfig, RenetClient},
     server::{RenetServer, ServerEvent},
     transport::{
-        client::{ClientAuthentication, NetcodeClientTransport},
-        server::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-        NETCODE_USER_DATA_BYTES,
+        ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig,
+        renetcode::NETCODE_USER_DATA_BYTES
     },
 };
 

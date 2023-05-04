@@ -5,7 +5,7 @@ use egui::{
     pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText,
 };
 
-use renet::{server::RenetServer, remote_connection::NetworkInfo};
+use renet::{remote_connection::NetworkInfo, server::RenetServer};
 
 use circular_buffer::CircularBuffer;
 
@@ -107,9 +107,11 @@ impl<const N: usize> RenetClientVisualizer<N> {
     /// visualizer.add_network_info(client.network_info());
     /// ```
     pub fn add_network_info(&mut self, network_info: NetworkInfo) {
-        self.rtt.push(network_info.rtt as f32);
-        self.sent_bandwidth_kbps.push((network_info.bytes_sent_per_second * 8. / 1000.) as f32);
-        self.received_bandwidth_kbps.push((network_info.bytes_received_per_second * 8. / 1000.) as f32);
+        self.rtt.push((network_info.rtt * 1000.) as f32);
+        self.sent_bandwidth_kbps
+            .push((network_info.bytes_sent_per_second * 8. / 1000.) as f32);
+        self.received_bandwidth_kbps
+            .push((network_info.bytes_received_per_second * 8. / 1000.) as f32);
         self.packet_loss.push(network_info.packet_loss as f32);
     }
 

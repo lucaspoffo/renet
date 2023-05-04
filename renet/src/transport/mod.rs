@@ -4,10 +4,15 @@ pub use renetcode::NetcodeError;
 
 use crate::error::DisconnectReason;
 
-pub mod client;
-pub mod server;
+mod client;
+mod server;
 
-pub use renetcode::NETCODE_USER_DATA_BYTES;
+pub use client::*;
+pub use server::*;
+
+pub use renetcode;
+
+
 
 #[derive(Debug)]
 pub enum NetcodeTransportError {

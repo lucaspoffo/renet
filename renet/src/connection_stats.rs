@@ -34,6 +34,7 @@ impl ConnectionStats {
             self.current_index = i;
             self.packets_sent[i] = 0;
             self.bytes_sent[i] = 0;
+            self.bytes_received[i] = 0;
             self.packets_acked[i] = 0;
         }
     }
@@ -106,7 +107,7 @@ impl ConnectionStats {
             return 0.0;
         }
 
-        (total_packets_sent - total_packets_acked) / total_packets_sent * 100.0
+        (total_packets_sent - total_packets_acked) / total_packets_sent
     }
 }
 

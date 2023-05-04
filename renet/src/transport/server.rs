@@ -84,6 +84,18 @@ impl NetcodeServerTransport {
         })
     }
 
+    pub fn addr(&self) -> SocketAddr {
+        self.netcode_server.address()
+    }
+
+    pub fn max_clients(&self) -> usize {
+        self.netcode_server.max_clients()
+    }
+
+    pub fn connected_clients(&self) -> usize {
+        self.netcode_server.connected_clients()
+    }
+
     pub fn user_data(&self, client_id: u64) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
         self.netcode_server.user_data(client_id)
     }

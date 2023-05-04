@@ -12,7 +12,7 @@ use actix_web::{
     App, HttpResponse, HttpServer,
 };
 
-use renet::{ConnectToken, NETCODE_KEY_BYTES};
+use renet::transport::renetcode::{ConnectToken, NETCODE_KEY_BYTES};
 
 use matcher::{LobbyListing, RegisterServer, RequestConnection, ServerUpdate, Username, PROTOCOL_ID};
 
@@ -48,7 +48,7 @@ struct LobbyList {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
-    println!("starting HTTP server at http://localhost:7000");
+    println!("starting HTTP server at http://127.0.0.1:7000");
 
     let lobby_list = Data::new(LobbyList::default());
     let server_id = Data::new(AtomicU64::new(0));

@@ -345,11 +345,17 @@ impl RenetClient {
                     let sent_packet = self.sent_packets.remove(&packet_sequence).unwrap();
                     self.stats.acked_packet(sent_packet.sent_at, self.current_time);
 
-                    let rtt = (self.current_time - sent_packet.sent_at).as_secs_f64();
-                    if self.rtt < f64::EPSILON {
-                        self.rtt = rtt;
-                    } else {
-                        self.rtt = self.rtt * 0.875 + rtt * 0.125;
+                    // Only update rtt when the packet ack eliciting, otherwise the ack can be delayed for ACK_FORCE_SEND_TIME
+                    if matches!(
+                        sent_packet.info,
+                        PacketSentInfo::ReliableMessages { .. } | PacketSentInfo::ReliableSliceMessage { .. }
+                    ) {
+                        let rtt = (self.current_time - sent_packet.sent_at).as_secs_f64();
+                        if self.rtt < f64::EPSILON {
+                            self.rtt = rtt;
+                        } else {
+                            self.rtt = self.rtt * 0.875 + rtt * 0.125;
+                        }
                     }
 
                     match sent_packet.info {

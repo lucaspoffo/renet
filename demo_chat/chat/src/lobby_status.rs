@@ -53,7 +53,7 @@ pub fn update_lobby_status(mut register_server: RegisterServer, server_update: A
 
 fn update_server_request(server_id: u64, server_update: &ServerUpdate, client: &Client) -> Result<(), reqwest::Error> {
     let res = client
-        .put(format!("http://localhost:7000/server/{server_id}"))
+        .put(format!("http://127.0.0.1:7000/server/{server_id}"))
         .json(server_update)
         .send()?;
     res.error_for_status()?;
@@ -61,14 +61,14 @@ fn update_server_request(server_id: u64, server_update: &ServerUpdate, client: &
 }
 
 fn register_server_request(register_server: &RegisterServer, client: &Client) -> Result<u64, reqwest::Error> {
-    let res = client.post("http://localhost:7000/server").json(&register_server).send()?;
+    let res = client.post("http://127.0.0.1:7000/server").json(&register_server).send()?;
     res.error_for_status_ref()?;
     let server_id: u64 = res.json()?;
     Ok(server_id)
 }
 
 fn remove_server_request(server_id: u64, client: &Client) -> Result<(), reqwest::Error> {
-    let res = client.delete(format!("http://localhost:7000/server/{server_id}")).send()?;
+    let res = client.delete(format!("http://127.0.0.1:7000/server/{server_id}")).send()?;
     res.error_for_status()?;
     Ok(())
 }
