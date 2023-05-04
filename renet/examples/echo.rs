@@ -7,8 +7,14 @@ use std::{
 };
 
 use renet::{
-    ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetServer, ServerAuthentication, ServerConfig, ServerEvent,
-    NETCODE_USER_DATA_BYTES,
+    channels::DefaultChannel,
+    remote_connection::{ConnectionConfig, RemoteConnection},
+    server::{RechannelServer, ServerEvent},
+    transport::{
+        client::{ClientAuthentication, NetcodeClientTransport},
+        server::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
+        NETCODE_USER_DATA_BYTES,
+    },
 };
 
 // Helper struct to pass an username in the user data
@@ -41,13 +47,12 @@ fn main() {
     env_logger::init();
     println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
     let args: Vec<String> = std::env::args().collect();
-    // let args = vec!["", "client", "5000", "test"];
 
     let exec_type = &args[1];
-    match exec_type.as_ref() {
+    match exec_type.as_str() {
         "client" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
-            let username = Username(args[3].to_string());
+            let username = Username(args[3].clone());
             client(server_addr, username);
         }
         "server" => {
@@ -63,11 +68,13 @@ fn main() {
 const PROTOCOL_ID: u64 = 7;
 
 fn server(addr: SocketAddr) {
+    let connection_config = ConnectionConfig::default();
+    let mut server: RechannelServer = RechannelServer::new(connection_config);
+
     let socket = UdpSocket::bind(addr).unwrap();
-    let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let mut server: RenetServer = RenetServer::new(current_time, server_config, connection_config, socket).unwrap();
+    let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
 
     let mut usernames: HashMap<u64, String> = HashMap::new();
     let mut received_messages = vec![];
@@ -75,27 +82,32 @@ fn server(addr: SocketAddr) {
 
     loop {
         let now = Instant::now();
-        server.update(now - last_updated).unwrap();
+        let duration = now - last_updated;
         last_updated = now;
+
+        server.advance_time(duration);
+        transport.update(duration, &mut server).unwrap();
+
         received_messages.clear();
 
         while let Some(event) = server.get_event() {
             match event {
-                ServerEvent::ClientConnected(id, user_data) => {
+                ServerEvent::ClientConnected { client_id } => {
+                    let user_data = transport.user_data(client_id).unwrap();
                     let username = Username::from_user_data(&user_data);
-                    usernames.insert(id, username.0);
-                    println!("Client {} connected.", id)
+                    usernames.insert(client_id, username.0);
+                    println!("Client {} connected.", client_id)
                 }
-                ServerEvent::ClientDisconnected(id) => {
-                    println!("Client {} disconnected", id);
-                    usernames.remove_entry(&id);
+                ServerEvent::ClientDisconnected { client_id, reason } => {
+                    println!("Client {} disconnected: {}", client_id, reason);
+                    usernames.remove_entry(&client_id);
                 }
             }
         }
 
-        for client_id in server.clients_id().into_iter() {
+        for client_id in server.connections_id() {
             while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
-                let text = String::from_utf8(message.to_vec()).unwrap();
+                let text = String::from_utf8(message.into()).unwrap();
                 let username = usernames.get(&client_id).unwrap();
                 println!("Client {} ({}) sent text: {}", username, client_id, text);
                 let text = format!("{}: {}", username, text);
@@ -107,14 +119,16 @@ fn server(addr: SocketAddr) {
             server.broadcast_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec());
         }
 
-        server.send_packets().unwrap();
+        transport.send_packets(&mut server).unwrap();
         thread::sleep(Duration::from_millis(50));
     }
 }
 
 fn client(server_addr: SocketAddr, username: Username) {
+    let connection_config = ConnectionConfig::default();
+    let mut client = RemoteConnection::new(connection_config);
+
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     let authentication = ClientAuthentication::Unsecure {
@@ -123,28 +137,33 @@ fn client(server_addr: SocketAddr, username: Username) {
         user_data: Some(username.to_netcode_user_data()),
         protocol_id: PROTOCOL_ID,
     };
-    let mut client = RenetClient::new(current_time, socket, connection_config, authentication).unwrap();
+
+    let mut transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
     let stdin_channel = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
     loop {
         let now = Instant::now();
-        client.update(now - last_updated).unwrap();
+        let duration = now - last_updated;
         last_updated = now;
+
+        client.advance_time(duration);
+        transport.update(duration, &mut client).unwrap();
+
         if client.is_connected() {
             match stdin_channel.try_recv() {
-                Ok(text) => client.send_message(DefaultChannel::ReliableOrdered, text.repeat(10).as_bytes().to_vec()),
+                Ok(text) => client.send_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec()),
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
             }
 
             while let Some(text) = client.receive_message(DefaultChannel::ReliableOrdered) {
-                let text = String::from_utf8(text.to_vec()).unwrap();
+                let text = String::from_utf8(text.into()).unwrap();
                 println!("{}", text);
             }
         }
 
-        client.send_packets().unwrap();
+        transport.send_packets(&mut client).unwrap();
         thread::sleep(Duration::from_millis(50));
     }
 }

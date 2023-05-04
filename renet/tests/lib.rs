@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use rechannel::{
+use renet::{
     channels::DefaultChannel,
     remote_connection::{ConnectionConfig, RemoteConnection},
     server::RechannelServer,
