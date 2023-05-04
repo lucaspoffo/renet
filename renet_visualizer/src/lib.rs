@@ -4,7 +4,12 @@ use egui::{
     epaint::{PathShape, RectShape},
     pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText,
 };
-use renet::{CircularBuffer, NetworkInfo, RenetServer};
+
+use renet::{server::RenetServer, remote_connection::NetworkInfo};
+
+use circular_buffer::CircularBuffer;
+
+mod circular_buffer;
 
 /// Egui visualizer for the renet client. Draws graphs with metrics:
 /// RTT, Packet Loss, Kbitps Sent/Received.
@@ -102,10 +107,10 @@ impl<const N: usize> RenetClientVisualizer<N> {
     /// visualizer.add_network_info(client.network_info());
     /// ```
     pub fn add_network_info(&mut self, network_info: NetworkInfo) {
-        self.rtt.push(network_info.rtt);
-        self.sent_bandwidth_kbps.push(network_info.sent_kbps);
-        self.received_bandwidth_kbps.push(network_info.received_kbps);
-        self.packet_loss.push(network_info.packet_loss);
+        self.rtt.push(network_info.rtt as f32);
+        self.sent_bandwidth_kbps.push((network_info.bytes_sent_per_second * 8. / 1000.) as f32);
+        self.received_bandwidth_kbps.push((network_info.bytes_received_per_second * 8. / 1000.) as f32);
+        self.packet_loss.push(network_info.packet_loss as f32);
     }
 
     /// Renders a new window with all the graphs metrics drawn.
@@ -253,8 +258,8 @@ impl<const N: usize> RenetServerVisualizer<N> {
     /// visualizer.update(&renet_server);
     /// ```
     pub fn update(&mut self, server: &RenetServer) {
-        for client_id in server.clients_id().into_iter() {
-            if let Some(network_info) = server.network_info(client_id) {
+        for client_id in server.connections_id().into_iter() {
+            if let Ok(network_info) = server.network_info(client_id) {
                 self.add_network_info(client_id, network_info);
             }
         }
