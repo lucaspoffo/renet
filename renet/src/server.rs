@@ -1,6 +1,6 @@
 use crate::error::{ClientNotFound, DisconnectReason};
 use crate::packet::Payload;
-use crate::remote_connection::{ConnectionConfig, RenetClient};
+use crate::remote_connection::{ConnectionConfig, RenetClient, NetworkInfo};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
@@ -73,6 +73,13 @@ impl RenetServer {
         match self.connections.get(&connection_id) {
             Some(connection) => connection.bytes_received_per_sec(),
             None => 0.0,
+        }
+    }
+
+    pub fn network_info(&self, connection_id: u64) -> Result<NetworkInfo, ClientNotFound> {
+        match self.connections.get(&connection_id) {
+            Some(connection) => Ok(connection.network_info()),
+            None => Err(ClientNotFound),
         }
     }
 

@@ -52,15 +52,14 @@ enum ChannelOrder {
     Unreliable(u8),
 }
 
-impl Default for ConnectionConfig {
-    fn default() -> Self {
-        Self {
-            // At 60 hz, this becomes 2.4 mbps
-            available_bytes_per_tick: 60 * 1024,
-            send_channels_config: DefaultChannel::config(),
-            receive_channels_config: DefaultChannel::config(),
-        }
-    }
+pub struct NetworkInfo {
+    /// Round-trip Time
+    pub rtt: f64,
+    pub packet_loss: f64,
+    /// Sent bytes per second.
+    pub bytes_sent_per_second: f64,
+    /// Received bytes per second.
+    pub bytes_received_per_second: f64,
 }
 
 #[derive(Debug)]
@@ -80,6 +79,17 @@ pub struct RenetClient {
     available_bytes_per_tick: u64,
     pub(crate) disconnect_reason: Option<DisconnectReason>,
     rtt: f64,
+}
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self {
+            // At 60 hz, this becomes 2.4 mbps
+            available_bytes_per_tick: 60 * 1024,
+            send_channels_config: DefaultChannel::config(),
+            receive_channels_config: DefaultChannel::config(),
+        }
+    }
 }
 
 impl RenetClient {
@@ -161,6 +171,15 @@ impl RenetClient {
 
     pub fn bytes_received_per_sec(&self) -> f64 {
         self.stats.bytes_received_per_second(self.current_time)
+    }
+
+    pub fn network_info(&self) -> NetworkInfo {
+        NetworkInfo {
+            rtt: self.rtt,
+            packet_loss: self.stats.packet_loss(),
+            bytes_sent_per_second: self.stats.bytes_sent_per_second(self.current_time),
+            bytes_received_per_second: self.stats.bytes_received_per_second(self.current_time),
+        }
     }
 
     #[inline]
