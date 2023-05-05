@@ -212,6 +212,11 @@ impl Packet {
                 let message_id = b.get_varint()?;
                 let slice_index = b.get_varint()? as usize;
                 let num_slices = b.get_varint()? as usize;
+                if num_slices == 0 {
+                    // TODO: Invalid packet
+                    return Err(octets::BufferTooShortError);
+                }
+
                 let payload = b.get_bytes_with_varint_length()?;
 
                 let slice = Slice {
@@ -233,6 +238,11 @@ impl Packet {
                 let message_id = b.get_varint()?;
                 let slice_index = b.get_varint()? as usize;
                 let num_slices = b.get_varint()? as usize;
+                if num_slices == 0 {
+                    // TODO: Invalid packet
+                    return Err(octets::BufferTooShortError);
+                }
+
                 let payload = b.get_bytes_with_varint_length()?;
 
                 let slice = Slice {
