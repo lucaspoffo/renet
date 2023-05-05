@@ -12,8 +12,6 @@ pub use server::*;
 
 pub use renetcode;
 
-
-
 #[derive(Debug)]
 pub enum NetcodeTransportError {
     Netcode(NetcodeError),

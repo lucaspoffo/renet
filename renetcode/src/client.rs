@@ -91,8 +91,19 @@ impl NetcodeClient {
         }
     }
 
+    pub fn is_connecting(&self) -> bool {
+        matches!(
+            self.state,
+            ClientState::SendingConnectionRequest | ClientState::SendingConnectionResponse
+        )
+    }
+
     pub fn is_connected(&self) -> bool {
         self.state == ClientState::Connected
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self.state, ClientState::Disconnected(_))
     }
 
     pub fn current_time(&self) -> Duration {
@@ -104,7 +115,7 @@ impl NetcodeClient {
     }
 
     /// Returns the reason that the client was disconnected for.
-    pub fn disconnected(&self) -> Option<DisconnectReason> {
+    pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         if let ClientState::Disconnected(reason) = &self.state {
             return Some(*reason);
         }

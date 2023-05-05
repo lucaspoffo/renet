@@ -72,17 +72,25 @@ impl NetcodeClientTransport {
         self.netcode_client.client_id()
     }
 
+    pub fn is_connecting(&self) -> bool {
+        self.netcode_client.is_connecting()
+    }
+
     pub fn is_connected(&self) -> bool {
         self.netcode_client.is_connected()
     }
 
+    pub fn is_disconnected(&self) -> bool {
+        self.netcode_client.is_disconnected()
+    }
+
     /// If the client is disconnected, returns the reason.
-    pub fn disconnected(&self) -> Option<DisconnectReason> {
-        self.netcode_client.disconnected()
+    pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
+        self.netcode_client.disconnect_reason()
     }
 
     pub fn send_packets(&mut self, connection: &mut RenetClient) -> Result<(), NetcodeError> {
-        if let Some(reason) = self.netcode_client.disconnected() {
+        if let Some(reason) = self.netcode_client.disconnect_reason() {
             return Err(NetcodeError::Disconnected(reason));
         }
 
@@ -96,7 +104,7 @@ impl NetcodeClientTransport {
     }
 
     pub fn update(&mut self, duration: Duration, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
-        if let Some(reason) = self.netcode_client.disconnected() {
+        if let Some(reason) = self.netcode_client.disconnect_reason() {
             return Err(NetcodeError::Disconnected(reason).into());
         }
 
