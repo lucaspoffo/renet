@@ -98,12 +98,12 @@ impl<const N: usize> RenetClientVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::RenetClient;
+    /// # use renet::{RenetClient, ConnectionConfig};
     /// # use renet_visualizer::RenetClientVisualizer;
-    /// # let mut client = RenetClient::__test();
+    /// # let mut client = RenetClient::new(ConnectionConfig::default());
     /// # let delta = std::time::Duration::ZERO;
     /// # let mut visualizer = RenetClientVisualizer::<5>::new(Default::default());
-    /// client.update(delta).unwrap();
+    /// client.advance_time(delta);
     /// visualizer.add_network_info(client.network_info());
     /// ```
     pub fn add_network_info(&mut self, network_info: NetworkInfo) {
@@ -199,13 +199,13 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::{RenetServer, ServerEvent};
+    /// # use renet::{RenetServer, ServerEvent, ConnectionConfig};
     /// # use renet_visualizer::RenetServerVisualizer;
-    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// while let Some(event) = renet_server.get_event() {
     ///     match event {
-    ///         ServerEvent::ClientConnected(client_id, user_data) => {
+    ///         ServerEvent::ClientConnected { client_id } => {
     ///             visualizer.add_client(client_id);
     ///             // ...
     ///         }
@@ -222,13 +222,13 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::{RenetServer, ServerEvent};
+    /// # use renet::{RenetServer, ServerEvent, ConnectionConfig};
     /// # use renet_visualizer::RenetServerVisualizer;
-    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// while let Some(event) = renet_server.get_event() {
     ///     match event {
-    ///         ServerEvent::ClientDisconnected(client_id) => {
+    ///         ServerEvent::ClientDisconnected { client_id , reason } => {
     ///             visualizer.remove_client(client_id);
     ///             // ...
     ///         }
@@ -251,12 +251,12 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::RenetServer;
+    /// # use renet::{RenetServer, ConnectionConfig};
     /// # use renet_visualizer::RenetServerVisualizer;
-    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// # let delta = std::time::Duration::ZERO;
-    /// renet_server.update(delta).unwrap();
+    /// renet_server.advance_time(delta);
     /// visualizer.update(&renet_server);
     /// ```
     pub fn update(&mut self, server: &RenetServer) {
