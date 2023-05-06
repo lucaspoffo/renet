@@ -108,19 +108,11 @@ impl ServerChannel {
     }
 }
 
-pub fn client_connection_config() -> ConnectionConfig {
+pub fn connection_config() -> ConnectionConfig {
     ConnectionConfig {
         available_bytes_per_tick: 60 * 1024,
-        send_channels_config: ClientChannel::channels_config(),
-        receive_channels_config: ServerChannel::channels_config(),
-    }
-}
-
-pub fn server_connection_config() -> ConnectionConfig {
-    ConnectionConfig {
-        available_bytes_per_tick: 60 * 1024,
-        receive_channels_config: ClientChannel::channels_config(),
-        send_channels_config: ServerChannel::channels_config(),
+        client_channels_config: ClientChannel::channels_config(),
+        server_channels_config: ServerChannel::channels_config(),
     }
 }
 

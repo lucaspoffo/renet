@@ -17,7 +17,7 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use demo_bevy::{
-    server_connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput,
+    connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput,
     Projectile, ServerChannel, ServerMessages, PROTOCOL_ID,
 };
 use renet_visualizer::RenetServerVisualizer;
@@ -30,7 +30,7 @@ pub struct ServerLobby {
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
 fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
-    let server = RenetServer::new(server_connection_config());
+    let server = RenetServer::new(connection_config());
 
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();

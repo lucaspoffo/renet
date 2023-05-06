@@ -35,7 +35,7 @@ impl RenetServer {
             return;
         }
 
-        let connection = RenetClient::new(self.connection_config.clone());
+        let connection = RenetClient::new_from_server(self.connection_config.clone());
         self.connections.insert(connection_id, connection);
         self.events.push_back(ServerEvent::ClientConnected { client_id: connection_id })
     }

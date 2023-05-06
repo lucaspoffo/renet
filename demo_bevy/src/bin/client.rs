@@ -14,8 +14,8 @@ use bevy_renet::{
     RenetClientPlugin, transport::NetcodeClientPlugin,
 };
 use demo_bevy::{
-    client_connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-    PROTOCOL_ID,
+    setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
+    PROTOCOL_ID, connection_config,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -38,7 +38,7 @@ struct ClientLobby {
 }
 
 fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
-    let client = RenetClient::new(client_connection_config());
+    let client = RenetClient::new(connection_config());
 
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();

@@ -16,8 +16,8 @@ const ACK_FORCE_SEND_TIME: Duration = Duration::from_millis(300);
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
     pub available_bytes_per_tick: u64,
-    pub send_channels_config: Vec<ChannelConfig>,
-    pub receive_channels_config: Vec<ChannelConfig>,
+    pub server_channels_config: Vec<ChannelConfig>,
+    pub client_channels_config: Vec<ChannelConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,18 +87,40 @@ impl Default for ConnectionConfig {
         Self {
             // At 60 hz, this becomes 2.4 mbps
             available_bytes_per_tick: 60 * 1024,
-            send_channels_config: DefaultChannel::config(),
-            receive_channels_config: DefaultChannel::config(),
+            server_channels_config: DefaultChannel::config(),
+            client_channels_config: DefaultChannel::config(),
         }
     }
 }
 
 impl RenetClient {
     pub fn new(config: ConnectionConfig) -> Self {
+        Self::from_channels(
+            config.available_bytes_per_tick,
+            config.client_channels_config,
+            config.server_channels_config,
+        )
+    }
+
+    // When creating a client from the server, the server_channels_config are used as send channels,
+    // and the client_channels_config is used as recv channels.
+    pub(crate) fn new_from_server(config: ConnectionConfig) -> Self {
+        Self::from_channels(
+            config.available_bytes_per_tick,
+            config.server_channels_config,
+            config.client_channels_config,
+        )
+    }
+
+    fn from_channels(
+        available_bytes_per_tick: u64,
+        send_channels_config: Vec<ChannelConfig>,
+        receive_channels_config: Vec<ChannelConfig>,
+    ) -> Self {
         let mut send_unreliable_channels = HashMap::new();
         let mut send_reliable_channels = HashMap::new();
-        let mut channel_send_order: Vec<ChannelOrder> = Vec::with_capacity(config.send_channels_config.len());
-        for channel_config in config.send_channels_config.iter() {
+        let mut channel_send_order: Vec<ChannelOrder> = Vec::with_capacity(send_channels_config.len());
+        for channel_config in send_channels_config.iter() {
             match channel_config.send_type {
                 SendType::Unreliable => {
                     let channel = SendChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
@@ -119,7 +141,7 @@ impl RenetClient {
 
         let mut receive_unreliable_channels = HashMap::new();
         let mut receive_reliable_channels = HashMap::new();
-        for channel_config in config.receive_channels_config.iter() {
+        for channel_config in receive_channels_config.iter() {
             match channel_config.send_type {
                 SendType::Unreliable => {
                     let channel = ReceiveChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
@@ -153,7 +175,7 @@ impl RenetClient {
             should_send_ack: false,
             last_ack_sent_at: Duration::ZERO,
             rtt: 0.0,
-            available_bytes_per_tick: config.available_bytes_per_tick,
+            available_bytes_per_tick,
             disconnect_reason: None,
         }
     }
