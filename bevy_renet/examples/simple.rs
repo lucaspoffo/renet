@@ -1,11 +1,13 @@
 use bevy::prelude::{shape::Plane, *};
 use bevy_renet::{
     renet::{
-        ClientAuthentication, DefaultChannel, RenetClient, RenetConnectionConfig, RenetError, RenetServer, ServerAuthentication,
-        ServerConfig, ServerEvent,
+        transport::{ClientAuthentication, ServerAuthentication, ServerConfig},
+        ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
     },
+    transport::{NetcodeClientPlugin, NetcodeServerPlugin},
     RenetClientPlugin, RenetServerPlugin,
 };
+use renet::transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError};
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -40,10 +42,11 @@ enum ServerMessages {
     PlayerDisconnected { id: u64 },
 }
 
-fn new_renet_client() -> RenetClient {
+fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
+    let client = RenetClient::new(ConnectionConfig::default());
+
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let connection_config = RenetConnectionConfig::default();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     let authentication = ClientAuthentication::Unsecure {
@@ -52,16 +55,23 @@ fn new_renet_client() -> RenetClient {
         server_addr,
         user_data: None,
     };
-    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
+
+    let transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
+
+    (client, transport)
 }
 
-fn new_renet_server() -> RenetServer {
+fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
+    let server = RenetServer::new(ConnectionConfig::default());
+
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(server_addr).unwrap();
-    let connection_config = RenetConnectionConfig::default();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
+
+    let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+
+    (server, transport)
 }
 
 fn main() {
@@ -80,14 +90,26 @@ fn main() {
     app.init_resource::<Lobby>();
 
     if is_host {
-        app.add_plugin(RenetServerPlugin::default());
-        app.insert_resource(new_renet_server());
+        app.add_plugin(RenetServerPlugin);
+        app.add_plugin(NetcodeServerPlugin);
+        let (server, transport) = new_renet_server();
+        app.insert_resource(server);
+        app.insert_resource(transport);
+
         app.add_systems((server_update_system, server_sync_players, move_players_system));
     } else {
-        app.add_plugin(RenetClientPlugin::default());
+        app.add_plugin(RenetClientPlugin);
+        app.add_plugin(NetcodeClientPlugin);
         app.init_resource::<PlayerInput>();
-        app.insert_resource(new_renet_client());
-        app.add_systems((player_input, client_send_input, client_sync_players).distributive_run_if(bevy_renet::client_connected));
+        let (client, transport) = new_renet_client();
+        app.insert_resource(client);
+        app.insert_resource(transport);
+
+        app.add_systems(
+            (player_input, client_send_input, client_sync_players)
+                .distributive_run_if(bevy_renet::transport::client_connected)
+                .in_base_set(CoreSet::Update),
+        );
     }
 
     app.add_startup_system(setup);
@@ -106,8 +128,8 @@ fn server_update_system(
 ) {
     for event in server_events.iter() {
         match event {
-            ServerEvent::ClientConnected(id, _) => {
-                println!("Player {} connected.", id);
+            ServerEvent::ClientConnected { client_id } => {
+                println!("Player {} connected.", client_id);
                 // Spawn player cube
                 let player_entity = commands
                     .spawn(PbrBundle {
@@ -117,35 +139,35 @@ fn server_update_system(
                         ..Default::default()
                     })
                     .insert(PlayerInput::default())
-                    .insert(Player { id: *id })
+                    .insert(Player { id: *client_id })
                     .id();
 
                 // We could send an InitState with all the players id and positions for the client
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
                     let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(*id, DefaultChannel::Reliable, message);
+                    server.send_message(*client_id, DefaultChannel::ReliableOrdered, message);
                 }
 
-                lobby.players.insert(*id, player_entity);
+                lobby.players.insert(*client_id, player_entity);
 
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *id }).unwrap();
-                server.broadcast_message(DefaultChannel::Reliable, message);
+                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *client_id }).unwrap();
+                server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
-            ServerEvent::ClientDisconnected(id) => {
-                println!("Player {} disconnected.", id);
-                if let Some(player_entity) = lobby.players.remove(id) {
+            ServerEvent::ClientDisconnected { client_id, reason } => {
+                println!("Player {} disconnected: {}", client_id, reason);
+                if let Some(player_entity) = lobby.players.remove(client_id) {
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *id }).unwrap();
-                server.broadcast_message(DefaultChannel::Reliable, message);
+                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *client_id }).unwrap();
+                server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
         }
     }
 
-    for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, DefaultChannel::Reliable) {
+    for client_id in server.connections_id().into_iter() {
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
             if let Some(player_entity) = lobby.players.get(&client_id) {
                 commands.entity(*player_entity).insert(player_input);
@@ -171,7 +193,7 @@ fn client_sync_players(
     mut client: ResMut<RenetClient>,
     mut lobby: ResMut<Lobby>,
 ) {
-    while let Some(message) = client.receive_message(DefaultChannel::Reliable) {
+    while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {
             ServerMessages::PlayerConnected { id } => {
@@ -245,7 +267,7 @@ fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_input: ResMut<Pl
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
 
-    client.send_message(DefaultChannel::Reliable, input_message);
+    client.send_message(DefaultChannel::ReliableOrdered, input_message);
 }
 
 fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: Res<Time>) {
@@ -258,7 +280,7 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 }
 
 // If any error is found we just panic
-fn panic_on_error_system(mut renet_error: EventReader<RenetError>) {
+fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
     for e in renet_error.iter() {
         panic!("{}", e);
     }

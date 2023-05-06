@@ -90,9 +90,9 @@ impl NetcodeClientTransport {
         self.netcode_client.disconnect_reason()
     }
 
-    pub fn send_packets(&mut self, connection: &mut RenetClient) -> Result<(), NetcodeError> {
+    pub fn send_packets(&mut self, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
-            return Err(NetcodeError::Disconnected(reason));
+            return Err(NetcodeError::Disconnected(reason).into());
         }
 
         let packets = connection.get_packets_to_send();

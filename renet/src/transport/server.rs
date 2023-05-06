@@ -129,7 +129,7 @@ impl NetcodeServerTransport {
     }
 
     /// Send packets to connected clients.
-    pub fn send_packets(&mut self, reliable_server: &mut RenetServer) -> Result<(), io::Error> {
+    pub fn send_packets(&mut self, reliable_server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         for client_id in reliable_server.connections_id() {
             let packets = reliable_server.get_packets_to_send(client_id).unwrap();
             for packet in packets {
