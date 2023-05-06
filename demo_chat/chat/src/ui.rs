@@ -3,7 +3,7 @@ use eframe::{
     egui::{self, lerp, Align, Color32, Layout, Pos2, Ui, Vec2, Widget},
     epaint::PathShape,
 };
-use egui_extras::{Size, TableBuilder};
+use egui_extras::{Column, TableBuilder};
 use matcher::{LobbyListing, RequestConnection};
 use renet::channels::DefaultChannel;
 
@@ -27,10 +27,10 @@ pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u6
     TableBuilder::new(ui)
         .striped(true)
         .cell_layout(Layout::left_to_right(Align::Min))
-        .column(Size::exact(12.))
-        .column(Size::remainder())
-        .column(Size::exact(40.))
-        .column(Size::exact(60.))
+        .column(Column::exact(12.))
+        .column(Column::remainder())
+        .column(Column::exact(40.))
+        .column(Column::exact(60.))
         .header(12.0, |mut header| {
             header.col(|_| {});
             header.col(|ui| {
@@ -70,8 +70,9 @@ pub fn draw_loader(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         // Taken from egui progress bar widget
         let n_points = 20;
-        let start_angle = ui.input().time as f64 * 360f64.to_radians();
-        let end_angle = start_angle + 240f64.to_radians() * ui.input().time.sin();
+        let time = ui.input(|input| input.time);
+        let start_angle = time * 360f64.to_radians();
+        let end_angle = start_angle + 240f64.to_radians() * time.sin();
         let circle_radius = 40.0;
         let center = ui.max_rect().center() - Vec2::new(circle_radius / 2., circle_radius / 2.);
         let points: Vec<Pos2> = (0..n_points)
@@ -101,7 +102,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
         ui.label(format!("Address: {}", server_addr));
         let tooltip = "Click to copy the server address";
         if ui.button("📋").on_hover_text(tooltip).clicked() {
-            ui.output().copied_text = server_addr.to_string();
+            ui.output_mut(|output| output.copied_text = server_addr.to_string());
         }
     });
 
@@ -250,7 +251,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
             let response = ui.text_edit_singleline(&mut ui_state.text_input);
 
             // Pressing enter makes we lose focus
-            let input_send = response.lost_focus() && ui.input().key_pressed(egui::Key::Enter);
+            let input_send = response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
             let button_send = ui.button("Send").clicked();
 
             let send_message = input_send || button_send;

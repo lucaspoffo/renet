@@ -6,7 +6,7 @@ use bevy::{
     prelude::*,
     window::exit_on_all_closed,
 };
-use bevy_egui::{EguiContext, EguiPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
     renet::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent},
@@ -49,17 +49,17 @@ fn main() {
     app.insert_resource(new_renet_server());
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
-    app.add_system(server_update_system);
-    app.add_system(server_network_sync);
-    app.add_system(move_players_system);
-    app.add_system(update_projectiles_system);
-    app.add_system(update_visulizer_system);
-    app.add_system(despawn_projectile_system);
-    app.add_system_to_stage(CoreStage::PostUpdate, projectile_on_removal_system);
-    app.add_system_to_stage(CoreStage::PostUpdate, disconnect_clients_on_exit.after(exit_on_all_closed));
+    app.add_systems((
+        server_update_system,
+        server_network_sync,
+        move_players_system,
+        update_projectiles_system,
+        update_visulizer_system,
+        despawn_projectile_system,
+    ));
+    app.add_systems((projectile_on_removal_system, disconnect_clients_on_exit.after(exit_on_all_closed)).in_base_set(CoreSet::PostUpdate));
 
-    app.add_startup_system(setup_level);
-    app.add_startup_system(setup_simple_camera);
+    app.add_startup_systems((setup_level, setup_simple_camera));
 
     app.run();
 }
@@ -179,13 +179,9 @@ fn update_projectiles_system(mut commands: Commands, mut projectiles: Query<(Ent
     }
 }
 
-fn update_visulizer_system(
-    mut egui_context: ResMut<EguiContext>,
-    mut visualizer: ResMut<RenetServerVisualizer<200>>,
-    server: Res<RenetServer>,
-) {
+fn update_visulizer_system(mut egui_contexts: EguiContexts, mut visualizer: ResMut<RenetServerVisualizer<200>>, server: Res<RenetServer>) {
     visualizer.update(&server);
-    visualizer.show_window(egui_context.ctx_mut());
+    visualizer.show_window(egui_contexts.ctx_mut());
 }
 
 #[allow(clippy::type_complexity)]
@@ -235,8 +231,8 @@ fn despawn_projectile_system(
     }
 }
 
-fn projectile_on_removal_system(mut server: ResMut<RenetServer>, removed_projectiles: RemovedComponents<Projectile>) {
-    for entity in removed_projectiles.iter() {
+fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_projectiles: RemovedComponents<Projectile>) {
+    for entity in &mut removed_projectiles {
         let message = ServerMessages::DespawnProjectile { entity };
         let message = bincode::serialize(&message).unwrap();
 
