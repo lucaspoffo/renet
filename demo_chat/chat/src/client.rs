@@ -3,9 +3,8 @@ use eframe::egui;
 use log::error;
 use matcher::{LobbyListing, RequestConnection};
 use renet::{
-    channels::DefaultChannel,
-    remote_connection::{ConnectionConfig, RenetClient},
-    transport::{renetcode::ConnectToken, ClientAuthentication, NetcodeClientTransport},
+    transport::{ClientAuthentication, ConnectToken, NetcodeClientTransport},
+    ConnectionConfig, DefaultChannel, RenetClient,
 };
 use renet_visualizer::RenetClientVisualizer;
 

@@ -5,7 +5,7 @@ use eframe::{
 };
 use egui_extras::{Column, TableBuilder};
 use matcher::{LobbyListing, RequestConnection};
-use renet::channels::DefaultChannel;
+use renet::DefaultChannel;
 
 use std::{collections::HashMap, sync::mpsc};
 

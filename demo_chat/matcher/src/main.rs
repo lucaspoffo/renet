@@ -12,7 +12,7 @@ use actix_web::{
     App, HttpResponse, HttpServer,
 };
 
-use renet::transport::renetcode::{ConnectToken, NETCODE_KEY_BYTES};
+use renet::transport::{ConnectToken, NETCODE_KEY_BYTES};
 
 use matcher::{LobbyListing, RegisterServer, RequestConnection, ServerUpdate, Username, PROTOCOL_ID};
 

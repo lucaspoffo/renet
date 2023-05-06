@@ -8,10 +8,8 @@ use std::{
 
 use matcher::{RegisterServer, ServerUpdate, Username, PROTOCOL_ID};
 use renet::{
-    channels::DefaultChannel,
-    remote_connection::ConnectionConfig,
-    server::{RenetServer, ServerEvent},
-    transport::{renetcode::generate_random_bytes, NetcodeServerTransport, ServerAuthentication, ServerConfig},
+    transport::{generate_random_bytes, NetcodeServerTransport, ServerAuthentication, ServerConfig},
+    ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
 };
 use renet_visualizer::RenetServerVisualizer;
 
