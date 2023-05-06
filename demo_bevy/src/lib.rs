@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::{shape::Icosphere, *};
 use bevy_rapier3d::prelude::*;
-use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, UnreliableChannelConfig, NETCODE_KEY_BYTES};
+use bevy_renet::renet::{transport::NETCODE_KEY_BYTES, ChannelConfig, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
 pub const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
@@ -62,18 +62,20 @@ impl From<ClientChannel> for u8 {
 impl ClientChannel {
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
-            ReliableChannelConfig {
+            ChannelConfig {
                 channel_id: Self::Input.into(),
-                message_resend_time: Duration::ZERO,
-                ..Default::default()
-            }
-            .into(),
-            ReliableChannelConfig {
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::ZERO,
+                },
+            },
+            ChannelConfig {
                 channel_id: Self::Command.into(),
-                message_resend_time: Duration::ZERO,
-                ..Default::default()
-            }
-            .into(),
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::ZERO,
+                },
+            },
         ]
     }
 }
@@ -90,35 +92,35 @@ impl From<ServerChannel> for u8 {
 impl ServerChannel {
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
-            UnreliableChannelConfig {
+            ChannelConfig {
                 channel_id: Self::NetworkedEntities.into(),
-                sequenced: true, // We don't care about old positions
-                ..Default::default()
-            }
-            .into(),
-            ReliableChannelConfig {
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::Unreliable,
+            },
+            ChannelConfig {
                 channel_id: Self::ServerMessages.into(),
-                message_resend_time: Duration::from_millis(200),
-                ..Default::default()
-            }
-            .into(),
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::from_millis(200),
+                },
+            },
         ]
     }
 }
 
-pub fn client_connection_config() -> RenetConnectionConfig {
-    RenetConnectionConfig {
+pub fn client_connection_config() -> ConnectionConfig {
+    ConnectionConfig {
+        available_bytes_per_tick: 60 * 1024,
         send_channels_config: ClientChannel::channels_config(),
         receive_channels_config: ServerChannel::channels_config(),
-        ..Default::default()
     }
 }
 
-pub fn server_connection_config() -> RenetConnectionConfig {
-    RenetConnectionConfig {
-        send_channels_config: ServerChannel::channels_config(),
+pub fn server_connection_config() -> ConnectionConfig {
+    ConnectionConfig {
+        available_bytes_per_tick: 60 * 1024,
         receive_channels_config: ClientChannel::channels_config(),
-        ..Default::default()
+        send_channels_config: ServerChannel::channels_config(),
     }
 }
 
