@@ -1,11 +1,16 @@
-pub mod channels;
+mod channel;
 mod connection_stats;
-pub mod error;
+mod error;
 mod packet;
-pub mod remote_connection;
-pub mod server;
+mod remote_connection;
+mod server;
 
 #[cfg(feature = "transport")]
 pub mod transport;
+
+pub use channel::{ChannelConfig, DefaultChannel, SendType};
+pub use error::{ChannelError, ClientNotFound, DisconnectReason};
+pub use remote_connection::{ConnectionConfig, NetworkInfo, RenetClient};
+pub use server::{RenetServer, ServerEvent};
 
 pub use bytes::Bytes;

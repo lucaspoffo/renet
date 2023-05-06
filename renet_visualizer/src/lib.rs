@@ -5,7 +5,7 @@ use egui::{
     pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText,
 };
 
-use renet::{remote_connection::NetworkInfo, server::RenetServer};
+use renet::{NetworkInfo, RenetServer};
 
 use circular_buffer::CircularBuffer;
 

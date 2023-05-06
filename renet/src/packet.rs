@@ -314,7 +314,7 @@ impl Packet {
 
 #[cfg(test)]
 mod tests {
-    use crate::channels::SLICE_SIZE;
+    use crate::channel::SLICE_SIZE;
 
     use super::*;
 

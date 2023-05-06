@@ -7,13 +7,10 @@ use std::{
 };
 
 use renet::{
-    channels::DefaultChannel,
-    remote_connection::{ConnectionConfig, RenetClient},
-    server::{RenetServer, ServerEvent},
     transport::{
-        renetcode::NETCODE_USER_DATA_BYTES, ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication,
-        ServerConfig,
+        ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
     },
+    ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
 
 // Helper struct to pass an username in the user data

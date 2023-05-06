@@ -1,9 +1,5 @@
 use bytes::Bytes;
-use renet::{
-    channels::DefaultChannel,
-    remote_connection::{ConnectionConfig, RenetClient},
-    server::RenetServer,
-};
+use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer};
 
 pub fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();

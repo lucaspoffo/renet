@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use renet::transport::renetcode::{NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
+use renet::transport::{NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES};
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL_ID: u64 = 7;

@@ -1,21 +1,20 @@
 use std::{error::Error, fmt};
 
-pub use renetcode::NetcodeError;
-
-use crate::error::DisconnectReason;
-
 mod client;
 mod server;
 
 pub use client::*;
 pub use server::*;
 
-pub use renetcode;
+pub use renetcode::{
+    generate_random_bytes, ConnectToken, DisconnectReason as NetcodeDisconnectReason, NetcodeError, TokenGenerationError,
+    NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES,
+};
 
 #[derive(Debug)]
 pub enum NetcodeTransportError {
     Netcode(NetcodeError),
-    Renet(DisconnectReason),
+    Renet(crate::DisconnectReason),
     IO(std::io::Error),
 }
 
@@ -43,8 +42,8 @@ impl From<renetcode::TokenGenerationError> for NetcodeTransportError {
     }
 }
 
-impl From<DisconnectReason> for NetcodeTransportError {
-    fn from(inner: DisconnectReason) -> Self {
+impl From<crate::DisconnectReason> for NetcodeTransportError {
+    fn from(inner: crate::DisconnectReason) -> Self {
         NetcodeTransportError::Renet(inner)
     }
 }

@@ -1,6 +1,6 @@
-use crate::channels::reliable::{ReceiveChannelReliable, SendChannelReliable};
-use crate::channels::unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable};
-use crate::channels::{ChannelConfig, DefaultChannel, SendType};
+use crate::channel::reliable::{ReceiveChannelReliable, SendChannelReliable};
+use crate::channel::unreliable::{ReceiveChannelUnreliable, SendChannelUnreliable};
+use crate::channel::{ChannelConfig, DefaultChannel, SendType};
 use crate::connection_stats::ConnectionStats;
 use crate::error::DisconnectReason;
 use crate::packet::{Packet, Payload};
