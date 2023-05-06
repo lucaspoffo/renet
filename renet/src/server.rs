@@ -13,6 +13,7 @@ pub enum ServerEvent {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetServer {
     connections: HashMap<u64, RenetClient>,
     connection_config: ConnectionConfig,

@@ -42,6 +42,7 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct NetcodeServerTransport {
     socket: UdpSocket,
     netcode_server: NetcodeServer,

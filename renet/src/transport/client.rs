@@ -31,6 +31,7 @@ pub enum ClientAuthentication {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct NetcodeClientTransport {
     socket: UdpSocket,
     netcode_client: NetcodeClient,

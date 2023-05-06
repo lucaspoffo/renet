@@ -63,6 +63,7 @@ pub struct NetworkInfo {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetClient {
     packet_sequence: u64,
     current_time: Duration,

@@ -5,7 +5,18 @@ use bevy::{
     prelude::*,
 };
 
-use renet::{RenetClient, RenetError, RenetServer, ServerEvent};
+use renet::{RenetClient, RenetServer, ServerEvent};
+
+pub mod transport;
+
+/// Set for networking systems.
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub enum RenetSet {
+    /// Runs when server resource available.
+    Server,
+    /// Runs when client resource available.
+    Client,
+}
 
 pub struct RenetServerPlugin {
     /// If this option is set to false,

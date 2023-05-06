@@ -155,7 +155,7 @@ mod tests {
         }
 
         // Check at 2 second
-        assert_eq!(window.packet_loss(), 50.);
+        assert_eq!(window.packet_loss(), 0.5);
 
         for _ in 0..40 {
             window.update(current_time);
@@ -167,6 +167,6 @@ mod tests {
         // Check after 6 seconds
         assert_eq!(window.packets_sent, [6; 20]);
         assert_eq!(window.packets_acked, [3; 20]);
-        assert_eq!(window.packet_loss(), 50.);
+        assert_eq!(window.packet_loss(), 0.5);
     }
 }

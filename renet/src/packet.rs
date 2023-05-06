@@ -362,7 +362,7 @@ mod tests {
             slice: Slice {
                 message_id: 0,
                 slice_index: 0,
-                num_slices: 0,
+                num_slices: 1,
                 payload: vec![5; SLICE_SIZE].into(),
             },
         };
@@ -385,7 +385,7 @@ mod tests {
             slice: Slice {
                 message_id: 0,
                 slice_index: 0,
-                num_slices: 0,
+                num_slices: 1,
                 payload: vec![5; SLICE_SIZE].into(),
             },
         };
