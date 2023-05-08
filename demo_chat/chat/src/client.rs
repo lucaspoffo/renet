@@ -229,7 +229,7 @@ impl ChatApp {
                     let (client, transport) = create_renet_client_from_token(token);
 
                     self.state = AppState::ClientChat {
-                        visualizer: Box::new(RenetClientVisualizer::default()),
+                        visualizer: Box::<RenetClientVisualizer<240>>::default(),
                         transport: Box::new(transport),
                         client: Box::new(client),
                         messages: vec![],

@@ -265,7 +265,7 @@ mod tests {
         let message = vec![5; 50];
 
         send.send_message(message.clone().into());
-        send.send_message(message.clone().into());
+        send.send_message(message.into());
 
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         for packet in packets {
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(packets.len(), 0);
 
         send.send_message(message.clone());
-        send.send_message(message.clone());
+        send.send_message(message);
 
         // Space for 1 message
         let mut available_bytes: u64 = 100;

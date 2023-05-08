@@ -687,7 +687,7 @@ mod tests {
     fn discard_old_packets() {
         let mut connection = RenetClient::new(ConnectionConfig::default());
         let message: Bytes = vec![5; 5].into();
-        connection.send_message(0, message.clone());
+        connection.send_message(0, message);
 
         connection.get_packets_to_send();
         assert_eq!(connection.sent_packets.len(), 1);

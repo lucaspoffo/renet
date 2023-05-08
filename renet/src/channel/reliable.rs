@@ -486,7 +486,7 @@ mod tests {
             }
         }
 
-        let Err(send_err) = send.send_message(message.clone().into()) else {
+        let Err(send_err) = send.send_message(message.into()) else {
             unreachable!()
         };
         assert_eq!(send_err, ChannelError::ReliableChannelMaxMemoryReached);
@@ -501,7 +501,7 @@ mod tests {
 
         let message: Bytes = vec![0u8; 100].into();
         send.send_message(message.clone()).unwrap();
-        send.send_message(message.clone()).unwrap();
+        send.send_message(message).unwrap();
 
         // No available bytes
         let mut available_bytes: u64 = 50;
