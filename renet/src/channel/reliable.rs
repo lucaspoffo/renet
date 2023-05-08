@@ -5,10 +5,10 @@ use std::{
 
 use bytes::Bytes;
 
-use super::{SliceConstructor, SLICE_SIZE};
+use super::SliceConstructor;
 use crate::{
     error::ChannelError,
-    packet::{Packet, Slice},
+    packet::{Packet, Slice, SLICE_SIZE},
 };
 
 #[derive(Debug)]
@@ -110,7 +110,8 @@ impl SendChannelReliable {
                     *available_bytes -= message.len() as u64;
 
                     // Generate packet with small messages if you cannot fit
-                    if small_messages_bytes + message.len() + 2 > SLICE_SIZE {
+                    let serialized_size = message.len() + octets::varint_len(message.len() as u64);
+                    if small_messages_bytes + serialized_size > SLICE_SIZE {
                         packets.push(Packet::SmallReliable {
                             packet_sequence: *packet_sequence,
                             channel_id: self.channel_id,
@@ -120,7 +121,7 @@ impl SendChannelReliable {
                         *packet_sequence += 1;
                     }
 
-                    small_messages_bytes += message.len() + 2;
+                    small_messages_bytes += serialized_size;
                     small_messages.push((message_id, message.clone()));
                     *last_sent = Some(current_time);
 

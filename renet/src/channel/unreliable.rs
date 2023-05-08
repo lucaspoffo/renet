@@ -5,10 +5,10 @@ use std::{
 
 use bytes::Bytes;
 
-use super::{SliceConstructor, SLICE_SIZE};
 use crate::{
+    channel::SliceConstructor,
     error::ChannelError,
-    packet::{Packet, Slice},
+    packet::{SLICE_SIZE, Packet, Slice},
 };
 
 #[derive(Debug)]

@@ -6,8 +6,6 @@ use std::time::Duration;
 
 pub(crate) use slice_constructor::SliceConstructor;
 
-pub(crate) const SLICE_SIZE: usize = 1200;
-
 #[derive(Debug, Clone)]
 pub enum SendType {
     Unreliable,

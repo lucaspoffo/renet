@@ -3,6 +3,9 @@ use std::ops::Range;
 
 pub type Payload = Vec<u8>;
 
+// Sliced messages are split into SLICE_SIZE bytes chunks
+pub const SLICE_SIZE: usize = 1200;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Slice {
     pub message_id: u64,
@@ -314,8 +317,6 @@ impl Packet {
 
 #[cfg(test)]
 mod tests {
-    use crate::channel::SLICE_SIZE;
-
     use super::*;
 
     #[test]
