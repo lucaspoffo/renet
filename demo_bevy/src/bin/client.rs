@@ -9,13 +9,15 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
     renet::{
-        transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError}, RenetClient,
+        transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError},
+        RenetClient,
     },
-    RenetClientPlugin, transport::NetcodeClientPlugin,
+    transport::NetcodeClientPlugin,
+    RenetClientPlugin,
 };
 use demo_bevy::{
-    setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-    PROTOCOL_ID, connection_config,
+    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
+    PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};

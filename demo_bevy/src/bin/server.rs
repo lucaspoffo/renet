@@ -17,8 +17,8 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use demo_bevy::{
-    connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput,
-    Projectile, ServerChannel, ServerMessages, PROTOCOL_ID,
+    connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile,
+    ServerChannel, ServerMessages, PROTOCOL_ID,
 };
 use renet_visualizer::RenetServerVisualizer;
 
