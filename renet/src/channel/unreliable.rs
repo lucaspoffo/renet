@@ -8,7 +8,7 @@ use bytes::Bytes;
 use crate::{
     channel::SliceConstructor,
     error::ChannelError,
-    packet::{SLICE_SIZE, Packet, Slice},
+    packet::{Packet, Slice, SLICE_SIZE},
 };
 
 #[derive(Debug)]

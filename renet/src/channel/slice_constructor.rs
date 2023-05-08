@@ -1,9 +1,6 @@
 use bytes::Bytes;
 
-use crate::{
-    error::ChannelError,
-    packet::SLICE_SIZE
-};
+use crate::{error::ChannelError, packet::SLICE_SIZE};
 
 #[derive(Debug, Clone)]
 pub struct SliceConstructor {

@@ -78,6 +78,7 @@ pub struct RenetClient {
     stats: ConnectionStats,
     last_ack_sent_at: Duration,
     available_bytes_per_tick: u64,
+    largest_acked_packet: u64,
     pub(crate) disconnect_reason: Option<DisconnectReason>,
     rtt: f64,
 }
@@ -176,6 +177,7 @@ impl RenetClient {
             last_ack_sent_at: Duration::ZERO,
             rtt: 0.0,
             available_bytes_per_tick,
+            largest_acked_packet: 0,
             disconnect_reason: None,
         }
     }
@@ -267,6 +269,23 @@ impl RenetClient {
     pub fn advance_time(&mut self, duration: Duration) {
         self.current_time += duration;
         self.stats.update(self.current_time);
+
+        // Discard lost packets
+        let mut lost_packets: Vec<u64> = Vec::new();
+        for (&sequence, sent_packet) in self.sent_packets.range(0..self.largest_acked_packet + 1) {
+            const DISCARD_AFTER: Duration = Duration::from_secs(3);
+            if self.current_time - sent_packet.sent_at >= DISCARD_AFTER {
+                lost_packets.push(sequence);
+            } else {
+                // If the current packet is not lost, the next ones will not be lost
+                // since all the next packets will be sent after this one.
+                break;
+            }
+        }
+
+        for sequence in lost_packets.iter() {
+            self.sent_packets.remove(sequence);
+        }
     }
 
     pub fn process_packet(&mut self, packet: &[u8]) {
@@ -575,6 +594,11 @@ impl RenetClient {
     }
 
     fn acked_largest(&mut self, largest_ack: u64) {
+        if self.largest_acked_packet > largest_ack {
+            return;
+        }
+
+        self.largest_acked_packet = largest_ack;
         while !self.pending_acks.is_empty() {
             let range = &mut self.pending_acks[0];
 
@@ -657,5 +681,21 @@ mod tests {
         assert_eq!(connection.pending_acks, vec![0..1, 6..10]);
         connection.acked_largest(10);
         assert_eq!(connection.pending_acks, vec![]);
+    }
+
+    #[test]
+    fn discard_old_packets() {
+        let mut connection = RenetClient::new(ConnectionConfig::default());
+        let message: Bytes = vec![5; 5].into();
+        connection.send_message(0, message.clone());
+
+        connection.get_packets_to_send();
+        assert_eq!(connection.sent_packets.len(), 1);
+
+        connection.advance_time(Duration::from_secs(1));
+        assert_eq!(connection.sent_packets.len(), 1);
+
+        connection.advance_time(Duration::from_secs(4));
+        assert_eq!(connection.sent_packets.len(), 0);
     }
 }
