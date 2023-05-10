@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
+    f32::consts::PI,
     net::UdpSocket,
-    time::{Duration, SystemTime}, f32::consts::PI,
+    time::{Duration, SystemTime},
 };
 
 use bevy::{

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{time::Duration, f32::consts::PI};
 
 use bevy::prelude::{shape::Icosphere, *};
 use bevy_rapier3d::prelude::*;
@@ -133,19 +133,13 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_xyz(0.0, 0.0, 0.0)
-            .looking_at(Vec3::new(0.03, -0.05, -0.03), Vec3::Y),
+        transform: Transform {
+            translation: Vec3::new(0.0, 2.0, 0.0),
+            rotation: Quat::from_rotation_x(-PI / 4.),
+            ..default()
+        },
         ..default()
     });
-    // commands.spawn(PointLightBundle {
-    //     point_light: PointLight {
-    //         intensity: 1500.0,
-    //         shadows_enabled: true,
-    //         ..Default::default()
-    //     },
-    //     transform: Transform::from_xyz(4.0, 8.0, 4.0),
-    //     ..Default::default()
-    // });
 }
 
 #[derive(Debug, Component)]
