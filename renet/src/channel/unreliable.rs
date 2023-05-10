@@ -47,6 +47,7 @@ impl SendChannelUnreliable {
         let mut small_messages_bytes = 0;
 
         while let Some(message) = self.unreliable_messages.pop_front() {
+            self.memory_usage_bytes -= message.len();
             if *available_bytes < message.len() as u64 {
                 // Drop message, no available bytes to send
                 continue;
