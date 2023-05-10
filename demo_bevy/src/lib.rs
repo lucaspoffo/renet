@@ -94,12 +94,12 @@ impl ServerChannel {
         vec![
             ChannelConfig {
                 channel_id: Self::NetworkedEntities.into(),
-                max_memory_usage_bytes: 5 * 1024 * 1024,
+                max_memory_usage_bytes: 100 * 1024 * 1024,
                 send_type: SendType::Unreliable,
             },
             ChannelConfig {
                 channel_id: Self::ServerMessages.into(),
-                max_memory_usage_bytes: 5 * 1024 * 1024,
+                max_memory_usage_bytes: 100 * 1024 * 1024,
                 send_type: SendType::ReliableOrdered {
                     resend_time: Duration::from_millis(200),
                 },
@@ -121,22 +121,31 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
     // plane
     commands
         .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Box::new(10., 1., 10.))),
+            mesh: meshes.add(Mesh::from(shape::Box::new(40., 1., 40.))),
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             transform: Transform::from_xyz(0.0, -1.0, 0.0),
             ..Default::default()
         })
-        .insert(Collider::cuboid(5., 0.5, 5.));
+        .insert(Collider::cuboid(20., 0.5, 20.));
     // light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
             shadows_enabled: true,
-            ..Default::default()
+            ..default()
         },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..Default::default()
+        transform: Transform::from_xyz(0.0, 0.0, 0.0)
+            .looking_at(Vec3::new(0.03, -0.05, -0.03), Vec3::Y),
+        ..default()
     });
+    // commands.spawn(PointLightBundle {
+    //     point_light: PointLight {
+    //         intensity: 1500.0,
+    //         shadows_enabled: true,
+    //         ..Default::default()
+    //     },
+    //     transform: Transform::from_xyz(4.0, 8.0, 4.0),
+    //     ..Default::default()
+    // });
 }
 
 #[derive(Debug, Component)]
@@ -169,7 +178,7 @@ pub fn spawn_fireball(
         })
         .insert(RigidBody::Dynamic)
         .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
-        .insert(Collider::ball(0.1))
+        // .insert(Collider::ball(0.1))
         .insert(Velocity::linear(direction * 10.))
         .insert(ActiveEvents::COLLISION_EVENTS)
         .insert(Projectile {

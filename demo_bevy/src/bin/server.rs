@@ -1,4 +1,8 @@
-use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
+use std::{
+    collections::HashMap,
+    net::UdpSocket,
+    time::{Duration, SystemTime}, f32::consts::PI,
+};
 
 use bevy::{
     app::AppExit,
@@ -29,6 +33,12 @@ pub struct ServerLobby {
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
+#[derive(Debug, Component)]
+struct Bot;
+
+#[derive(Debug, Resource)]
+struct BotId(u64);
+
 fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
     let server = RenetServer::new(connection_config());
 
@@ -55,6 +65,8 @@ fn main() {
     app.add_plugin(EguiPlugin);
 
     app.insert_resource(ServerLobby::default());
+    app.insert_resource(BotId(0));
+
     let (server, transport) = new_renet_server();
     app.insert_resource(server);
     app.insert_resource(transport);
@@ -68,7 +80,13 @@ fn main() {
         update_projectiles_system,
         update_visulizer_system,
         despawn_projectile_system,
+        spawn_bot,
     ));
+    let mut timer = Timer::new(Duration::from_secs(1), TimerMode::Repeating);
+    app.add_system(bot_autocast.run_if(move |time: Res<Time>| {
+        timer.tick(time.delta());
+        timer.just_finished()
+    }));
     app.add_systems((projectile_on_removal_system, disconnect_clients_on_exit.after(exit_on_all_closed)).in_base_set(CoreSet::PostUpdate));
 
     app.add_startup_systems((setup_level, setup_simple_camera));
@@ -106,7 +124,7 @@ fn server_update_system(
                 }
 
                 // Spawn new player
-                let transform = Transform::from_xyz(0.0, 0.51, 0.0);
+                let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
                 let player_entity = commands
                     .spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(shape::Capsule::default())),
@@ -221,7 +239,7 @@ fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
 pub fn setup_simple_camera(mut commands: Commands) {
     // camera
     commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-5.5, 5.0, 5.5).looking_at(Vec3::ZERO, Vec3::Y),
+        transform: Transform::from_xyz(-20.5, 30.0, 20.5).looking_at(Vec3::ZERO, Vec3::Y),
         ..Default::default()
     });
 }
@@ -255,5 +273,70 @@ fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_pro
 fn disconnect_clients_on_exit(exit: EventReader<AppExit>, mut server: ResMut<RenetServer>) {
     if !exit.is_empty() {
         server.disconnect_all();
+    }
+}
+
+fn spawn_bot(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut lobby: ResMut<ServerLobby>,
+    mut server: ResMut<RenetServer>,
+    mut bot_id: ResMut<BotId>,
+    mut commands: Commands,
+) {
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        let client_id = bot_id.0;
+        bot_id.0 += 1;
+        // Spawn new player
+        let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
+        let player_entity = commands
+            .spawn(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Capsule::default())),
+                material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                transform,
+                ..Default::default()
+            })
+            .insert(RigidBody::Fixed)
+            .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
+            .insert(Collider::capsule_y(0.5, 0.5))
+            .insert(Player { id: client_id })
+            .insert(Bot)
+            .id();
+
+        lobby.players.insert(client_id, player_entity);
+
+        let translation: [f32; 3] = transform.translation.into();
+        let message = bincode::serialize(&ServerMessages::PlayerCreate {
+            id: client_id,
+            entity: player_entity,
+            translation,
+        })
+        .unwrap();
+        server.broadcast_message(ServerChannel::ServerMessages, message);
+    }
+}
+
+fn bot_autocast(
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut server: ResMut<RenetServer>,
+    bots: Query<&Transform, (With<Player>, With<Bot>)>,
+    mut commands: Commands,
+) {
+    for transform in &bots {
+        for i in 0..8 {
+            let direction = Vec2::from_angle(PI / 4. * i as f32);
+            let direction = Vec3::new(direction.x, 0., direction.y).normalize();
+            let translation: Vec3 = transform.translation + direction;
+
+            let fireball_entity = spawn_fireball(&mut commands, &mut meshes, &mut materials, translation, direction);
+            let message = ServerMessages::SpawnProjectile {
+                entity: fireball_entity,
+                translation: translation.into(),
+            };
+            let message = bincode::serialize(&message).unwrap();
+            server.broadcast_message(ServerChannel::ServerMessages, message);
+        }
     }
 }
