@@ -49,6 +49,14 @@ impl RenetServer {
         !self.connections.is_empty()
     }
 
+    pub fn disconnect_reason(&self, connection_id: u64) -> Option<DisconnectReason> {
+        if let Some(connection) = self.connections.get(&connection_id) {
+            return connection.disconnect_reason();
+        }
+
+        None
+    }
+
     pub fn rtt(&self, connection_id: u64) -> f64 {
         match self.connections.get(&connection_id) {
             Some(connection) => connection.rtt(),

@@ -110,7 +110,7 @@ impl SendChannelReliable {
                     *available_bytes -= message.len() as u64;
 
                     // Generate packet with small messages if you cannot fit
-                    let serialized_size = message.len() + octets::varint_len(message.len() as u64);
+                    let serialized_size = message.len() + octets::varint_len(message.len() as u64) + octets::varint_len(message_id);
                     if small_messages_bytes + serialized_size > SLICE_SIZE {
                         packets.push(Packet::SmallReliable {
                             packet_sequence: *packet_sequence,
