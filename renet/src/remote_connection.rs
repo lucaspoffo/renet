@@ -272,13 +272,17 @@ impl RenetClient {
                 lost_packets.push(sequence);
             } else {
                 // If the current packet is not lost, the next ones will not be lost
-                // since all the next packets will be sent after this one.
+                // since all the next packets were sent after this one.
                 break;
             }
         }
 
         for sequence in lost_packets.iter() {
             self.sent_packets.remove(sequence);
+        }
+
+        for unreliable_channel in self.receive_unreliable_channels.values_mut() {
+            unreliable_channel.discard_incomplete_old_slices(self.current_time);
         }
     }
 

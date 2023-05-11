@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     time::Duration,
 };
 
@@ -24,8 +24,8 @@ pub struct SendChannelUnreliable {
 pub struct ReceiveChannelUnreliable {
     channel_id: u8,
     messages: VecDeque<Bytes>,
-    slices: HashMap<u64, SliceConstructor>,
-    slices_last_received: HashMap<u64, Duration>,
+    slices: BTreeMap<u64, SliceConstructor>,
+    slices_last_received: BTreeMap<u64, Duration>,
     max_memory_usage_bytes: usize,
     memory_usage_bytes: usize,
 }
@@ -125,8 +125,8 @@ impl ReceiveChannelUnreliable {
     pub fn new(channel_id: u8, max_memory_usage_bytes: usize) -> Self {
         Self {
             channel_id,
-            slices: HashMap::new(),
-            slices_last_received: HashMap::new(),
+            slices: BTreeMap::new(),
+            slices_last_received: BTreeMap::new(),
             messages: VecDeque::new(),
             memory_usage_bytes: 0,
             max_memory_usage_bytes,
@@ -151,7 +151,7 @@ impl ReceiveChannelUnreliable {
             let message_len = slice.num_slices * SLICE_SIZE;
             if self.max_memory_usage_bytes < self.memory_usage_bytes + message_len {
                 log::warn!(
-                    "dropped unreliable message sent because channel {} is memory limited",
+                    "dropped unreliable slice message received because channel {} is memory limited",
                     self.channel_id
                 );
                 return Ok(());
@@ -178,12 +178,33 @@ impl ReceiveChannelUnreliable {
         Ok(())
     }
 
+    pub fn discard_incomplete_old_slices(&mut self, current_time: Duration) {
+        let mut lost_messages: Vec<u64> = Vec::new();
+        for (&message_id, last_received) in self.slices_last_received.iter() {
+            const DISCARD_AFTER: Duration = Duration::from_secs(3);
+            if current_time - *last_received >= DISCARD_AFTER {
+                lost_messages.push(message_id);
+            } else {
+                // If the current message is not discard, the next ones will not be discarded
+                // since all the next message were sent after this one.
+                break;
+            }
+        }
+
+        for message_id in lost_messages.iter() {
+            self.slices_last_received.remove(message_id);
+            let slice = self.slices.remove(message_id).expect("discarded slice should exist");
+            self.memory_usage_bytes -= slice.num_slices * SLICE_SIZE;
+        }
+    }
+
     pub fn receive_message(&mut self) -> Option<Bytes> {
-        let Some(message) = self.messages.pop_front() else {
-            return None
+        if let Some(message) = self.messages.pop_front() {
+            self.memory_usage_bytes -= message.len();
+            return Some(message);
         };
-        self.memory_usage_bytes -= message.len();
-        Some(message)
+
+        None
     }
 }
 
