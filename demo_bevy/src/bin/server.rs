@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    f32::consts::PI,
-    net::UdpSocket,
-    time::{Duration, SystemTime},
-};
+use std::{collections::HashMap, f32::consts::PI, net::UdpSocket, time::SystemTime};
 
 use bevy::{
     app::AppExit,
@@ -35,7 +30,9 @@ pub struct ServerLobby {
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
 #[derive(Debug, Component)]
-struct Bot;
+struct Bot {
+    auto_cast: Timer,
+}
 
 #[derive(Debug, Resource)]
 struct BotId(u64);
@@ -82,12 +79,8 @@ fn main() {
         update_visulizer_system,
         despawn_projectile_system,
         spawn_bot,
+        bot_autocast,
     ));
-    let mut timer = Timer::new(Duration::from_secs(1), TimerMode::Repeating);
-    app.add_system(bot_autocast.run_if(move |time: Res<Time>| {
-        timer.tick(time.delta());
-        timer.just_finished()
-    }));
     app.add_systems((projectile_on_removal_system, disconnect_clients_on_exit.after(exit_on_all_closed)).in_base_set(CoreSet::PostUpdate));
 
     app.add_startup_systems((setup_level, setup_simple_camera));
@@ -302,7 +295,9 @@ fn spawn_bot(
             .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
             .insert(Collider::capsule_y(0.5, 0.5))
             .insert(Player { id: client_id })
-            .insert(Bot)
+            .insert(Bot {
+                auto_cast: Timer::from_seconds(3.0, TimerMode::Repeating),
+            })
             .id();
 
         lobby.players.insert(client_id, player_entity);
@@ -319,13 +314,19 @@ fn spawn_bot(
 }
 
 fn bot_autocast(
+    time: Res<Time>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut server: ResMut<RenetServer>,
-    bots: Query<&Transform, (With<Player>, With<Bot>)>,
+    mut bots: Query<(&Transform, &mut Bot), With<Player>>,
     mut commands: Commands,
 ) {
-    for transform in &bots {
+    for (transform, mut bot) in &mut bots {
+        bot.auto_cast.tick(time.delta());
+        if !bot.auto_cast.just_finished() {
+            continue;
+        }
+
         for i in 0..8 {
             let direction = Vec2::from_angle(PI / 4. * i as f32);
             let direction = Vec3::new(direction.x, 0., direction.y).normalize();

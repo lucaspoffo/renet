@@ -11,8 +11,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::time::Duration;
 
-const ACK_FORCE_SEND_TIME: Duration = Duration::from_millis(300);
-
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
     pub available_bytes_per_tick: u64,
@@ -74,9 +72,7 @@ pub struct RenetClient {
     receive_unreliable_channels: HashMap<u8, ReceiveChannelUnreliable>,
     send_reliable_channels: HashMap<u8, SendChannelReliable>,
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
-    should_send_ack: bool,
     stats: ConnectionStats,
-    last_ack_sent_at: Duration,
     available_bytes_per_tick: u64,
     largest_acked_packet: u64,
     pub(crate) disconnect_reason: Option<DisconnectReason>,
@@ -173,8 +169,6 @@ impl RenetClient {
             send_reliable_channels,
             receive_reliable_channels,
             stats: ConnectionStats::new(),
-            should_send_ack: false,
-            last_ack_sent_at: Duration::ZERO,
             rtt: 0.0,
             available_bytes_per_tick,
             largest_acked_packet: 0,
@@ -300,10 +294,6 @@ impl RenetClient {
             return;
         };
 
-        if packet.is_ack_eliciting() {
-            self.should_send_ack = true;
-        }
-
         match packet {
             Packet::SmallReliable {
                 packet_sequence,
@@ -387,17 +377,12 @@ impl RenetClient {
                     let sent_packet = self.sent_packets.remove(&packet_sequence).unwrap();
                     self.stats.acked_packet(sent_packet.sent_at, self.current_time);
 
-                    // Only update rtt when the packet ack eliciting, otherwise the ack can be delayed for ACK_FORCE_SEND_TIME
-                    if matches!(
-                        sent_packet.info,
-                        PacketSentInfo::ReliableMessages { .. } | PacketSentInfo::ReliableSliceMessage { .. }
-                    ) {
-                        let rtt = (self.current_time - sent_packet.sent_at).as_secs_f64();
-                        if self.rtt < f64::EPSILON {
-                            self.rtt = rtt;
-                        } else {
-                            self.rtt = self.rtt * 0.875 + rtt * 0.125;
-                        }
+                    // Update rtt
+                    let rtt = (self.current_time - sent_packet.sent_at).as_secs_f64();
+                    if self.rtt < f64::EPSILON {
+                        self.rtt = rtt;
+                    } else {
+                        self.rtt = self.rtt * 0.875 + rtt * 0.125;
                     }
 
                     match sent_packet.info {
@@ -445,10 +430,7 @@ impl RenetClient {
             }
         }
 
-        let force_ack_send = self.last_ack_sent_at + ACK_FORCE_SEND_TIME < self.current_time;
-        if !self.pending_acks.is_empty() && (self.should_send_ack || force_ack_send) {
-            self.last_ack_sent_at = self.current_time;
-            self.should_send_ack = false;
+        if !self.pending_acks.is_empty() {
             let ack_packet = Packet::Ack {
                 packet_sequence: self.packet_sequence,
                 ack_ranges: self.pending_acks.clone(),
