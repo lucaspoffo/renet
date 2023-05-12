@@ -85,6 +85,12 @@ impl NetcodeClientTransport {
         self.netcode_client.is_disconnected()
     }
 
+    /// Returns the duration since the client last received a packet.
+    /// Usefull to detect timeouts.
+    pub fn time_since_last_received_packet(&self) -> Duration {
+        self.netcode_client.time_since_last_received_packet()
+    }
+
     /// If the client is disconnected, returns the reason.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         self.netcode_client.disconnect_reason()

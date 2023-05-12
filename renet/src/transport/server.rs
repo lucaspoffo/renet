@@ -101,6 +101,12 @@ impl NetcodeServerTransport {
         self.netcode_server.user_data(client_id)
     }
 
+    /// Returns the duration since the connected client last received a packet.
+    /// Usefull to detect users that are timing out.
+    pub fn time_since_last_received_packet(&self, client_id: u64) -> Option<Duration> {
+        self.netcode_server.time_since_last_received_packet(client_id)
+    }
+
     pub fn update(&mut self, duration: Duration, reliable_server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         self.netcode_server.update(duration);
 
