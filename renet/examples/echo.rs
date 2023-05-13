@@ -67,7 +67,7 @@ fn server(addr: SocketAddr) {
     let connection_config = ConnectionConfig::default();
     let mut server: RenetServer = RenetServer::new(connection_config);
 
-    let socket = UdpSocket::bind(addr).unwrap();
+    let socket: UdpSocket = UdpSocket::bind(addr).unwrap();
     let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
@@ -135,7 +135,7 @@ fn client(server_addr: SocketAddr, username: Username) {
     };
 
     let mut transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
-    let stdin_channel = spawn_stdin_channel();
+    let stdin_channel: Receiver<String> = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
     loop {

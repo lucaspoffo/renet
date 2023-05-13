@@ -4,8 +4,7 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Renet is a network library for Server/Client games written in rust. Built on top of UDP,
-it is focused on fast-paced games such as FPS, and competitive games that need authentication.
+Renet is a network library for Server/Client games written in rust. It is focused on fast-paced games such as FPS, and competitive games.
 Provides the following features:
 
 - Client/Server connection management
@@ -13,8 +12,9 @@ Provides the following features:
 - Multiple types of channels:
     - Reliable: garantee delivery of all messages
     - Unreliable: messages that don't require any garantee of delivery or ordering
-    - Chunk Reliable: slice big messages to be sent in multiple frames (e.g. level initialization)
 - Packet fragmention and reassembly
+- Transport layer customization
+    - Disable the default transport layer and integrate your own
 
 Sections:
 * [Usage](#usage)
@@ -23,33 +23,44 @@ Sections:
 * [Visualizer](#visualizer)
 
 ## Usage
-Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`, messages sent during a frame - or that need to be resent - are aggregated and sent together with `sent_packets`.
+Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to client/server.
 
 #### Server
 ```rust
-let delta_time = Duration::from_millis(16);
-let mut server = RenetServer::new(...);
-let channel_id = 0;
+let mut server = RenetServer::new(ConnectionConfig::default());
+
+const GAME_PROTOCOL_ID: u64 = 0;
+const MAX_NUM_PLAYERS: usize = 64;
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+
+let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
+let server_config = ServerConfig::new(MAX_NUM_PLAYERS, PROTOCOL_ID, SERVER_ADDR,ServerAuthentication::Unsecure);
+let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+
+let channel_id: u8 = 0;
 
 // Your gameplay loop
 loop {
+    let delta_time = Duration::from_millis(16);
     // Receive new messages and update clients
     server.update(delta_time)?;
+    transport.update(delta_time, &mut server)?;
     
     // Check for client connections/disconnections
     while let Some(event) = server.get_event() {
         match event {
-            ServerEvent::ClientConnected(id, user_data) => {
-                println!("Client {} connected", id);
+            ServerEvent::ClientConnected { client_id } => {
+                println!("Client {client_id} connected");
             }
-            ServerEvent::ClientDisconnected(id) => {
-                println!("Client {} disconnected", id);
+            ServerEvent::ClientDisconnected { client_id, reason } => {
+                println!("Client {client_id} disconnected: {reason}");
             }
         }
     }
 
     // Receive message from channel
-    for client_id in server.clients_id().into_iter() {
+    for client_id in server.connections_id() {
         while let Some(message) = server.receive_message(client_id, channel_id) {
             // Handle received message
         }
@@ -59,25 +70,42 @@ loop {
     server.broadcast_message(channel_id, "server message".as_bytes().to_vec());
     
     // Send message to only one client
-    let client_id = ...;
+    let client_id = 0; 
     server.send_message(client_id, channel_id, "server message".as_bytes().to_vec());
  
     // Send packets to clients
-    server.send_packets()?;
+    transport.send_packets(&mut server)?;
 }
 ```
 
 #### Client
 
 ```rust
-let delta_time = Duration::from_millis(16);
-let mut client = RenetClient::new(...);
+let mut client = RenetClient::new(ConnectionConfig::default());
+
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+const GAME_PROTOCOL_ID: u64 = 0;
+
+let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+let client_id: u64 = 0;
+let authentication = ClientAuthentication::Unsecure {
+    server_addr: SERVER_ADDR,
+    client_id,
+    user_data: None,
+    protocol_id: GAME_PROTOCOL_ID,
+};
+
+let mut transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
+
 let channel_id = 0;
 
 // Your gameplay loop
 loop {
+    let delta_time = Duration::from_millis(16);
     // Receive new messages and update client
     client.update(delta_time)?;
+    transport.update(delta_time, &mut client).unwrap();
     
     if client.is_connected() {
         // Receive message from server
@@ -90,7 +118,7 @@ loop {
     }
  
     // Send packets to server
-    client.send_packets()?;
+    transport.send_packets(&mut client)?;
 }
 ```
 
