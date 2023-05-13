@@ -30,14 +30,14 @@ impl RenetServer {
     }
 
     /// Adds a new connection to the server. If a connection already exits it does nothing.
-    pub fn add_connection(&mut self, connection_id: u64) {
-        if self.connections.contains_key(&connection_id) {
+    pub fn add_connection(&mut self, client_id: u64) {
+        if self.connections.contains_key(&client_id) {
             return;
         }
 
         let connection = RenetClient::new_from_server(self.connection_config.clone());
-        self.connections.insert(connection_id, connection);
-        self.events.push_back(ServerEvent::ClientConnected { client_id: connection_id })
+        self.connections.insert(client_id, connection);
+        self.events.push_back(ServerEvent::ClientConnected { client_id })
     }
 
     /// Returns a server event if available
@@ -84,32 +84,32 @@ impl RenetServer {
     }
 
     /// Returns the packet loss for the client or 0.0 if the client is not found
-    pub fn packet_loss(&self, connection_id: u64) -> f64 {
-        match self.connections.get(&connection_id) {
+    pub fn packet_loss(&self, client_id: u64) -> f64 {
+        match self.connections.get(&client_id) {
             Some(connection) => connection.packet_loss(),
             None => 0.0,
         }
     }
 
     /// Returns the bytes sent per seconds for the client or 0.0 if the client is not found
-    pub fn bytes_sent_per_sec(&self, connection_id: u64) -> f64 {
-        match self.connections.get(&connection_id) {
+    pub fn bytes_sent_per_sec(&self, client_id: u64) -> f64 {
+        match self.connections.get(&client_id) {
             Some(connection) => connection.bytes_sent_per_sec(),
             None => 0.0,
         }
     }
 
     /// Returns the bytes received per seconds for the client or 0.0 if the client is not found
-    pub fn bytes_received_per_sec(&self, connection_id: u64) -> f64 {
-        match self.connections.get(&connection_id) {
+    pub fn bytes_received_per_sec(&self, client_id: u64) -> f64 {
+        match self.connections.get(&client_id) {
             Some(connection) => connection.bytes_received_per_sec(),
             None => 0.0,
         }
     }
 
     /// Returns all network informations for the client
-    pub fn network_info(&self, connection_id: u64) -> Result<NetworkInfo, ClientNotFound> {
-        match self.connections.get(&connection_id) {
+    pub fn network_info(&self, client_id: u64) -> Result<NetworkInfo, ClientNotFound> {
+        match self.connections.get(&client_id) {
             Some(connection) => Ok(connection.network_info()),
             None => Err(ClientNotFound),
         }
@@ -118,11 +118,11 @@ impl RenetServer {
     /// Removes a connection from the server, emits an disconnect server event.
     /// It does nothing if the client does not exits.
     /// This should be called by the transport layer.
-    pub fn remove_connection(&mut self, connection_id: u64) {
-        if let Some(connection) = self.connections.remove(&connection_id) {
+    pub fn remove_connection(&mut self, client_id: u64) {
+        if let Some(connection) = self.connections.remove(&client_id) {
             let reason = connection.disconnect_reason().unwrap_or(DisconnectReason::Transport);
             self.events.push_back(ServerEvent::ClientDisconnected {
-                client_id: connection_id,
+                client_id,
                 reason,
             });
         }
@@ -176,16 +176,16 @@ impl RenetServer {
     }
 
     /// Send a message to a client over a channel.
-    pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, connection_id: u64, channel_id: I, message: B) {
-        match self.connections.get_mut(&connection_id) {
+    pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, client_id: u64, channel_id: I, message: B) {
+        match self.connections.get_mut(&client_id) {
             Some(connection) => connection.send_message(channel_id, message),
-            None => log::error!("Tried to send a message to invalid client {:?}", connection_id),
+            None => log::error!("Tried to send a message to invalid client {:?}", client_id),
         }
     }
 
     /// Receive a message from a client over a channel.
-    pub fn receive_message<I: Into<u8>>(&mut self, connection_id: u64, channel_id: I) -> Option<Bytes> {
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
+    pub fn receive_message<I: Into<u8>>(&mut self, client_id: u64, channel_id: I) -> Option<Bytes> {
+        if let Some(connection) = self.connections.get_mut(&client_id) {
             return connection.receive_message(channel_id);
         }
         None
@@ -236,8 +236,8 @@ impl RenetServer {
 
     /// Process a packet received from the client.
     /// This should be called by the transport layer.
-    pub fn process_packet_from(&mut self, payload: &[u8], connection_id: u64) -> Result<(), ClientNotFound> {
-        match self.connections.get_mut(&connection_id) {
+    pub fn process_packet_from(&mut self, payload: &[u8], client_id: u64) -> Result<(), ClientNotFound> {
+        match self.connections.get_mut(&client_id) {
             Some(connection) => {
                 connection.process_packet(payload);
                 Ok(())
