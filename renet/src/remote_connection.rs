@@ -11,10 +11,15 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::time::Duration;
 
+/// Configuration for a renet connection and its channels.
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
+    /// The number of bytes that is available per update tick to send messages.
+    /// Default: 30_000, at 60hz this is becomes 14.4 Mbps
     pub available_bytes_per_tick: u64,
+    /// The channels that the server sends to the client.
     pub server_channels_config: Vec<ChannelConfig>,
+    /// The channels that the client sends to the server.
     pub client_channels_config: Vec<ChannelConfig>,
 }
 
@@ -82,8 +87,8 @@ pub struct RenetClient {
 impl Default for ConnectionConfig {
     fn default() -> Self {
         Self {
-            // At 60 hz, this becomes 2.4 mbps
-            available_bytes_per_tick: 60 * 1024,
+            // At 60 hz, this becomes 21.6 Mbps
+            available_bytes_per_tick: 45_000,
             server_channels_config: DefaultChannel::config(),
             client_channels_config: DefaultChannel::config(),
         }
@@ -176,22 +181,27 @@ impl RenetClient {
         }
     }
 
+    /// Returns the round-time trip for the connection.
     pub fn rtt(&self) -> f64 {
         self.rtt
     }
 
+    /// Returns the packet loss for the connection.
     pub fn packet_loss(&self) -> f64 {
         self.stats.packet_loss()
     }
 
+    /// Returns the bytes sent per second in the connection.
     pub fn bytes_sent_per_sec(&self) -> f64 {
         self.stats.bytes_sent_per_second(self.current_time)
     }
 
+    /// Returns the bytes received per second in the connection.
     pub fn bytes_received_per_sec(&self) -> f64 {
         self.stats.bytes_received_per_second(self.current_time)
     }
 
+    /// Returns all network informations for the connection.
     pub fn network_info(&self) -> NetworkInfo {
         NetworkInfo {
             rtt: self.rtt,
@@ -211,10 +221,13 @@ impl RenetClient {
         self.disconnect_reason.is_none()
     }
 
+    /// Returns the disconneect reason if the client is disconnected.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         self.disconnect_reason
     }
 
+    /// Disconnects the clients.
+    /// If the client is already disconnected, it does nothing.
     pub fn disconnect(&mut self) {
         if self.disconnect_reason.is_some() {
             return;
@@ -228,6 +241,7 @@ impl RenetClient {
     //     channel.can_send_message()
     // }
 
+    /// Send a message to the server over a channel.
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
         if self.is_disconnected() {
             return;
@@ -245,6 +259,7 @@ impl RenetClient {
         }
     }
 
+    /// Receive a message from the server over a channel.
     pub fn receive_message<I: Into<u8>>(&mut self, channel_id: I) -> Option<Bytes> {
         if self.is_disconnected() {
             return None;
@@ -260,9 +275,15 @@ impl RenetClient {
         }
     }
 
-    pub fn advance_time(&mut self, duration: Duration) {
+    /// Advances the client by the duration
+    /// Should be called every tick
+    pub fn update(&mut self, duration: Duration) {
         self.current_time += duration;
         self.stats.update(self.current_time);
+
+        for unreliable_channel in self.receive_unreliable_channels.values_mut() {
+            unreliable_channel.discard_incomplete_old_slices(self.current_time);
+        }
 
         // Discard lost packets
         let mut lost_packets: Vec<u64> = Vec::new();
@@ -280,12 +301,10 @@ impl RenetClient {
         for sequence in lost_packets.iter() {
             self.sent_packets.remove(sequence);
         }
-
-        for unreliable_channel in self.receive_unreliable_channels.values_mut() {
-            unreliable_channel.discard_incomplete_old_slices(self.current_time);
-        }
     }
 
+    /// Process a packet received from the server.
+    /// This should be called by the transport layer.
     pub fn process_packet(&mut self, packet: &[u8]) {
         if self.is_disconnected() {
             return;
@@ -414,6 +433,8 @@ impl RenetClient {
         }
     }
 
+    /// Returns a list of packets to be sent to the server.
+    /// This should be called by the transport layer.
     pub fn get_packets_to_send(&mut self) -> Vec<Payload> {
         let mut packets: Vec<Packet> = vec![];
         if self.is_disconnected() {
@@ -678,10 +699,10 @@ mod tests {
         connection.get_packets_to_send();
         assert_eq!(connection.sent_packets.len(), 1);
 
-        connection.advance_time(Duration::from_secs(1));
+        connection.update(Duration::from_secs(1));
         assert_eq!(connection.sent_packets.len(), 1);
 
-        connection.advance_time(Duration::from_secs(4));
+        connection.update(Duration::from_secs(4));
         assert_eq!(connection.sent_packets.len(), 0);
     }
 }

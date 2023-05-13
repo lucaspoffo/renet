@@ -32,7 +32,7 @@ impl Plugin for RenetServerPlugin {
 
 impl RenetServerPlugin {
     pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time>, mut server_events: EventWriter<ServerEvent>) {
-        server.advance_time(time.delta());
+        server.update(time.delta());
 
         while let Some(event) = server.get_event() {
             server_events.send(event);
@@ -50,7 +50,7 @@ impl Plugin for RenetClientPlugin {
 
 impl RenetClientPlugin {
     pub fn update_system(mut client: ResMut<RenetClient>, time: Res<Time>) {
-        client.advance_time(time.delta());
+        client.update(time.delta());
     }
 }
 

@@ -12,16 +12,17 @@ use crate::remote_connection::RenetClient;
 
 use super::NetcodeTransportError;
 
+/// Configuration to establishe an secure ou unsecure connection with the server.
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientAuthentication {
-    /// Establishes a safe connection with the server using the [ConnectToken].
+    /// Establishes a safe connection with the server using the [crate::transport::ConnectToken].
     ///
-    /// See also [ServerAuthentication::Secure][crate::ServerAuthentication::Secure]
+    /// See also [crate::transport::ServerAuthentication::Secure]
     Secure { connect_token: ConnectToken },
     /// Establishes an unsafe connection with the server, useful for testing and prototyping.
     ///
-    /// See also [ServerAuthentication::Unsecure][crate::ServerAuthentication::Unsecure]
+    /// See also [crate::transport::ServerAuthentication::Unsecure]
     Unsecure {
         protocol_id: u64,
         client_id: u64,
@@ -96,6 +97,8 @@ impl NetcodeClientTransport {
         self.netcode_client.disconnect_reason()
     }
 
+    /// Send packets to the server.
+    /// Should be called every tick
     pub fn send_packets(&mut self, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
             return Err(NetcodeError::Disconnected(reason).into());
@@ -110,6 +113,7 @@ impl NetcodeClientTransport {
         Ok(())
     }
 
+    /// Advances the transport by the duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
             return Err(NetcodeError::Disconnected(reason).into());

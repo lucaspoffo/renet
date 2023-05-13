@@ -167,7 +167,7 @@ impl ChatApp {
                 messages,
                 visualizer,
             } => {
-                client.advance_time(duration);
+                client.update(duration);
                 if let Err(e) = transport.update(duration, client) {
                     self.state = AppState::main_screen();
                     self.ui_state.error = Some(e.to_string());

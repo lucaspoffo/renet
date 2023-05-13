@@ -81,7 +81,7 @@ fn server(addr: SocketAddr) {
         let duration = now - last_updated;
         last_updated = now;
 
-        server.advance_time(duration);
+        server.update(duration);
         transport.update(duration, &mut server).unwrap();
 
         received_messages.clear();
@@ -143,7 +143,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         let duration = now - last_updated;
         last_updated = now;
 
-        client.advance_time(duration);
+        client.update(duration);
         transport.update(duration, &mut client).unwrap();
 
         if client.is_connected() {

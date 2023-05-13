@@ -40,6 +40,23 @@ impl RenetServer {
         self.events.push_back(ServerEvent::ClientConnected { client_id: connection_id })
     }
 
+    /// Returns a server event if available
+    ///
+    /// # Usage
+    /// ```
+    /// # use renet::{RenetServer, ConnectionConfig, ServerEvent};
+    /// # let mut server = RenetServer::new(ConnectionConfig::default());
+    /// while let Some(event) = server.get_event() {
+    ///     match event {
+    ///         ServerEvent::ClientConnected { client_id } => {
+    ///             println!("Client {client_id} connected.")
+    ///         }
+    ///         ServerEvent::ClientDisconnected { client_id, reason } => {
+    ///             println!("Client {client_id} disconnected: {reason}");
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub fn get_event(&mut self) -> Option<ServerEvent> {
         self.events.pop_front()
     }
@@ -49,21 +66,24 @@ impl RenetServer {
         !self.connections.is_empty()
     }
 
-    pub fn disconnect_reason(&self, connection_id: u64) -> Option<DisconnectReason> {
-        if let Some(connection) = self.connections.get(&connection_id) {
+    /// Returns the disconnection reason for the client if its disconnected
+    pub fn disconnect_reason(&self, client_id: u64) -> Option<DisconnectReason> {
+        if let Some(connection) = self.connections.get(&client_id) {
             return connection.disconnect_reason();
         }
 
         None
     }
 
-    pub fn rtt(&self, connection_id: u64) -> f64 {
-        match self.connections.get(&connection_id) {
+    /// Returns the round-time trip for the client or 0.0 if the client is not found
+    pub fn rtt(&self, client_id: u64) -> f64 {
+        match self.connections.get(&client_id) {
             Some(connection) => connection.rtt(),
             None => 0.0,
         }
     }
 
+    /// Returns the packet loss for the client or 0.0 if the client is not found
     pub fn packet_loss(&self, connection_id: u64) -> f64 {
         match self.connections.get(&connection_id) {
             Some(connection) => connection.packet_loss(),
@@ -71,6 +91,7 @@ impl RenetServer {
         }
     }
 
+    /// Returns the bytes sent per seconds for the client or 0.0 if the client is not found
     pub fn bytes_sent_per_sec(&self, connection_id: u64) -> f64 {
         match self.connections.get(&connection_id) {
             Some(connection) => connection.bytes_sent_per_sec(),
@@ -78,6 +99,7 @@ impl RenetServer {
         }
     }
 
+    /// Returns the bytes received per seconds for the client or 0.0 if the client is not found
     pub fn bytes_received_per_sec(&self, connection_id: u64) -> f64 {
         match self.connections.get(&connection_id) {
             Some(connection) => connection.bytes_received_per_sec(),
@@ -85,6 +107,7 @@ impl RenetServer {
         }
     }
 
+    /// Returns all network informations for the client
     pub fn network_info(&self, connection_id: u64) -> Result<NetworkInfo, ClientNotFound> {
         match self.connections.get(&connection_id) {
             Some(connection) => Ok(connection.network_info()),
@@ -92,6 +115,9 @@ impl RenetServer {
         }
     }
 
+    /// Removes a connection from the server, emits an disconnect server event.
+    /// It does nothing if the client does not exits.
+    /// This should be called by the transport layer.
     pub fn remove_connection(&mut self, connection_id: u64) {
         if let Some(connection) = self.connections.remove(&connection_id) {
             let reason = connection.disconnect_reason().unwrap_or(DisconnectReason::Transport);
@@ -102,14 +128,16 @@ impl RenetServer {
         }
     }
 
-    pub fn disconnect(&mut self, connection_id: u64) {
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
+    /// Disconnects a client, it does nothing if the client does not exits.
+    pub fn disconnect(&mut self, client_id: u64) {
+        if let Some(connection) = self.connections.get_mut(&client_id) {
             if connection.is_connected() {
                 connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
             }
         }
     }
 
+    /// Disconnects all client.
     pub fn disconnect_all(&mut self) {
         for connection in self.connections.values_mut() {
             if connection.is_connected() {
@@ -118,6 +146,14 @@ impl RenetServer {
         }
     }
 
+    // pub fn can_send_message<I: Into<u8>>(&self, connection_id: &C, channel_id: I) -> bool {
+    //     match self.connections.get(connection_id) {
+    //         Some(connection) => connection.can_send_message(channel_id),
+    //         None => false,
+    //     }
+    // }
+
+    /// Send a message to all clients over a channel.
     pub fn broadcast_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
         let channel_id = channel_id.into();
         let message = message.into();
@@ -126,6 +162,7 @@ impl RenetServer {
         }
     }
 
+    /// Send a message to all clients, except the specified one, over a channel.
     pub fn broadcast_message_except<I: Into<u8>, B: Into<Bytes>>(&mut self, except_id: u64, channel_id: I, message: B) {
         let channel_id = channel_id.into();
         let message = message.into();
@@ -138,13 +175,7 @@ impl RenetServer {
         }
     }
 
-    // pub fn can_send_message<I: Into<u8>>(&self, connection_id: &C, channel_id: I) -> bool {
-    //     match self.connections.get(connection_id) {
-    //         Some(connection) => connection.can_send_message(channel_id),
-    //         None => false,
-    //     }
-    // }
-
+    /// Send a message to a client over a channel.
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, connection_id: u64, channel_id: I, message: B) {
         match self.connections.get_mut(&connection_id) {
             Some(connection) => connection.send_message(channel_id, message),
@@ -152,6 +183,7 @@ impl RenetServer {
         }
     }
 
+    /// Receive a message from a client over a channel.
     pub fn receive_message<I: Into<u8>>(&mut self, connection_id: u64, channel_id: I) -> Option<Bytes> {
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             return connection.receive_message(channel_id);
@@ -159,6 +191,7 @@ impl RenetServer {
         None
     }
 
+    /// Return ids for all connected clients
     pub fn connections_id(&self) -> Vec<u64> {
         self.connections
             .iter()
@@ -167,6 +200,7 @@ impl RenetServer {
             .collect()
     }
 
+    /// Return ids for all disconnected clients
     pub fn disconnections_id(&self) -> Vec<u64> {
         self.connections
             .iter()
@@ -175,23 +209,33 @@ impl RenetServer {
             .collect()
     }
 
-    pub fn is_connected(&self, connection_id: u64) -> bool {
-        self.connections.contains_key(&connection_id)
+    pub fn is_connected(&self, client_id: u64) -> bool {
+        if let Some(connection) = self.connections.get(&client_id) {
+            return connection.is_connected();
+        }
+
+        false
     }
 
-    pub fn advance_time(&mut self, duration: Duration) {
+    /// Advances the server by the duration.
+    /// Should be called every tick
+    pub fn update(&mut self, duration: Duration) {
         for connection in self.connections.values_mut() {
-            connection.advance_time(duration);
+            connection.update(duration);
         }
     }
 
-    pub fn get_packets_to_send(&mut self, connection_id: u64) -> Result<Vec<Payload>, ClientNotFound> {
-        match self.connections.get_mut(&connection_id) {
+    /// Returns a list of packets to be sent to the client.
+    /// This should be called by the transport layer.
+    pub fn get_packets_to_send(&mut self, client_id: u64) -> Result<Vec<Payload>, ClientNotFound> {
+        match self.connections.get_mut(&client_id) {
             Some(connection) => Ok(connection.get_packets_to_send()),
             None => Err(ClientNotFound),
         }
     }
 
+    /// Process a packet received from the client.
+    /// This should be called by the transport layer.
     pub fn process_packet_from(&mut self, payload: &[u8], connection_id: u64) -> Result<(), ClientNotFound> {
         match self.connections.get_mut(&connection_id) {
             Some(connection) => {

@@ -14,14 +14,13 @@ use super::NetcodeTransportError;
 #[derive(Debug)]
 pub enum ServerAuthentication {
     /// Establishes a safe connection using a private key for encryption. The private key cannot be
-    /// shared with the client. Connections are stablished using
-    /// [ConnectTokens][crate::ConnectToken].
+    /// shared with the client. Connections are stablished using [crate::transport::ConnectToken].
     ///
     /// See also [ClientAuthentication::Secure][crate::ClientAuthentication::Secure]
     Secure { private_key: [u8; NETCODE_KEY_BYTES] },
     /// Establishes unsafe connections with clients, useful for testing and prototyping.
     ///
-    /// See also [ClientAuthentication::Unsecure][crate::ClientAuthentication::Unsecure]
+    /// See also [ClientAuthentication::Unsecure][crate::transport::ClientAuthentication::Unsecure]
     Unsecure,
 }
 
@@ -107,6 +106,7 @@ impl NetcodeServerTransport {
         self.netcode_server.time_since_last_received_packet(client_id)
     }
 
+    /// Advances the transport by the duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration, reliable_server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         self.netcode_server.update(duration);
 

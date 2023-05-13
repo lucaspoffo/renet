@@ -73,7 +73,7 @@ impl ChatServer {
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
-        self.server.advance_time(duration);
+        self.server.update(duration);
         self.transport.update(duration, &mut self.server).unwrap();
 
         self.visualizer.update(&self.server);
