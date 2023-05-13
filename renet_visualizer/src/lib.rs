@@ -103,7 +103,7 @@ impl<const N: usize> RenetClientVisualizer<N> {
     /// # let mut client = RenetClient::new(ConnectionConfig::default());
     /// # let delta = std::time::Duration::ZERO;
     /// # let mut visualizer = RenetClientVisualizer::<5>::new(Default::default());
-    /// client.advance_time(delta);
+    /// client.update(delta);
     /// visualizer.add_network_info(client.network_info());
     /// ```
     pub fn add_network_info(&mut self, network_info: NetworkInfo) {
@@ -256,7 +256,7 @@ impl<const N: usize> RenetServerVisualizer<N> {
     /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// # let delta = std::time::Duration::ZERO;
-    /// renet_server.advance_time(delta);
+    /// renet_server.update(delta);
     /// visualizer.update(&renet_server);
     /// ```
     pub fn update(&mut self, server: &RenetServer) {
