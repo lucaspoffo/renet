@@ -151,7 +151,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         client.update(duration);
         transport.update(duration, &mut client).unwrap();
 
-        if client.is_connected() {
+        if transport.is_connected() {
             match stdin_channel.try_recv() {
                 Ok(text) => client.send_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec()),
                 Err(TryRecvError::Empty) => {}

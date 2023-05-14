@@ -105,7 +105,9 @@ impl NetcodeServerTransport {
                     let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
                     handle_server_result(server_result, &self.socket, reliable_server)?;
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => break,
+                Err(ref e) if e.kind() == io::ErrorKind::ConnectionReset => continue,
                 Err(e) => return Err(e.into()),
             };
         }
