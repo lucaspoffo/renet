@@ -8,17 +8,23 @@ pub(crate) use slice_constructor::SliceConstructor;
 
 #[derive(Debug, Clone)]
 pub enum SendType {
+    // Messages can be lost or received out of order.
     Unreliable,
-    ReliableOrdered { resend_time: Duration },
-    ReliableUnordered { resend_time: Duration },
+    /// Messages are guaranteed to be received and in the same order they were sent.
+    ReliableOrdered {
+        resend_time: Duration,
+    },
+    /// Messages are guaranteed to be received but may be in an different order that they were sent.
+    ReliableUnordered {
+        resend_time: Duration,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct ChannelConfig {
-    /// Channel identifier, unique between all channels
+    /// Channel identifier, must be unique within its own list,
+    /// but it can be repeated between the server and client lists.
     pub channel_id: u8,
-    /// Maximum nuber of bytes that this channel is allowed to write per packet
-    // pub packet_budget: u64,
     /// Maximum number of bytes that the channel may hold
     /// Unreliable channels will drop new messages when this value is reached
     /// Reliable channels will cause a disconnect when this value is reached
@@ -27,7 +33,7 @@ pub struct ChannelConfig {
 }
 
 /// Default channels used when using the default configuration.
-/// Use this enum only when using the default channels configuration.
+/// This an utility enum when using the default channels configuration.
 pub enum DefaultChannel {
     Unreliable,
     ReliableOrdered,

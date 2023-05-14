@@ -18,8 +18,14 @@ pub struct ConnectionConfig {
     /// Default: 30_000, at 60hz this is becomes 14.4 Mbps
     pub available_bytes_per_tick: u64,
     /// The channels that the server sends to the client.
+    /// The order of the channels in this Vec determines which channel has priority when generating packets.
+    /// Each tick, the first channel can consume up to `available_bytes_per_tick`,
+    /// used bytes are removed from it and passed to the next channel
     pub server_channels_config: Vec<ChannelConfig>,
     /// The channels that the client sends to the server.
+    /// The order of the channels in this Vec determines which channel has priority when generating packets.
+    /// Each tick, the first channel can consume up to `available_bytes_per_tick`,
+    /// used bytes are removed from it and passed to the next channel
     pub client_channels_config: Vec<ChannelConfig>,
 }
 

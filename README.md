@@ -22,6 +22,36 @@ Sections:
 * [Plugins](#plugins)
 * [Visualizer](#visualizer)
 
+## Channels
+Renet communication is message based, and channels describe how the messages should be delivered.
+Channels are unilateral, `ConnectionConfig.client_channels_config` describes the channels that the clients sends to the server, and `ConnectionConfig.server_channels_config` describes the channels that the server sends to the clients.
+
+Each channel has its own configuration `ChannelConfig`:
+
+```rust
+// No garantee of message delivery or order
+let send_type = SendType::Unreliable;
+// Garantee of message delivery and order
+let send_type = SendType::ReliableOrdered {
+    // If a message is lost, it will be resent after this duration
+    resend_time: Duration::from_millis(300)
+};
+
+// Garantee of message delivery but not order
+let send_type = SendType::ReliableOrdered {
+    resend_time: Duration::from_millis(300)
+};
+
+let channel_config = ChannelConfig {
+    // The id for the channel, must be unique within its own list,
+    // but it can be repeated between the server and client lists.
+    channel_id: 0,
+    // How much memory can messages consume before the channel gets full
+    max_memory_usage_bytes: 5 * 1024 * 1024, // 5 megabytes
+    send_type
+};
+```
+
 ## Usage
 Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to the client/server.
 
