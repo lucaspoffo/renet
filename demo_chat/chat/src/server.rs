@@ -29,15 +29,20 @@ pub struct ChatServer {
 impl ChatServer {
     pub fn new(lobby_name: String, host_username: String, password: String) -> Self {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let server_addr = socket.local_addr().unwrap();
+        let public_addr = socket.local_addr().unwrap();
         let private_key = generate_random_bytes();
-        let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Secure { private_key });
+        let server_config = ServerConfig {
+            max_clients: 64,
+            protocol_id: PROTOCOL_ID,
+            public_addr,
+            authentication: ServerAuthentication::Secure { private_key },
+        };
 
         let password = if password.is_empty() { None } else { Some(password) };
 
         let register_server = RegisterServer {
             name: lobby_name,
-            address: server_addr,
+            address: public_addr,
             max_clients: server_config.max_clients as u64,
             private_key,
             password,

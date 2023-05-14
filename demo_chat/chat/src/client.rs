@@ -258,7 +258,7 @@ fn create_renet_client_from_token(connect_token: ConnectToken) -> (RenetClient, 
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let authentication = ClientAuthentication::Secure { connect_token };
 
-    let transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
     (client, transport)
 }

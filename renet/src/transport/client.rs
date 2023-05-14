@@ -40,7 +40,7 @@ pub struct NetcodeClientTransport {
 }
 
 impl NetcodeClientTransport {
-    pub fn new(socket: UdpSocket, current_time: Duration, authentication: ClientAuthentication) -> Result<Self, NetcodeError> {
+    pub fn new(current_time: Duration, authentication: ClientAuthentication, socket: UdpSocket) -> Result<Self, NetcodeError> {
         socket.set_nonblocking(true)?;
         let connect_token: ConnectToken = match authentication {
             ClientAuthentication::Unsecure {

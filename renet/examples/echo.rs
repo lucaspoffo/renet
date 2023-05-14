@@ -63,12 +63,17 @@ fn main() {
 
 const PROTOCOL_ID: u64 = 7;
 
-fn server(addr: SocketAddr) {
+fn server(public_addr: SocketAddr) {
     let connection_config = ConnectionConfig::default();
     let mut server: RenetServer = RenetServer::new(connection_config);
 
-    let socket: UdpSocket = UdpSocket::bind(addr).unwrap();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, addr, ServerAuthentication::Unsecure);
+    let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
+    let server_config = ServerConfig {
+        max_clients: 64,
+        protocol_id: PROTOCOL_ID,
+        public_addr,
+        authentication: ServerAuthentication::Unsecure,
+    };
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
 
@@ -134,7 +139,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         protocol_id: PROTOCOL_ID,
     };
 
-    let mut transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
+    let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
     let stdin_channel: Receiver<String> = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

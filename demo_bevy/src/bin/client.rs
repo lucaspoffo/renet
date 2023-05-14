@@ -53,7 +53,7 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
         user_data: None,
     };
 
-    let transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
     (client, transport)
 }

@@ -40,9 +40,14 @@ struct BotId(u64);
 fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
     let server = RenetServer::new(connection_config());
 
-    let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let socket = UdpSocket::bind(server_addr).unwrap();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
+    let public_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket = UdpSocket::bind(public_addr).unwrap();
+    let server_config = ServerConfig {
+        max_clients: 64,
+        protocol_id: PROTOCOL_ID,
+        public_addr,
+        authentication: ServerAuthentication::Unsecure,
+    };
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
     let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();

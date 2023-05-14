@@ -48,17 +48,6 @@ pub struct NetcodeServerTransport {
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
-impl ServerConfig {
-    pub fn new(max_clients: usize, protocol_id: u64, public_addr: SocketAddr, authentication: ServerAuthentication) -> Self {
-        Self {
-            max_clients,
-            protocol_id,
-            public_addr,
-            authentication,
-        }
-    }
-}
-
 impl NetcodeServerTransport {
     pub fn new(current_time: Duration, server_config: ServerConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;

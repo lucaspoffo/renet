@@ -56,7 +56,7 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
         user_data: None,
     };
 
-    let transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
     (client, transport)
 }
@@ -64,9 +64,14 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
 fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
     let server = RenetServer::new(ConnectionConfig::default());
 
-    let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let socket = UdpSocket::bind(server_addr).unwrap();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
+    let public_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket = UdpSocket::bind(public_addr).unwrap();
+    let server_config = ServerConfig {
+        max_clients: 64,
+        protocol_id: PROTOCOL_ID,
+        public_addr,
+        authentication: ServerAuthentication::Unsecure,
+    };
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
     let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
