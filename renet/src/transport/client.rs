@@ -12,7 +12,7 @@ use crate::remote_connection::RenetClient;
 
 use super::NetcodeTransportError;
 
-/// Configuration to establishe an secure ou unsecure connection with the server.
+/// Configuration to establish an secure ou unsecure connection with the server.
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientAuthentication {
@@ -105,7 +105,7 @@ impl NetcodeClientTransport {
         }
 
         let packets = connection.get_packets_to_send();
-        for packet in packets.into_iter() {
+        for packet in packets {
             let (addr, payload) = self.netcode_client.generate_payload_packet(&packet)?;
             self.socket.send_to(payload, addr)?;
         }

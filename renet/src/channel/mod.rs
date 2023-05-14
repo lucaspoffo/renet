@@ -6,6 +6,7 @@ use std::time::Duration;
 
 pub(crate) use slice_constructor::SliceConstructor;
 
+/// Delivery garantee of a channel
 #[derive(Debug, Clone)]
 pub enum SendType {
     // Messages can be lost or received out of order.
@@ -20,6 +21,8 @@ pub enum SendType {
     },
 }
 
+/// Configuration of a channel for a server or client
+/// Channels are unilateral and message based.
 #[derive(Debug, Clone)]
 pub struct ChannelConfig {
     /// Channel identifier, must be unique within its own list,

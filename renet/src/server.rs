@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 
+/// Connection and disconnection events in the server.
 #[derive(Debug)]
 pub enum ServerEvent {
     ClientConnected { client_id: u64 },
@@ -30,6 +31,7 @@ impl RenetServer {
     }
 
     /// Adds a new connection to the server. If a connection already exits it does nothing.
+    /// This should be called by the transport layer when a new client has connected
     pub fn add_connection(&mut self, client_id: u64) {
         if self.connections.contains_key(&client_id) {
             return;
@@ -117,7 +119,7 @@ impl RenetServer {
 
     /// Removes a connection from the server, emits an disconnect server event.
     /// It does nothing if the client does not exits.
-    /// This should be called by the transport layer.
+    /// This should be called by the transport layer when a client disconnects
     pub fn remove_connection(&mut self, client_id: u64) {
         if let Some(connection) = self.connections.remove(&client_id) {
             let reason = connection.disconnect_reason().unwrap_or(DisconnectReason::Transport);

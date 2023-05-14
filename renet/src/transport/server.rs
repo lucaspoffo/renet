@@ -16,7 +16,7 @@ pub enum ServerAuthentication {
     /// Establishes a safe connection using a private key for encryption. The private key cannot be
     /// shared with the client. Connections are stablished using [crate::transport::ConnectToken].
     ///
-    /// See also [ClientAuthentication::Secure][crate::ClientAuthentication::Secure]
+    /// See also [ClientAuthentication::Secure][crate::transport::ClientAuthentication::Secure]
     Secure { private_key: [u8; NETCODE_KEY_BYTES] },
     /// Establishes unsafe connections with clients, useful for testing and prototyping.
     ///
@@ -24,7 +24,7 @@ pub enum ServerAuthentication {
     Unsecure,
 }
 
-/// Configuration options for the renet server.
+/// Configuration options for the server transport.
 #[derive(Debug)]
 pub struct ServerConfig {
     /// Maximum numbers of clients that can be connected at a time

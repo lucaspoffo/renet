@@ -61,6 +61,7 @@ enum ChannelOrder {
     Unreliable(u8),
 }
 
+/// Describes the stats of a connection.
 pub struct NetworkInfo {
     /// Round-trip Time
     pub rtt: f64,
