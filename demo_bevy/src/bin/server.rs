@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
+use std::{collections::HashMap, f32::consts::PI, net::UdpSocket, time::SystemTime};
 
 use bevy::{
     app::AppExit,
@@ -9,12 +9,16 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
-    renet::{RenetServer, ServerAuthentication, ServerConfig, ServerEvent},
+    renet::{
+        transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
+        RenetServer, ServerEvent,
+    },
+    transport::NetcodeServerPlugin,
     RenetServerPlugin,
 };
 use demo_bevy::{
-    server_connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput,
-    Projectile, ServerChannel, ServerMessages, PROTOCOL_ID,
+    connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile,
+    ServerChannel, ServerMessages, PROTOCOL_ID,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -25,20 +29,38 @@ pub struct ServerLobby {
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
 
-fn new_renet_server() -> RenetServer {
-    let server_addr = "127.0.0.1:5000".parse().unwrap();
-    let socket = UdpSocket::bind(server_addr).unwrap();
-    let connection_config = server_connection_config();
-    let server_config = ServerConfig::new(64, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
+#[derive(Debug, Component)]
+struct Bot {
+    auto_cast: Timer,
+}
+
+#[derive(Debug, Resource)]
+struct BotId(u64);
+
+fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
+    let server = RenetServer::new(connection_config());
+
+    let public_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket = UdpSocket::bind(public_addr).unwrap();
+    let server_config = ServerConfig {
+        max_clients: 64,
+        protocol_id: PROTOCOL_ID,
+        public_addr,
+        authentication: ServerAuthentication::Unsecure,
+    };
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    RenetServer::new(current_time, server_config, connection_config, socket).unwrap()
+
+    let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+
+    (server, transport)
 }
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
 
-    app.add_plugin(RenetServerPlugin::default());
+    app.add_plugin(RenetServerPlugin);
+    app.add_plugin(NetcodeServerPlugin);
     app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
     app.add_plugin(RapierDebugRenderPlugin::default());
     app.add_plugin(FrameTimeDiagnosticsPlugin::default());
@@ -46,7 +68,12 @@ fn main() {
     app.add_plugin(EguiPlugin);
 
     app.insert_resource(ServerLobby::default());
-    app.insert_resource(new_renet_server());
+    app.insert_resource(BotId(0));
+
+    let (server, transport) = new_renet_server();
+    app.insert_resource(server);
+    app.insert_resource(transport);
+
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
     app.add_systems((
@@ -56,6 +83,8 @@ fn main() {
         update_projectiles_system,
         update_visulizer_system,
         despawn_projectile_system,
+        spawn_bot,
+        bot_autocast,
     ));
     app.add_systems((projectile_on_removal_system, disconnect_clients_on_exit.after(exit_on_all_closed)).in_base_set(CoreSet::PostUpdate));
 
@@ -77,9 +106,9 @@ fn server_update_system(
 ) {
     for event in server_events.iter() {
         match event {
-            ServerEvent::ClientConnected(id, _) => {
-                println!("Player {} connected.", id);
-                visualizer.add_client(*id);
+            ServerEvent::ClientConnected { client_id } => {
+                println!("Player {} connected.", client_id);
+                visualizer.add_client(*client_id);
 
                 // Initialize other players for this new client
                 for (entity, player, transform) in players.iter() {
@@ -90,11 +119,11 @@ fn server_update_system(
                         translation,
                     })
                     .unwrap();
-                    server.send_message(*id, ServerChannel::ServerMessages, message);
+                    server.send_message(*client_id, ServerChannel::ServerMessages, message);
                 }
 
                 // Spawn new player
-                let transform = Transform::from_xyz(0.0, 0.51, 0.0);
+                let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
                 let player_entity = commands
                     .spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(shape::Capsule::default())),
@@ -107,34 +136,34 @@ fn server_update_system(
                     .insert(Collider::capsule_y(0.5, 0.5))
                     .insert(PlayerInput::default())
                     .insert(Velocity::default())
-                    .insert(Player { id: *id })
+                    .insert(Player { id: *client_id })
                     .id();
 
-                lobby.players.insert(*id, player_entity);
+                lobby.players.insert(*client_id, player_entity);
 
                 let translation: [f32; 3] = transform.translation.into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {
-                    id: *id,
+                    id: *client_id,
                     entity: player_entity,
                     translation,
                 })
                 .unwrap();
                 server.broadcast_message(ServerChannel::ServerMessages, message);
             }
-            ServerEvent::ClientDisconnected(id) => {
-                println!("Player {} disconnected.", id);
-                visualizer.remove_client(*id);
-                if let Some(player_entity) = lobby.players.remove(id) {
+            ServerEvent::ClientDisconnected { client_id, reason } => {
+                println!("Player {} disconnected: {}", client_id, reason);
+                visualizer.remove_client(*client_id);
+                if let Some(player_entity) = lobby.players.remove(client_id) {
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *client_id }).unwrap();
                 server.broadcast_message(ServerChannel::ServerMessages, message);
             }
         }
     }
 
-    for client_id in server.clients_id().into_iter() {
+    for client_id in server.connections_id() {
         while let Some(message) = server.receive_message(client_id, ClientChannel::Command) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
@@ -209,7 +238,7 @@ fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
 pub fn setup_simple_camera(mut commands: Commands) {
     // camera
     commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-5.5, 5.0, 5.5).looking_at(Vec3::ZERO, Vec3::Y),
+        transform: Transform::from_xyz(-20.5, 30.0, 20.5).looking_at(Vec3::ZERO, Vec3::Y),
         ..Default::default()
     });
 }
@@ -242,6 +271,79 @@ fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_pro
 
 fn disconnect_clients_on_exit(exit: EventReader<AppExit>, mut server: ResMut<RenetServer>) {
     if !exit.is_empty() {
-        server.disconnect_clients();
+        server.disconnect_all();
+    }
+}
+
+fn spawn_bot(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut lobby: ResMut<ServerLobby>,
+    mut server: ResMut<RenetServer>,
+    mut bot_id: ResMut<BotId>,
+    mut commands: Commands,
+) {
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        let client_id = bot_id.0;
+        bot_id.0 += 1;
+        // Spawn new player
+        let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
+        let player_entity = commands
+            .spawn(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Capsule::default())),
+                material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                transform,
+                ..Default::default()
+            })
+            .insert(RigidBody::Fixed)
+            .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
+            .insert(Collider::capsule_y(0.5, 0.5))
+            .insert(Player { id: client_id })
+            .insert(Bot {
+                auto_cast: Timer::from_seconds(3.0, TimerMode::Repeating),
+            })
+            .id();
+
+        lobby.players.insert(client_id, player_entity);
+
+        let translation: [f32; 3] = transform.translation.into();
+        let message = bincode::serialize(&ServerMessages::PlayerCreate {
+            id: client_id,
+            entity: player_entity,
+            translation,
+        })
+        .unwrap();
+        server.broadcast_message(ServerChannel::ServerMessages, message);
+    }
+}
+
+fn bot_autocast(
+    time: Res<Time>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut server: ResMut<RenetServer>,
+    mut bots: Query<(&Transform, &mut Bot), With<Player>>,
+    mut commands: Commands,
+) {
+    for (transform, mut bot) in &mut bots {
+        bot.auto_cast.tick(time.delta());
+        if !bot.auto_cast.just_finished() {
+            continue;
+        }
+
+        for i in 0..8 {
+            let direction = Vec2::from_angle(PI / 4. * i as f32);
+            let direction = Vec3::new(direction.x, 0., direction.y).normalize();
+            let translation: Vec3 = transform.translation + direction;
+
+            let fireball_entity = spawn_fireball(&mut commands, &mut meshes, &mut materials, translation, direction);
+            let message = ServerMessages::SpawnProjectile {
+                entity: fireball_entity,
+                translation: translation.into(),
+            };
+            let message = bincode::serialize(&message).unwrap();
+            server.broadcast_message(ServerChannel::ServerMessages, message);
+        }
     }
 }

@@ -1,7 +1,6 @@
 [package]
-name = "rechannel-fuzz"
+name = "renet-fuzz"
 version = "0.0.0"
-authors = ["Automatically generated"]
 publish = false
 edition = "2021"
 
@@ -11,15 +10,18 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 
-[dependencies.rechannel]
+[dependencies.renet]
 path = ".."
 
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
 
+[profile.release]
+debug = 1
+
 [[bin]]
-name = "connection_process_packet"
-path = "fuzz_targets/connection_process_packet.rs"
+name = "process_packet"
+path = "fuzz_targets/process_packet.rs"
 test = false
 doc = false

@@ -8,11 +8,15 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    renet::{ClientAuthentication, RenetClient, RenetError},
+    renet::{
+        transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError},
+        RenetClient,
+    },
+    transport::NetcodeClientPlugin,
     RenetClientPlugin,
 };
 use demo_bevy::{
-    client_connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
+    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
     PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
@@ -35,10 +39,11 @@ struct ClientLobby {
     players: HashMap<u64, PlayerInfo>,
 }
 
-fn new_renet_client() -> RenetClient {
+fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
+    let client = RenetClient::new(connection_config());
+
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let connection_config = client_connection_config();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     let authentication = ClientAuthentication::Unsecure {
@@ -48,13 +53,16 @@ fn new_renet_client() -> RenetClient {
         user_data: None,
     };
 
-    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+
+    (client, transport)
 }
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_plugin(RenetClientPlugin::default());
+    app.add_plugin(RenetClientPlugin);
+    app.add_plugin(NetcodeClientPlugin);
     app.add_plugin(LookTransformPlugin);
     app.add_plugin(FrameTimeDiagnosticsPlugin::default());
     app.add_plugin(LogDiagnosticsPlugin::default());
@@ -64,12 +72,15 @@ fn main() {
 
     app.insert_resource(ClientLobby::default());
     app.insert_resource(PlayerInput::default());
-    app.insert_resource(new_renet_client());
+    let (client, transport) = new_renet_client();
+    app.insert_resource(client);
+    app.insert_resource(transport);
+
     app.insert_resource(NetworkMapping::default());
 
     app.add_systems((player_input, camera_follow, update_target_system));
     app.add_systems(
-        (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::client_connected),
+        (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::transport::client_connected),
     );
     app.add_system(disconnect_on_exit.in_base_set(CoreSet::PostUpdate).after(exit_on_all_closed));
 
@@ -83,7 +94,7 @@ fn main() {
 }
 
 // If any error is found we just panic
-fn panic_on_error_system(mut renet_error: EventReader<RenetError>) {
+fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
     for e in renet_error.iter() {
         panic!("{}", e);
     }
@@ -143,10 +154,11 @@ fn client_sync_players(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut client: ResMut<RenetClient>,
+    transport: Res<NetcodeClientTransport>,
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
 ) {
-    let client_id = client.client_id();
+    let client_id = transport.client_id();
     while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {

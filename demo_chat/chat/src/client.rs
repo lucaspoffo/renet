@@ -2,7 +2,10 @@ use bincode::Options;
 use eframe::egui;
 use log::error;
 use matcher::{LobbyListing, RequestConnection};
-use renet::{ClientAuthentication, ConnectToken, DefaultChannel, RenetClient, RenetConnectionConfig};
+use renet::{
+    transport::{ClientAuthentication, ConnectToken, NetcodeClientTransport},
+    ConnectionConfig, DefaultChannel, RenetClient,
+};
 use renet_visualizer::RenetClientVisualizer;
 
 use std::{
@@ -43,6 +46,7 @@ pub enum AppState {
     },
     ClientChat {
         client: Box<RenetClient>,
+        transport: Box<NetcodeClientTransport>,
         usernames: HashMap<u64, String>,
         messages: Vec<Message>,
         visualizer: Box<RenetClientVisualizer<240>>,
@@ -158,20 +162,25 @@ impl ChatApp {
         match &mut self.state {
             AppState::ClientChat {
                 client,
+                transport,
                 usernames,
                 messages,
                 visualizer,
             } => {
-                if let Err(e) = client.update(duration) {
-                    error!("{}", e);
+                client.update(duration);
+                if let Err(e) = transport.update(duration, client) {
+                    self.state = AppState::main_screen();
+                    self.ui_state.error = Some(e.to_string());
+                    return;
                 }
-                if let Some(e) = client.disconnected() {
+
+                if let Some(e) = client.disconnect_reason() {
                     self.state = AppState::main_screen();
                     self.ui_state.error = Some(e.to_string());
                 } else {
                     visualizer.add_network_info(client.network_info());
 
-                    while let Some(message) = client.receive_message(DefaultChannel::Reliable) {
+                    while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
                         let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                         match message {
                             ServerMessages::ClientConnected { client_id, username } => {
@@ -191,7 +200,8 @@ impl ChatApp {
                             }
                         }
                     }
-                    if let Err(e) = client.send_packets() {
+
+                    if let Err(e) = transport.send_packets(client) {
                         error!("Error sending packets: {}", e);
                         self.state = AppState::main_screen();
                         self.ui_state.error = Some(e.to_string());
@@ -216,10 +226,11 @@ impl ChatApp {
             },
             AppState::RequestingToken { token } => match token.try_recv() {
                 Ok(Ok(token)) => {
-                    let client = create_renet_client_from_token(token);
+                    let (client, transport) = create_renet_client_from_token(token);
 
                     self.state = AppState::ClientChat {
-                        visualizer: Default::default(),
+                        visualizer: Box::<RenetClientVisualizer<240>>::default(),
+                        transport: Box::new(transport),
                         client: Box::new(client),
                         messages: vec![],
                         usernames: HashMap::new(),
@@ -239,13 +250,15 @@ impl ChatApp {
     }
 }
 
-fn create_renet_client_from_token(connect_token: ConnectToken) -> RenetClient {
+fn create_renet_client_from_token(connect_token: ConnectToken) -> (RenetClient, NetcodeClientTransport) {
+    let client = RenetClient::new(ConnectionConfig::default());
+
     let client_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let socket = UdpSocket::bind(client_addr).unwrap();
-    let connection_config = RenetConnectionConfig::default();
-
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let authentication = ClientAuthentication::Secure { connect_token };
 
-    RenetClient::new(current_time, socket, connection_config, authentication).unwrap()
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+
+    (client, transport)
 }

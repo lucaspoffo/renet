@@ -98,7 +98,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
 
     ui.separator();
     ui.horizontal(|ui| {
-        let server_addr = chat_server.server.addr();
+        let server_addr = chat_server.transport.addr();
         ui.label(format!("Address: {}", server_addr));
         let tooltip = "Click to copy the server address";
         if ui.button("📋").on_hover_text(tooltip).clicked() {
@@ -109,7 +109,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     ui.separator();
 
     egui::ScrollArea::vertical().id_source("host_commands_scroll").show(ui, |ui| {
-        for client_id in chat_server.server.clients_id().into_iter() {
+        for client_id in chat_server.server.connections_id() {
             ui.horizontal(|ui| {
                 ui.label(format!("Client {}", client_id));
                 if ui.button("X").on_hover_text("Disconnect client").clicked() {
@@ -234,7 +234,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
     if exit.inner {
         match state {
             AppState::HostChat { chat_server } => {
-                chat_server.server.disconnect_clients();
+                chat_server.server.disconnect_all();
             }
             AppState::ClientChat { client, .. } => {
                 client.disconnect();
@@ -270,7 +270,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                 }
                 AppState::ClientChat { client, .. } => {
                     let message = bincode::options().serialize(&ClientMessages::Text(text)).unwrap();
-                    client.send_message(DefaultChannel::Reliable, message);
+                    client.send_message(DefaultChannel::ReliableOrdered, message);
                 }
                 _ => unreachable!(),
             };

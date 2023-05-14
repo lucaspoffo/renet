@@ -1,20 +1,21 @@
 # Renet
+
 [![Latest version](https://img.shields.io/crates/v/renet.svg)](https://crates.io/crates/renet)
 [![Documentation](https://docs.rs/renet/badge.svg)](https://docs.rs/renet)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Renet is a network library for Server/Client games written in rust. Built on top of UDP,
-it is focused on fast-paced games such as FPS, and competitive games that need authentication.
+Renet is a network library for Server/Client games written in rust. It is focused on fast-paced games such as FPS, and competitive games.
 Provides the following features:
 
 - Client/Server connection management
-- Authentication and encryption, checkout [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
-- Multiple types of channels:
-    - Reliable: garantee delivery of all messages
-    - Unreliable: messages that don't require any garantee of delivery or ordering
-    - Chunk Reliable: slice big messages to be sent in multiple frames (e.g. level initialization)
+- Message based communication using channels, they can have different garantees:
+    - ReliableOrdered: garantee of message delivery and order
+    - ReliableUnordered: garantee of message delivery but not order
+    - Unreliable: no garantee of message delivery or order
 - Packet fragmention and reassembly
+- Authentication and encryption, using [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
+    - The transport layer can be customizable. The default transport can be disabled and replaced with a custom one
 
 Sections:
 * [Usage](#usage)
@@ -22,79 +23,140 @@ Sections:
 * [Plugins](#plugins)
 * [Visualizer](#visualizer)
 
-## Usage
-Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`, messages sent during a frame - or that need to be resent - are aggregated and sent together with `sent_packets`.
+## Channels
 
-#### Server
+Renet communication is message based, and channels describe how the messages should be delivered.
+Channels are unilateral, `ConnectionConfig.client_channels_config` describes the channels that the clients sends to the server, and `ConnectionConfig.server_channels_config` describes the channels that the server sends to the clients.
+
+Each channel has its own configuration `ChannelConfig`:
+
 ```rust
-let delta_time = Duration::from_millis(16);
-let mut server = RenetServer::new(...);
-let channel_id = 0;
+// No garantee of message delivery or order
+let send_type = SendType::Unreliable;
+// Garantee of message delivery and order
+let send_type = SendType::ReliableOrdered {
+    // If a message is lost, it will be resent after this duration
+    resend_time: Duration::from_millis(300)
+};
+
+// Garantee of message delivery but not order
+let send_type = SendType::ReliableOrdered {
+    resend_time: Duration::from_millis(300)
+};
+
+let channel_config = ChannelConfig {
+    // The id for the channel, must be unique within its own list,
+    // but it can be repeated between the server and client lists.
+    channel_id: 0,
+    // How much memory can messages consume before the channel gets full
+    max_memory_usage_bytes: 5 * 1024 * 1024, // 5 megabytes
+    send_type
+};
+```
+
+## Usage
+
+Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to the client/server.
+
+### Server
+
+```rust
+let mut server = RenetServer::new(ConnectionConfig::default());
+
+// Setup transport layer
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
+let server_config = ServerConfig {
+    max_clients:64
+    protocol_id: 0,
+    public_addr: SERVER_ADDR,
+    authentication: ServerAuthentication::Unsecure
+};
+let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
 
 // Your gameplay loop
 loop {
+    let delta_time = Duration::from_millis(16);
     // Receive new messages and update clients
     server.update(delta_time)?;
+    transport.update(delta_time, &mut server)?;
     
     // Check for client connections/disconnections
     while let Some(event) = server.get_event() {
         match event {
-            ServerEvent::ClientConnected(id, user_data) => {
-                println!("Client {} connected", id);
+            ServerEvent::ClientConnected { client_id } => {
+                println!("Client {client_id} connected");
             }
-            ServerEvent::ClientDisconnected(id) => {
-                println!("Client {} disconnected", id);
+            ServerEvent::ClientDisconnected { client_id, reason } => {
+                println!("Client {client_id} disconnected: {reason}");
             }
         }
     }
 
     // Receive message from channel
-    for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, channel_id) {
+    for client_id in server.connections_id() {
+        // The enum DefaultChannel describe the channels used by the default configuration
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
     }
     
     // Send a text message for all clients
-    server.broadcast_message(channel_id, "server message".as_bytes().to_vec());
+    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
     
     // Send message to only one client
-    let client_id = ...;
-    server.send_message(client_id, channel_id, "server message".as_bytes().to_vec());
+    let client_id = 0; 
+    server.send_message(client_id, DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
  
     // Send packets to clients
-    server.send_packets()?;
+    transport.send_packets(&mut server)?;
 }
 ```
 
-#### Client
+### Client
 
 ```rust
-let delta_time = Duration::from_millis(16);
-let mut client = RenetClient::new(...);
-let channel_id = 0;
+let mut client = RenetClient::new(ConnectionConfig::default());
+
+// Setup transport layer
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+let client_id: u64 = 0;
+let authentication = ClientAuthentication::Unsecure {
+    server_addr: SERVER_ADDR,
+    client_id,
+    user_data: None,
+    protocol_id: 0,
+};
+
+let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
 // Your gameplay loop
 loop {
+    let delta_time = Duration::from_millis(16);
     // Receive new messages and update client
     client.update(delta_time)?;
+    transport.update(delta_time, &mut client).unwrap();
     
     if client.is_connected() {
         // Receive message from server
-        while let Some(message) = client.receive_message(channel_id) {
+        while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
         
         // Send message
-        client.send_message(channel_id, "client text".as_bytes().to_vec());
+        client.send_message(DefaultChannel::ReliableOrdered, "client text".as_bytes().to_vec());
     }
  
     // Send packets to server
-    client.send_packets()?;
+    transport.send_packets(&mut client)?;
 }
 ```
 
 ## Demos
+
 You can checkout the [echo example](https://github.com/lucaspoffo/renet/blob/master/renet/examples/echo.rs) for a simple usage of the library. Or you can look into the two demos that have more complex uses of renet:
 
 <details><summary>Bevy Demo</summary>

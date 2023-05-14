@@ -6,11 +6,22 @@ notice = "deny"
 [licenses]
 copyleft = "deny"
 allow-osi-fsf-free = "either"
+allow = [ 
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+ ]
 
 [[licenses.clarify]]
 name = "stretch"
 expression = "MIT"
 license-files = []
+
+[[licenses.exceptions]]
+# https://github.com/emilk/egui/issues/2321
+allow = ["LicenseRef-UFL-1.0"]
+name = "epaint"
 
 [bans]
 multiple-versions = "allow"

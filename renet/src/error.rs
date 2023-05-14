@@ -1,77 +1,77 @@
-use std::error::Error;
 use std::fmt;
 
-use rechannel::error::DisconnectionReason as RechannelDisconnectReason;
-use renetcode::DisconnectReason as NetcodeDisconnectReason;
-
-/// Enum with possibles errors that can occur.
-#[derive(Debug)]
-pub enum RenetError {
-    Netcode(renetcode::NetcodeError),
-    Rechannel(rechannel::error::RechannelError),
-    IO(std::io::Error),
+/// Possibles reasons for a disconnection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisconnectReason {
+    Transport,
+    /// Connection was terminated by the server
+    DisconnectedByClient,
+    /// Connection was terminated by the server
+    DisconnectedByServer,
+    /// Failed to serialize packet
+    PacketSerialization,
+    /// Failed to deserialize packet
+    PacketDeserialization,
+    /// Received message from channel with invalid id
+    ReceivedInvalidChannelId(u8),
+    /// Error occurred in a send channel
+    SendChannelError {
+        channel_id: u8,
+        error: ChannelError,
+    },
+    /// Error occurred in a receive channel
+    ReceiveChannelError {
+        channel_id: u8,
+        error: ChannelError,
+    },
 }
 
-impl Error for RenetError {}
+/// Possibles errors that can occur in a channel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChannelError {
+    /// Reliable channel reached maximum allowed memory
+    ReliableChannelMaxMemoryReached,
+    /// Received an invalid slice message in the channel.
+    InvalidSliceMessage,
+}
 
-impl fmt::Display for RenetError {
+impl fmt::Display for ChannelError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use ChannelError::*;
+
         match *self {
-            RenetError::Netcode(ref err) => err.fmt(fmt),
-            RenetError::Rechannel(ref err) => err.fmt(fmt),
-            RenetError::IO(ref err) => err.fmt(fmt),
+            ReliableChannelMaxMemoryReached => write!(fmt, "reliable channel memory usage was exausted"),
+            InvalidSliceMessage => write!(fmt, "received an invalid slice packet"),
         }
     }
 }
 
-impl From<renetcode::NetcodeError> for RenetError {
-    fn from(inner: renetcode::NetcodeError) -> Self {
-        RenetError::Netcode(inner)
-    }
-}
-
-impl From<renetcode::TokenGenerationError> for RenetError {
-    fn from(inner: renetcode::TokenGenerationError) -> Self {
-        RenetError::Netcode(renetcode::NetcodeError::TokenGenerationError(inner))
-    }
-}
-
-impl From<rechannel::error::RechannelError> for RenetError {
-    fn from(inner: rechannel::error::RechannelError) -> Self {
-        RenetError::Rechannel(inner)
-    }
-}
-
-impl From<std::io::Error> for RenetError {
-    fn from(inner: std::io::Error) -> Self {
-        RenetError::IO(inner)
-    }
-}
-
-pub enum DisconnectionReason {
-    Rechannel(RechannelDisconnectReason),
-    Netcode(NetcodeDisconnectReason),
-}
-
-impl From<RechannelDisconnectReason> for DisconnectionReason {
-    fn from(reason: RechannelDisconnectReason) -> Self {
-        DisconnectionReason::Rechannel(reason)
-    }
-}
-
-impl From<NetcodeDisconnectReason> for DisconnectionReason {
-    fn from(error: NetcodeDisconnectReason) -> Self {
-        DisconnectionReason::Netcode(error)
-    }
-}
-
-impl fmt::Display for DisconnectionReason {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use DisconnectionReason::*;
+impl fmt::Display for DisconnectReason {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use DisconnectReason::*;
 
         match *self {
-            Rechannel(reason) => write!(f, "{}", reason),
-            Netcode(error) => write!(f, "{}", error),
+            Transport => write!(fmt, "connection terminated by the transport layer"),
+            DisconnectedByClient => write!(fmt, "connection terminated by the client"),
+            DisconnectedByServer => write!(fmt, "connection terminated by the server"),
+            PacketSerialization => write!(fmt, "failed to serialize packet"),
+            PacketDeserialization => write!(fmt, "failed to deserialize packet"),
+            ReceivedInvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
+            SendChannelError { channel_id, error } => write!(fmt, "send channel {} with error: {}", channel_id, error),
+            ReceiveChannelError { channel_id, error } => write!(fmt, "receive channel {} with error: {}", channel_id, error),
         }
+    }
+}
+
+impl std::error::Error for ChannelError {}
+
+#[derive(Debug)]
+pub struct ClientNotFound;
+
+impl std::error::Error for ClientNotFound {}
+
+impl fmt::Display for ClientNotFound {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "client with given id was not found")
     }
 }

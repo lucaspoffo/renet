@@ -1,22 +1,26 @@
 [package]
 name = "renet"
-version = "0.0.11"
+authors = ["Lucas Poffo <ltkpoffo@gmail.com>"]
 description = "Server/Client network library for multiplayer games with authentication and connection management"
-keywords = ["gamedev", "networking"]
-repository = "https://github.com/lucaspoffo/renet"
-readme = "../README.md"
-license = "MIT OR Apache-2.0"
 edition = "2021"
+keywords = ["gamedev", "networking"]
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+repository = "https://github.com/lucaspoffo/renet"
+version = "0.0.11"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 bevy = ["dep:bevy_ecs"]
+default = ["transport"]
+transport = ["dep:renetcode"]
 
 [dependencies]
-rechannel = { path = "../rechannel", version = "0.0.7" }
-renetcode = { path = "../renetcode", version = "0.0.7" }
+bevy_ecs = { version = "0.10.1", optional = true }
+bytes = "1.1"
 log = "0.4.17"
-bevy_ecs = { version = "0.10.0", optional = true }
+octets = "0.2"
+renetcode = { path = "../renetcode", version = "0.0.7", optional = true }
 
 [dev-dependencies]
 env_logger = "0.10.0"

@@ -4,7 +4,12 @@ use egui::{
     epaint::{PathShape, RectShape},
     pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText,
 };
-use renet::{CircularBuffer, NetworkInfo, RenetServer};
+
+use renet::{NetworkInfo, RenetServer};
+
+use circular_buffer::CircularBuffer;
+
+mod circular_buffer;
 
 /// Egui visualizer for the renet client. Draws graphs with metrics:
 /// RTT, Packet Loss, Kbitps Sent/Received.
@@ -93,19 +98,21 @@ impl<const N: usize> RenetClientVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::RenetClient;
+    /// # use renet::{RenetClient, ConnectionConfig};
     /// # use renet_visualizer::RenetClientVisualizer;
-    /// # let mut client = RenetClient::__test();
+    /// # let mut client = RenetClient::new(ConnectionConfig::default());
     /// # let delta = std::time::Duration::ZERO;
     /// # let mut visualizer = RenetClientVisualizer::<5>::new(Default::default());
-    /// client.update(delta).unwrap();
+    /// client.update(delta);
     /// visualizer.add_network_info(client.network_info());
     /// ```
     pub fn add_network_info(&mut self, network_info: NetworkInfo) {
-        self.rtt.push(network_info.rtt);
-        self.sent_bandwidth_kbps.push(network_info.sent_kbps);
-        self.received_bandwidth_kbps.push(network_info.received_kbps);
-        self.packet_loss.push(network_info.packet_loss);
+        self.rtt.push((network_info.rtt * 1000.) as f32);
+        self.sent_bandwidth_kbps
+            .push((network_info.bytes_sent_per_second * 8. / 1000.) as f32);
+        self.received_bandwidth_kbps
+            .push((network_info.bytes_received_per_second * 8. / 1000.) as f32);
+        self.packet_loss.push(network_info.packet_loss as f32);
     }
 
     /// Renders a new window with all the graphs metrics drawn.
@@ -192,13 +199,13 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::{RenetServer, ServerEvent};
+    /// # use renet::{RenetServer, ServerEvent, ConnectionConfig};
     /// # use renet_visualizer::RenetServerVisualizer;
-    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// while let Some(event) = renet_server.get_event() {
     ///     match event {
-    ///         ServerEvent::ClientConnected(client_id, user_data) => {
+    ///         ServerEvent::ClientConnected { client_id } => {
     ///             visualizer.add_client(client_id);
     ///             // ...
     ///         }
@@ -215,13 +222,13 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::{RenetServer, ServerEvent};
+    /// # use renet::{RenetServer, ServerEvent, ConnectionConfig};
     /// # use renet_visualizer::RenetServerVisualizer;
-    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// while let Some(event) = renet_server.get_event() {
     ///     match event {
-    ///         ServerEvent::ClientDisconnected(client_id) => {
+    ///         ServerEvent::ClientDisconnected { client_id , reason } => {
     ///             visualizer.remove_client(client_id);
     ///             // ...
     ///         }
@@ -244,17 +251,17 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///
     /// # Usage
     /// ```
-    /// # use renet::RenetServer;
+    /// # use renet::{RenetServer, ConnectionConfig};
     /// # use renet_visualizer::RenetServerVisualizer;
-    /// # let mut renet_server = RenetServer::__test();
+    /// # let mut renet_server = RenetServer::new(ConnectionConfig::default());
     /// # let mut visualizer = RenetServerVisualizer::<5>::new(Default::default());
     /// # let delta = std::time::Duration::ZERO;
-    /// renet_server.update(delta).unwrap();
+    /// renet_server.update(delta);
     /// visualizer.update(&renet_server);
     /// ```
     pub fn update(&mut self, server: &RenetServer) {
-        for client_id in server.clients_id().into_iter() {
-            if let Some(network_info) = server.network_info(client_id) {
+        for client_id in server.connections_id().into_iter() {
+            if let Ok(network_info) = server.network_info(client_id) {
                 self.add_network_info(client_id, network_info);
             }
         }

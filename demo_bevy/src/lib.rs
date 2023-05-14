@@ -1,8 +1,8 @@
-use std::time::Duration;
+use std::{f32::consts::PI, time::Duration};
 
 use bevy::prelude::{shape::Icosphere, *};
 use bevy_rapier3d::prelude::*;
-use bevy_renet::renet::{ChannelConfig, ReliableChannelConfig, RenetConnectionConfig, UnreliableChannelConfig, NETCODE_KEY_BYTES};
+use bevy_renet::renet::{transport::NETCODE_KEY_BYTES, ChannelConfig, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
 pub const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
@@ -62,18 +62,20 @@ impl From<ClientChannel> for u8 {
 impl ClientChannel {
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
-            ReliableChannelConfig {
+            ChannelConfig {
                 channel_id: Self::Input.into(),
-                message_resend_time: Duration::ZERO,
-                ..Default::default()
-            }
-            .into(),
-            ReliableChannelConfig {
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::ZERO,
+                },
+            },
+            ChannelConfig {
                 channel_id: Self::Command.into(),
-                message_resend_time: Duration::ZERO,
-                ..Default::default()
-            }
-            .into(),
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::ZERO,
+                },
+            },
         ]
     }
 }
@@ -90,35 +92,27 @@ impl From<ServerChannel> for u8 {
 impl ServerChannel {
     pub fn channels_config() -> Vec<ChannelConfig> {
         vec![
-            UnreliableChannelConfig {
+            ChannelConfig {
                 channel_id: Self::NetworkedEntities.into(),
-                sequenced: true, // We don't care about old positions
-                ..Default::default()
-            }
-            .into(),
-            ReliableChannelConfig {
+                max_memory_usage_bytes: 10 * 1024 * 1024,
+                send_type: SendType::Unreliable,
+            },
+            ChannelConfig {
                 channel_id: Self::ServerMessages.into(),
-                message_resend_time: Duration::from_millis(200),
-                ..Default::default()
-            }
-            .into(),
+                max_memory_usage_bytes: 10 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::from_millis(200),
+                },
+            },
         ]
     }
 }
 
-pub fn client_connection_config() -> RenetConnectionConfig {
-    RenetConnectionConfig {
-        send_channels_config: ClientChannel::channels_config(),
-        receive_channels_config: ServerChannel::channels_config(),
-        ..Default::default()
-    }
-}
-
-pub fn server_connection_config() -> RenetConnectionConfig {
-    RenetConnectionConfig {
-        send_channels_config: ServerChannel::channels_config(),
-        receive_channels_config: ClientChannel::channels_config(),
-        ..Default::default()
+pub fn connection_config() -> ConnectionConfig {
+    ConnectionConfig {
+        available_bytes_per_tick: 1024 * 1024,
+        client_channels_config: ClientChannel::channels_config(),
+        server_channels_config: ServerChannel::channels_config(),
     }
 }
 
@@ -127,21 +121,24 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
     // plane
     commands
         .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Box::new(10., 1., 10.))),
+            mesh: meshes.add(Mesh::from(shape::Box::new(40., 1., 40.))),
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             transform: Transform::from_xyz(0.0, -1.0, 0.0),
             ..Default::default()
         })
-        .insert(Collider::cuboid(5., 0.5, 5.));
+        .insert(Collider::cuboid(20., 0.5, 20.));
     // light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
             shadows_enabled: true,
-            ..Default::default()
+            ..default()
         },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..Default::default()
+        transform: Transform {
+            translation: Vec3::new(0.0, 2.0, 0.0),
+            rotation: Quat::from_rotation_x(-PI / 4.),
+            ..default()
+        },
+        ..default()
     });
 }
 
@@ -175,7 +172,7 @@ pub fn spawn_fireball(
         })
         .insert(RigidBody::Dynamic)
         .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
-        .insert(Collider::ball(0.1))
+        // .insert(Collider::ball(0.1))
         .insert(Velocity::linear(direction * 10.))
         .insert(ActiveEvents::COLLISION_EVENTS)
         .insert(Projectile {

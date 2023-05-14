@@ -1,3 +1,3 @@
 [workspace]
-members = ["renet", "rechannel", "demo_chat/matcher", "demo_chat/chat", "demo_bevy", "renetcode", "bevy_renet", "renet_visualizer"]
+members = ["renet", "demo_chat/matcher", "demo_chat/chat", "demo_bevy", "renetcode", "bevy_renet", "renet_visualizer"]
 resolver = "2"
