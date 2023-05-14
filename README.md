@@ -23,22 +23,23 @@ Sections:
 * [Visualizer](#visualizer)
 
 ## Usage
-Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to client/server.
+Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to the client/server.
 
 #### Server
 ```rust
 let mut server = RenetServer::new(ConnectionConfig::default());
 
-const GAME_PROTOCOL_ID: u64 = 0;
-const MAX_NUM_PLAYERS: usize = 64;
+// Setup transport layer
 const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
-
 let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
-let server_config = ServerConfig::new(MAX_NUM_PLAYERS, PROTOCOL_ID, SERVER_ADDR,ServerAuthentication::Unsecure);
+let server_config = ServerConfig {
+    max_clients:64
+    protocol_id: 0,
+    public_addr: SERVER_ADDR,
+    authentication: ServerAuthentication::Unsecure
+};
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
-
-let channel_id: u8 = 0;
 
 // Your gameplay loop
 loop {
@@ -61,17 +62,18 @@ loop {
 
     // Receive message from channel
     for client_id in server.connections_id() {
-        while let Some(message) = server.receive_message(client_id, channel_id) {
+        // The enum DefaultChannel describe the channels used by the default configuration
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
     }
     
     // Send a text message for all clients
-    server.broadcast_message(channel_id, "server message".as_bytes().to_vec());
+    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
     
     // Send message to only one client
     let client_id = 0; 
-    server.send_message(client_id, channel_id, "server message".as_bytes().to_vec());
+    server.send_message(client_id, DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
  
     // Send packets to clients
     transport.send_packets(&mut server)?;
@@ -83,9 +85,8 @@ loop {
 ```rust
 let mut client = RenetClient::new(ConnectionConfig::default());
 
+// Setup transport layer
 const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
-const GAME_PROTOCOL_ID: u64 = 0;
-
 let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 let client_id: u64 = 0;
@@ -93,12 +94,10 @@ let authentication = ClientAuthentication::Unsecure {
     server_addr: SERVER_ADDR,
     client_id,
     user_data: None,
-    protocol_id: GAME_PROTOCOL_ID,
+    protocol_id: 0,
 };
 
-let mut transport = NetcodeClientTransport::new(socket, current_time, authentication).unwrap();
-
-let channel_id = 0;
+let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
 // Your gameplay loop
 loop {
@@ -109,12 +108,12 @@ loop {
     
     if client.is_connected() {
         // Receive message from server
-        while let Some(message) = client.receive_message(channel_id) {
+        while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
         
         // Send message
-        client.send_message(channel_id, "client text".as_bytes().to_vec());
+        client.send_message(DefaultChannel::ReliableOrdered, "client text".as_bytes().to_vec());
     }
  
     // Send packets to server

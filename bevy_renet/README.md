@@ -9,15 +9,26 @@ A network crate for Server/Client with cryptographically secure authentication a
 Designed for fast paced competitive multiplayer games.
 
 ## Usage
-Bevy renet is a small layer over the `renet` crate, it adds systems to call the client/server `update`and `send_packets`. `RenetClient` and `RenetServer` need to be added as a resource, so the setup is similar to `renet` itself:
+Bevy renet is a small layer over the `renet` crate, it adds systems to call the update function from the client/server. `RenetClient`, `RenetServer`, `NetcodeClientTransport` and `NetcodeServerTransport` need to be added as a resource, so the setup is similar to `renet` itself:
 
 #### Server
 ```rust
 let mut app = App::new();
-app.add_plugin(RenetServerPlugin::default());
+app.add_plugin(RenetServerPlugin);
 
-let server = RenetServer::new(...);
+let server = RenetServer::new(ConnectionConfig::default());
 app.insert_resource(server);
+
+// Transport layer setup
+app.add_plugin(NetcodeServerPlugin);
+let server_addr = "127.0.0.1:5000".parse().unwrap();
+let socket = UdpSocket::bind(server_addr).unwrap();
+const MAX_CLIENTS: usize = 64;
+const GAME_PROTOCOL_ID: u64 = 0;
+let server_config = ServerConfig::new(MAX_CLIENTS, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
+let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+app.insert_resource(transport);
 
 app.add_system(send_message_system);
 app.add_system(receive_message_system);
@@ -27,15 +38,15 @@ app.add_system(handle_events_system);
 
 fn send_message_system(mut server: ResMut<RenetServer>) {
     let channel_id = 0;
-     // Send a text message for all clients
-    server.broadcast_message(channel_id, "server message".as_bytes().to_vec());
+    // Send a text message for all clients
+    // The enum DefaultChannel describe the channels used by the default configuration
+    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
 }
 
 fn receive_message_system(mut server: ResMut<RenetServer>) {
-    let channel_id = 0;
      // Send a text message for all clients
     for client_id in server.clients_id().into_iter() {
-        while let Some(message) = server.receive_message(client_id, channel_id) {
+        while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
     }
@@ -45,11 +56,11 @@ fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
     while let Some(event) = server.get_event() {
     for event in server_events.iter() {
         match event {
-            ServerEvent::ClientConnected(id, user_data) => {
-                println!("Client {} connected", id);
+            ServerEvent::ClientConnected { client_id } => {
+                println!("Client {client_id} connected");
             }
-            ServerEvent::ClientDisconnected(id) => {
-                println!("Client {} disconnected", id);
+            ServerEvent::ClientDisconnected { client_id, reason } => {
+                println!("Client {client_id} disconnected: {reason}");
             }
         }
     }
@@ -59,10 +70,24 @@ fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
 #### Client
 ```rust
 let mut app = App::new();
-app.add_plugin(RenetClientPlugin::default());
+app.add_plugin(RenetClientPlugin);
 
-let client = RenetClient::new(...);
+let client = RenetClient::new(ConnectionConfig::default());
 app.insert_resource(client);
+
+// Setup the transport layer
+app.add_plugin(NetcodeClientPlugin);
+let public_addr = "127.0.0.1:5000".parse().unwrap();
+let socket = UdpSocket::bind(public_addr).unwrap();
+let server_config = ServerConfig {
+    max_clients: 64,
+    protocol_id: PROTOCOL_ID,
+    public_addr,
+    authentication: ServerAuthentication::Unsecure,
+};
+let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+app.insert_resource(transport);
 
 app.add_system(send_message_system);
 app.add_system(receive_message_system);
@@ -70,14 +95,12 @@ app.add_system(receive_message_system);
 // Systems
 
 fn send_message_system(mut client: ResMut<RenetClient>) {
-    let channel_id = 0;
      // Send a text message to the server
-    client.send_message(channel_id, "server message".as_bytes().to_vec());
+    client.send_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
 }
 
 fn receive_message_system(mut client: ResMut<RenetClient>) {
-    let channel_id = 0;
-    while let Some(message) = client.receive_message(channel_id) {
+    while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
         // Handle received message
     }
 }
