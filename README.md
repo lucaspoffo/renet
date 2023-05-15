@@ -17,12 +17,6 @@ Provides the following features:
 - Authentication and encryption, using [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
     - The transport layer can be customizable. The default transport can be disabled and replaced with a custom one
 
-Sections:
-* [Usage](#usage)
-* [Demos](#demos)
-* [Plugins](#plugins)
-* [Visualizer](#visualizer)
-
 ## Channels
 
 Renet communication is message based, and channels describe how the messages should be delivered.
