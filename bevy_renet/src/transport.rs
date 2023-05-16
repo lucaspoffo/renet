@@ -93,3 +93,10 @@ pub fn client_connected(transport: Option<Res<NetcodeClientTransport>>) -> bool 
         None => false,
     }
 }
+
+pub fn client_connecting(transport: Option<Res<NetcodeClientTransport>>) -> bool {
+    match transport {
+        Some(transport) => transport.is_connecting(),
+        None => false,
+    }
+}
