@@ -86,7 +86,6 @@ pub struct RenetClient {
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
     stats: ConnectionStats,
     available_bytes_per_tick: u64,
-    largest_acked_packet: u64,
     pub(crate) disconnect_reason: Option<DisconnectReason>,
     rtt: f64,
 }
@@ -183,7 +182,6 @@ impl RenetClient {
             stats: ConnectionStats::new(),
             rtt: 0.0,
             available_bytes_per_tick,
-            largest_acked_packet: 0,
             disconnect_reason: None,
         }
     }
@@ -294,7 +292,7 @@ impl RenetClient {
 
         // Discard lost packets
         let mut lost_packets: Vec<u64> = Vec::new();
-        for (&sequence, sent_packet) in self.sent_packets.range(0..self.largest_acked_packet + 1) {
+        for (&sequence, sent_packet) in self.sent_packets.iter() {
             const DISCARD_AFTER: Duration = Duration::from_secs(3);
             if self.current_time - sent_packet.sent_at >= DISCARD_AFTER {
                 lost_packets.push(sequence);
@@ -575,6 +573,7 @@ impl RenetClient {
             return;
         }
 
+        // Try to fit the sequence in an existing range
         for index in 0..self.pending_acks.len() {
             let range = &mut self.pending_acks[index];
             if range.contains(&sequence) {
@@ -617,13 +616,8 @@ impl RenetClient {
     }
 
     fn acked_largest(&mut self, largest_ack: u64) {
-        if self.largest_acked_packet > largest_ack {
-            return;
-        }
-
-        self.largest_acked_packet = largest_ack;
         while !self.pending_acks.is_empty() {
-            let range = &mut self.pending_acks[0];
+            let range: &mut Range<u64> = &mut self.pending_acks[0];
 
             // Largest ack is below the range, stop checking
             if largest_ack < range.start {
