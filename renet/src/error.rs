@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::packet::SerializationError;
+
 /// Possibles reasons for a disconnection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisconnectReason {
@@ -9,9 +11,9 @@ pub enum DisconnectReason {
     /// Connection was terminated by the server
     DisconnectedByServer,
     /// Failed to serialize packet
-    PacketSerialization,
+    PacketSerialization(SerializationError),
     /// Failed to deserialize packet
-    PacketDeserialization,
+    PacketDeserialization(SerializationError),
     /// Received message from channel with invalid id
     ReceivedInvalidChannelId(u8),
     /// Error occurred in a send channel
@@ -54,11 +56,11 @@ impl fmt::Display for DisconnectReason {
             Transport => write!(fmt, "connection terminated by the transport layer"),
             DisconnectedByClient => write!(fmt, "connection terminated by the client"),
             DisconnectedByServer => write!(fmt, "connection terminated by the server"),
-            PacketSerialization => write!(fmt, "failed to serialize packet"),
-            PacketDeserialization => write!(fmt, "failed to deserialize packet"),
-            ReceivedInvalidChannelId(id) => write!(fmt, "received message with invalid channel {}", id),
-            SendChannelError { channel_id, error } => write!(fmt, "send channel {} with error: {}", channel_id, error),
-            ReceiveChannelError { channel_id, error } => write!(fmt, "receive channel {} with error: {}", channel_id, error),
+            PacketSerialization(err) => write!(fmt, "failed to serialize packet: {err}"),
+            PacketDeserialization(err) => write!(fmt, "failed to deserialize packet: {err}"),
+            ReceivedInvalidChannelId(id) => write!(fmt, "received message with invalid channel {id}"),
+            SendChannelError { channel_id, error } => write!(fmt, "send channel {channel_id} with error: {error}"),
+            ReceiveChannelError { channel_id, error } => write!(fmt, "receive channel {channel_id} with error: {error}"),
         }
     }
 }

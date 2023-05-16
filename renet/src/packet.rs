@@ -48,7 +48,7 @@ pub enum Packet {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerializationError {
     BufferTooShort,
     InvalidNumSlices,
