@@ -122,7 +122,7 @@ impl ChatServer {
             }
         }
 
-        self.transport.send_packets(&mut self.server).unwrap();
+        self.transport.send_packets(&mut self.server);
 
         let mut server_update = self.server_update.write().unwrap();
         server_update.max_clients = self.transport.max_clients() as u64;

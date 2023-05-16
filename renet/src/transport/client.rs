@@ -136,6 +136,7 @@ impl NetcodeClientTransport {
                     &mut self.buffer[..len]
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => break,
                 Err(e) => return Err(NetcodeTransportError::IO(e)),
             };
 

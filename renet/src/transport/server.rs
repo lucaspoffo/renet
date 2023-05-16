@@ -103,7 +103,7 @@ impl NetcodeServerTransport {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
                     let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
-                    handle_server_result(server_result, &self.socket, reliable_server)?;
+                    handle_server_result(server_result, &self.socket, reliable_server);
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => break,
@@ -114,40 +114,50 @@ impl NetcodeServerTransport {
 
         for client_id in self.netcode_server.clients_id() {
             let server_result = self.netcode_server.update_client(client_id);
-            handle_server_result(server_result, &self.socket, reliable_server)?;
+            handle_server_result(server_result, &self.socket, reliable_server);
         }
 
         for disconnection_id in reliable_server.disconnections_id() {
             let server_result = self.netcode_server.disconnect(disconnection_id);
-            handle_server_result(server_result, &self.socket, reliable_server)?;
+            handle_server_result(server_result, &self.socket, reliable_server);
         }
 
         Ok(())
     }
 
     /// Send packets to connected clients.
-    pub fn send_packets(&mut self, reliable_server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
-        for client_id in reliable_server.connections_id() {
+    pub fn send_packets(&mut self, reliable_server: &mut RenetServer) {
+        'clients: for client_id in reliable_server.connections_id() {
             let packets = reliable_server.get_packets_to_send(client_id).unwrap();
             for packet in packets {
                 match self.netcode_server.generate_payload_packet(client_id, &packet) {
                     Ok((addr, payload)) => {
-                        self.socket.send_to(payload, addr)?;
+                        if let Err(e) = self.socket.send_to(payload, addr) {
+                            log::error!("Failed to send packet to client {client_id} ({addr}): {e}");
+                            continue 'clients;
+                        }
                     }
-                    Err(e) => log::error!("Failed to encrypt payload packet for client {}: {}", client_id, e),
+                    Err(e) => {
+                        log::error!("Failed to encrypt payload packet for client {client_id}: {e}");
+                        continue 'clients;
+                    }
                 }
             }
         }
-
-        Ok(())
     }
 }
 
-fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliable_server: &mut RenetServer) -> Result<(), io::Error> {
+fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliable_server: &mut RenetServer) {
+    let send_packet = |packet: &[u8], addr: SocketAddr| {
+        if let Err(err) = socket.send_to(packet, addr) {
+            log::error!("Failed to send packet to {addr}: {err}");
+        }
+    };
+
     match server_result {
         ServerResult::None => {}
         ServerResult::PacketToSend { payload, addr } => {
-            socket.send_to(payload, addr)?;
+            send_packet(payload, addr);
         }
         ServerResult::Payload { client_id, payload } => {
             if let Err(e) = reliable_server.process_packet_from(payload, client_id) {
@@ -161,15 +171,13 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             payload,
         } => {
             reliable_server.add_connection(client_id);
-            socket.send_to(payload, addr)?;
+            send_packet(payload, addr);
         }
         ServerResult::ClientDisconnected { client_id, addr, payload } => {
             reliable_server.remove_connection(client_id);
             if let Some(payload) = payload {
-                socket.send_to(payload, addr)?;
+                send_packet(payload, addr);
             }
         }
     }
-
-    Ok(())
 }

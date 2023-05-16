@@ -44,14 +44,8 @@ impl NetcodeServerPlugin {
         }
     }
 
-    pub fn send_packets(
-        mut transport: ResMut<NetcodeServerTransport>,
-        mut server: ResMut<RenetServer>,
-        mut transport_errors: EventWriter<NetcodeTransportError>,
-    ) {
-        if let Err(e) = transport.send_packets(&mut server) {
-            transport_errors.send(e);
-        }
+    pub fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
+        transport.send_packets(&mut server);
     }
 }
 

@@ -120,7 +120,7 @@ fn server(public_addr: SocketAddr) {
             server.broadcast_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec());
         }
 
-        transport.send_packets(&mut server).unwrap();
+        transport.send_packets(&mut server);
         thread::sleep(Duration::from_millis(50));
     }
 }
