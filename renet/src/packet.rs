@@ -18,32 +18,32 @@ pub struct Slice {
 pub enum Packet {
     // Small messages in a reliable channel are aggregated and sent in this packet
     SmallReliable {
-        packet_sequence: u64,
+        sequence: u64,
         channel_id: u8,
         messages: Vec<(u64, Bytes)>,
     },
     // Small messages in a unreliable channel are aggregated and sent in this packet
     SmallUnreliable {
-        packet_sequence: u64,
+        sequence: u64,
         channel_id: u8,
         messages: Vec<Bytes>,
     },
     // A big unreliable message is sliced in multiples slice packets
     UnreliableSlice {
-        packet_sequence: u64,
+        sequence: u64,
         channel_id: u8,
         slice: Slice,
     },
     // A big reliable messages is sliced in multiples slice packets
     ReliableSlice {
-        packet_sequence: u64,
+        sequence: u64,
         channel_id: u8,
         slice: Slice,
     },
     // Contains the packets that were acked
     // Acks are saved in multiples ranges, all values in the ranges are considered acked.
     Ack {
-        packet_sequence: u64,
+        sequence: u64,
         ack_ranges: Vec<Range<u64>>,
     },
 }
@@ -78,17 +78,27 @@ impl From<octets::BufferTooShortError> for SerializationError {
 }
 
 impl Packet {
+    pub fn sequence(&self) -> u64 {
+        match self {
+            Packet::SmallReliable { sequence, .. }
+            | Packet::SmallUnreliable { sequence, .. }
+            | Packet::UnreliableSlice { sequence, .. }
+            | Packet::ReliableSlice { sequence, .. }
+            | Packet::Ack { sequence, .. } => *sequence,
+        }
+    }
+
     pub fn to_bytes(&self, b: &mut octets::OctetsMut) -> Result<usize, SerializationError> {
         let before = b.cap();
 
         match self {
             Packet::SmallReliable {
-                packet_sequence,
+                sequence,
                 channel_id,
                 messages,
             } => {
                 b.put_u8(0)?;
-                b.put_varint(*packet_sequence)?;
+                b.put_varint(*sequence)?;
                 b.put_u8(*channel_id)?;
                 b.put_u16(messages.len() as u16)?;
                 for (message_id, message) in messages {
@@ -98,12 +108,12 @@ impl Packet {
                 }
             }
             Packet::SmallUnreliable {
-                packet_sequence,
+                sequence,
                 channel_id,
                 messages,
             } => {
                 b.put_u8(1)?;
-                b.put_varint(*packet_sequence)?;
+                b.put_varint(*sequence)?;
                 b.put_u8(*channel_id)?;
                 b.put_u16(messages.len() as u16)?;
                 for message in messages {
@@ -112,12 +122,12 @@ impl Packet {
                 }
             }
             Packet::ReliableSlice {
-                packet_sequence,
+                sequence,
                 channel_id,
                 slice,
             } => {
                 b.put_u8(2)?;
-                b.put_varint(*packet_sequence)?;
+                b.put_varint(*sequence)?;
                 b.put_u8(*channel_id)?;
                 b.put_varint(slice.message_id)?;
                 b.put_varint(slice.slice_index as u64)?;
@@ -126,12 +136,12 @@ impl Packet {
                 b.put_bytes(&slice.payload)?;
             }
             Packet::UnreliableSlice {
-                packet_sequence,
+                sequence,
                 channel_id,
                 slice,
             } => {
                 b.put_u8(3)?;
-                b.put_varint(*packet_sequence)?;
+                b.put_varint(*sequence)?;
                 b.put_u8(*channel_id)?;
                 b.put_varint(slice.message_id)?;
                 b.put_varint(slice.slice_index as u64)?;
@@ -139,12 +149,9 @@ impl Packet {
                 b.put_varint(slice.payload.len() as u64)?;
                 b.put_bytes(&slice.payload)?;
             }
-            Packet::Ack {
-                packet_sequence,
-                ack_ranges,
-            } => {
+            Packet::Ack { sequence, ack_ranges } => {
                 b.put_u8(4)?;
-                b.put_varint(*packet_sequence)?;
+                b.put_varint(*sequence)?;
 
                 // Consider this ranges:
                 // [20010..20020   ,  20035..20040]
@@ -199,7 +206,7 @@ impl Packet {
         match packet_type {
             0 => {
                 // SmallReliable
-                let packet_sequence = b.get_varint()?;
+                let sequence = b.get_varint()?;
                 let channel_id = b.get_u8()?;
                 let messages_len = b.get_u16()?;
                 let mut messages: Vec<(u64, Bytes)> = Vec::with_capacity(64);
@@ -211,14 +218,14 @@ impl Packet {
                 }
 
                 Ok(Packet::SmallReliable {
-                    packet_sequence,
+                    sequence,
                     channel_id,
                     messages,
                 })
             }
             1 => {
                 // SmallUnreliable
-                let packet_sequence = b.get_varint()?;
+                let sequence = b.get_varint()?;
                 let channel_id = b.get_u8()?;
                 let messages_len = b.get_u16()?;
                 let mut messages: Vec<Bytes> = Vec::with_capacity(64);
@@ -228,14 +235,14 @@ impl Packet {
                 }
 
                 Ok(Packet::SmallUnreliable {
-                    packet_sequence,
+                    sequence,
                     channel_id,
                     messages,
                 })
             }
             2 => {
                 // ReliableSlice
-                let packet_sequence = b.get_varint()?;
+                let sequence = b.get_varint()?;
                 let channel_id = b.get_u8()?;
                 let message_id = b.get_varint()?;
                 let slice_index = b.get_varint()? as usize;
@@ -253,14 +260,14 @@ impl Packet {
                     payload: payload.to_vec().into(),
                 };
                 Ok(Packet::ReliableSlice {
-                    packet_sequence,
+                    sequence,
                     channel_id,
                     slice,
                 })
             }
             3 => {
                 // UnreliableSlice
-                let packet_sequence = b.get_varint()?;
+                let sequence = b.get_varint()?;
                 let channel_id = b.get_u8()?;
                 let message_id = b.get_varint()?;
                 let slice_index = b.get_varint()? as usize;
@@ -278,14 +285,14 @@ impl Packet {
                     payload: payload.to_vec().into(),
                 };
                 Ok(Packet::UnreliableSlice {
-                    packet_sequence,
+                    sequence,
                     channel_id,
                     slice,
                 })
             }
             4 => {
                 // Ack
-                let packet_sequence = b.get_varint()?;
+                let sequence = b.get_varint()?;
 
                 let first_range_end = b.get_varint()?;
                 let first_range_size = b.get_varint()?;
@@ -295,10 +302,10 @@ impl Packet {
                     return Err(SerializationError::InvalidAckRange);
                 }
 
-                let mut ranges: Vec<Range<u64>> = Vec::with_capacity(32);
+                let mut ack_ranges: Vec<Range<u64>> = Vec::with_capacity(32);
 
                 let first_range_start = first_range_end - first_range_size;
-                ranges.push(first_range_start..first_range_end + 1);
+                ack_ranges.push(first_range_start..first_range_end + 1);
 
                 let mut previous_range_start = first_range_start;
                 for _ in 0..num_remaining_ranges {
@@ -318,17 +325,14 @@ impl Packet {
                     }
 
                     let range_start = range_end - range_size;
-                    ranges.push(range_start..range_end + 1);
+                    ack_ranges.push(range_start..range_end + 1);
 
                     previous_range_start = range_start;
                 }
 
-                ranges.reverse();
+                ack_ranges.reverse();
 
-                Ok(Packet::Ack {
-                    packet_sequence,
-                    ack_ranges: ranges,
-                })
+                Ok(Packet::Ack { sequence, ack_ranges })
             }
             _ => Err(SerializationError::InvalidPacketType),
         }
@@ -343,7 +347,7 @@ mod tests {
     fn serialize_small_reliable_packet() {
         let mut buffer = [0u8; 1300];
         let packet = Packet::SmallReliable {
-            packet_sequence: 0,
+            sequence: 0,
             channel_id: 0,
             messages: vec![(0, vec![0, 0, 0].into()), (1, vec![1, 1, 1].into()), (2, vec![2, 2, 2].into())],
         };
@@ -360,7 +364,7 @@ mod tests {
     fn serialize_small_unreliable_packet() {
         let mut buffer = [0u8; 1300];
         let packet = Packet::SmallUnreliable {
-            packet_sequence: 0,
+            sequence: 0,
             channel_id: 0,
             messages: vec![vec![0, 0, 0].into(), vec![1, 1, 1].into(), vec![2, 2, 2].into()],
         };
@@ -378,7 +382,7 @@ mod tests {
         let mut buffer = [0u8; 1300];
 
         let packet = Packet::ReliableSlice {
-            packet_sequence: 0,
+            sequence: 0,
             channel_id: 0,
             slice: Slice {
                 message_id: 0,
@@ -401,7 +405,7 @@ mod tests {
         let mut buffer = [0u8; 1300];
 
         let packet = Packet::UnreliableSlice {
-            packet_sequence: 0,
+            sequence: 0,
             channel_id: 0,
             slice: Slice {
                 message_id: 0,
@@ -424,7 +428,7 @@ mod tests {
         let mut buffer = [0u8; 1300];
 
         let packet = Packet::Ack {
-            packet_sequence: 0,
+            sequence: 0,
             ack_ranges: vec![3..7, 10..20, 30..100],
         };
 

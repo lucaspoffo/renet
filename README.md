@@ -42,7 +42,7 @@ let channel_config = ChannelConfig {
     // The id for the channel, must be unique within its own list,
     // but it can be repeated between the server and client lists.
     channel_id: 0,
-    // How much memory can messages consume before the channel gets full
+    // Maximum number of bytes that the channel may hold without acknowledgement of messages before becoming full.
     max_memory_usage_bytes: 5 * 1024 * 1024, // 5 megabytes
     send_type
 };

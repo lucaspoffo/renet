@@ -70,7 +70,7 @@ impl SendChannelUnreliable {
                     };
 
                     packets.push(Packet::UnreliableSlice {
-                        packet_sequence: *packet_sequence,
+                        sequence: *packet_sequence,
                         channel_id: self.channel_id,
                         slice,
                     });
@@ -81,7 +81,7 @@ impl SendChannelUnreliable {
             } else {
                 if small_messages_bytes + message.len() > SLICE_SIZE {
                     packets.push(Packet::SmallUnreliable {
-                        packet_sequence: *packet_sequence,
+                        sequence: *packet_sequence,
                         channel_id: self.channel_id,
                         messages: std::mem::take(&mut small_messages),
                     });
@@ -97,7 +97,7 @@ impl SendChannelUnreliable {
         // Generate final packet for remaining small messages
         if !small_messages.is_empty() {
             packets.push(Packet::SmallUnreliable {
-                packet_sequence: *packet_sequence,
+                sequence: *packet_sequence,
                 channel_id: self.channel_id,
                 messages: std::mem::take(&mut small_messages),
             });

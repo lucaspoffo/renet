@@ -113,7 +113,7 @@ impl SendChannelReliable {
                     let serialized_size = message.len() + octets::varint_len(message.len() as u64) + octets::varint_len(message_id);
                     if small_messages_bytes + serialized_size > SLICE_SIZE {
                         packets.push(Packet::SmallReliable {
-                            packet_sequence: *packet_sequence,
+                            sequence: *packet_sequence,
                             channel_id: self.channel_id,
                             messages: std::mem::take(&mut small_messages),
                         });
@@ -167,7 +167,7 @@ impl SendChannelReliable {
                         };
 
                         packets.push(Packet::ReliableSlice {
-                            packet_sequence: *packet_sequence,
+                            sequence: *packet_sequence,
                             channel_id: self.channel_id,
                             slice,
                         });
@@ -183,7 +183,7 @@ impl SendChannelReliable {
         // Generate final packet for remaining small messages
         if !small_messages.is_empty() {
             packets.push(Packet::SmallReliable {
-                packet_sequence: *packet_sequence,
+                sequence: *packet_sequence,
                 channel_id: self.channel_id,
                 messages: std::mem::take(&mut small_messages),
             });
@@ -383,7 +383,7 @@ mod tests {
 
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
-            let Packet::SmallReliable { packet_sequence: 0, channel_id: 0, messages } = packet else {
+            let Packet::SmallReliable { sequence: 0, channel_id: 0, messages } = packet else {
                 unreachable!();
             };
             for (message, message_id) in messages {
@@ -475,7 +475,7 @@ mod tests {
 
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
-            let Packet::SmallReliable { packet_sequence: 0, channel_id: 0, messages } = packet else {
+            let Packet::SmallReliable { sequence: 0, channel_id: 0, messages } = packet else {
                 unreachable!();
             };
             for (message, message_id) in messages {
