@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use std::ops::Range;
+use std::{fmt, ops::Range};
 
 pub type Payload = Vec<u8>;
 
@@ -48,8 +48,37 @@ pub enum Packet {
     },
 }
 
+#[derive(Debug)]
+pub enum SerializationError {
+    BufferTooShort,
+    InvalidNumSlices,
+    InvalidAckRange,
+    InvalidPacketType,
+}
+
+impl std::error::Error for SerializationError {}
+
+impl fmt::Display for SerializationError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use SerializationError::*;
+
+        match *self {
+            BufferTooShort => write!(fmt, "buffer too short"),
+            InvalidNumSlices => write!(fmt, "invalid number of slices"),
+            InvalidAckRange => write!(fmt, "invalid ack range"),
+            InvalidPacketType => write!(fmt, "invalid packet type"),
+        }
+    }
+}
+
+impl From<octets::BufferTooShortError> for SerializationError {
+    fn from(_: octets::BufferTooShortError) -> Self {
+        SerializationError::BufferTooShort
+    }
+}
+
 impl Packet {
-    pub fn to_bytes(&self, b: &mut octets::OctetsMut) -> Result<usize, octets::BufferTooShortError> {
+    pub fn to_bytes(&self, b: &mut octets::OctetsMut) -> Result<usize, SerializationError> {
         let before = b.cap();
 
         match self {
@@ -165,7 +194,7 @@ impl Packet {
         Ok(before - b.cap())
     }
 
-    pub fn from_bytes(b: &mut octets::Octets) -> Result<Packet, octets::BufferTooShortError> {
+    pub fn from_bytes(b: &mut octets::Octets) -> Result<Packet, SerializationError> {
         let packet_type = b.get_u8()?;
         match packet_type {
             0 => {
@@ -212,8 +241,7 @@ impl Packet {
                 let slice_index = b.get_varint()? as usize;
                 let num_slices = b.get_varint()? as usize;
                 if num_slices == 0 || num_slices > 1_000_000 {
-                    // TODO: Invalid packet
-                    return Err(octets::BufferTooShortError);
+                    return Err(SerializationError::InvalidNumSlices);
                 }
 
                 let payload = b.get_bytes_with_varint_length()?;
@@ -238,8 +266,7 @@ impl Packet {
                 let slice_index = b.get_varint()? as usize;
                 let num_slices = b.get_varint()? as usize;
                 if num_slices == 0 || num_slices > 1_000_000 {
-                    // TODO: Invalid packet
-                    return Err(octets::BufferTooShortError);
+                    return Err(SerializationError::InvalidNumSlices);
                 }
 
                 let payload = b.get_bytes_with_varint_length()?;
@@ -265,8 +292,7 @@ impl Packet {
                 let num_remaining_ranges = b.get_varint()?;
 
                 if first_range_end < first_range_size {
-                    // TODO: Invalid ack packet
-                    return Err(octets::BufferTooShortError);
+                    return Err(SerializationError::InvalidAckRange);
                 }
 
                 let mut ranges: Vec<Range<u64>> = Vec::with_capacity(32);
@@ -280,8 +306,7 @@ impl Packet {
                     let gap = b.get_varint()?;
 
                     if previous_range_start < 2 + gap {
-                        // TODO: Invalid ack packet
-                        return Err(octets::BufferTooShortError);
+                        return Err(SerializationError::InvalidAckRange);
                     }
 
                     // Get the end of the current range using the start of the previous one and the gap
@@ -289,8 +314,7 @@ impl Packet {
                     let range_size = b.get_varint()?;
 
                     if range_end < range_size {
-                        // TODO: Invalid ack packet
-                        return Err(octets::BufferTooShortError);
+                        return Err(SerializationError::InvalidAckRange);
                     }
 
                     let range_start = range_end - range_size;
@@ -306,7 +330,7 @@ impl Packet {
                     ack_ranges: ranges,
                 })
             }
-            _ => Err(octets::BufferTooShortError), // TODO: correct error (invalid packet type)
+            _ => Err(SerializationError::InvalidPacketType),
         }
     }
 }

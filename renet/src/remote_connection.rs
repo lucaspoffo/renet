@@ -319,9 +319,13 @@ impl RenetClient {
 
         self.stats.received_packet(packet.len() as u64);
         let mut octets = octets::Octets::with_slice(packet);
-        let Ok(packet) = Packet::from_bytes(&mut octets) else {
-            self.disconnect_reason = Some(DisconnectReason::PacketDeserialization);
-            return;
+        let packet = match Packet::from_bytes(&mut octets) {
+            Err(err) => {
+                log::error!("Failed to deserialize packet: {err}");
+                self.disconnect_reason = Some(DisconnectReason::PacketDeserialization);
+                return;
+            }
+            Ok(packet) => packet,
         };
 
         match packet {
@@ -547,10 +551,15 @@ impl RenetClient {
         let mut bytes_sent: u64 = 0;
         for packet in packets {
             let mut oct = OctetsMut::with_slice(&mut buffer);
-            let Ok(len) = packet.to_bytes(&mut oct) else {
-                self.disconnect_reason = Some(DisconnectReason::PacketSerialization);
-                return vec![];
+            let len = match packet.to_bytes(&mut oct) {
+                Err(err) => {
+                    log::error!("Failed to serialize packet: {err}");
+                    self.disconnect_reason = Some(DisconnectReason::PacketSerialization);
+                    return vec![];
+                }
+                Ok(len) => len,
             };
+
             bytes_sent += len as u64;
             serialized_packets.push(buffer[..len].to_vec());
         }
