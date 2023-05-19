@@ -3,7 +3,7 @@ use renet::{
     RenetClient, RenetServer,
 };
 
-use bevy::prelude::*;
+use bevy::{app::AppExit, prelude::*};
 
 use crate::RenetSet;
 
@@ -29,6 +29,11 @@ impl Plugin for NetcodeServerPlugin {
 
         app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Server));
         app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Server));
+        app.add_system(
+            Self::disconnect_on_exit
+                .in_base_set(CoreSet::PostUpdate)
+                .in_set(TransportSet::Server),
+        );
     }
 }
 
@@ -47,6 +52,12 @@ impl NetcodeServerPlugin {
     pub fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
         transport.send_packets(&mut server);
     }
+
+    pub fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
+        if !exit.is_empty() {
+            transport.disconnect_all(&mut server);
+        }
+    }
 }
 
 impl Plugin for NetcodeClientPlugin {
@@ -61,6 +72,11 @@ impl Plugin for NetcodeClientPlugin {
 
         app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Client));
         app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Client));
+        app.add_system(
+            Self::disconnect_on_exit
+                .in_base_set(CoreSet::PostUpdate)
+                .in_set(TransportSet::Client),
+        );
     }
 }
 
@@ -83,6 +99,12 @@ impl NetcodeClientPlugin {
     ) {
         if let Err(e) = transport.send_packets(&mut client) {
             transport_errors.send(e);
+        }
+    }
+
+    fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<NetcodeClientTransport>) {
+        if !exit.is_empty() && !transport.is_disconnected() {
+            transport.disconnect();
         }
     }
 }

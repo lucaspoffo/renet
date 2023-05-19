@@ -89,6 +89,16 @@ impl NetcodeServerTransport {
         self.netcode_server.user_data(client_id)
     }
 
+    /// Disconnects all connected clients.
+    /// This sends the disconnect packet instantly, use this when closing/exiting games,
+    /// should use [RenetServer::disconnect_all][crate::RenetServer::disconnect_all] otherwise.
+    pub fn disconnect_all(&mut self, server: &mut RenetServer) {
+        for client_id in self.netcode_server.clients_id() {
+            let server_result = self.netcode_server.disconnect(client_id);
+            handle_server_result(server_result, &self.socket, server);
+        }
+    }
+
     /// Returns the duration since the connected client last received a packet.
     /// Usefull to detect users that are timing out.
     pub fn time_since_last_received_packet(&self, client_id: u64) -> Option<Duration> {
@@ -96,14 +106,14 @@ impl NetcodeServerTransport {
     }
 
     /// Advances the transport by the duration, and receive packets from the network.
-    pub fn update(&mut self, duration: Duration, reliable_server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
+    pub fn update(&mut self, duration: Duration, server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         self.netcode_server.update(duration);
 
         loop {
             match self.socket.recv_from(&mut self.buffer) {
                 Ok((len, addr)) => {
                     let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
-                    handle_server_result(server_result, &self.socket, reliable_server);
+                    handle_server_result(server_result, &self.socket, server);
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => break,
@@ -114,21 +124,21 @@ impl NetcodeServerTransport {
 
         for client_id in self.netcode_server.clients_id() {
             let server_result = self.netcode_server.update_client(client_id);
-            handle_server_result(server_result, &self.socket, reliable_server);
+            handle_server_result(server_result, &self.socket, server);
         }
 
-        for disconnection_id in reliable_server.disconnections_id() {
+        for disconnection_id in server.disconnections_id() {
             let server_result = self.netcode_server.disconnect(disconnection_id);
-            handle_server_result(server_result, &self.socket, reliable_server);
+            handle_server_result(server_result, &self.socket, server);
         }
 
         Ok(())
     }
 
     /// Send packets to connected clients.
-    pub fn send_packets(&mut self, reliable_server: &mut RenetServer) {
-        'clients: for client_id in reliable_server.connections_id() {
-            let packets = reliable_server.get_packets_to_send(client_id).unwrap();
+    pub fn send_packets(&mut self, server: &mut RenetServer) {
+        'clients: for client_id in server.clients_id() {
+            let packets = server.get_packets_to_send(client_id).unwrap();
             for packet in packets {
                 match self.netcode_server.generate_payload_packet(client_id, &packet) {
                     Ok((addr, payload)) => {

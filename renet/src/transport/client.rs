@@ -92,6 +92,24 @@ impl NetcodeClientTransport {
         self.netcode_client.time_since_last_received_packet()
     }
 
+    /// Disconnect the client from the transport layer.
+    /// This sends the disconnect packet instantly, use this when closing/exiting games,
+    /// should use [RenetClient::disconnect][crate::RenetClient::disconnect] otherwise.
+    pub fn disconnect(&mut self) {
+        if self.netcode_client.is_disconnected() {
+            return;
+        }
+
+        match self.netcode_client.disconnect() {
+            Ok((addr, packet)) => {
+                if let Err(e) = self.socket.send_to(packet, addr) {
+                    log::error!("Failed to send disconnect packet: {e}");
+                }
+            }
+            Err(e) => log::error!("Failed to generate disconnect packet: {e}"),
+        }
+    }
+
     /// If the client is disconnected, returns the reason.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         self.netcode_client.disconnect_reason()
@@ -117,9 +135,10 @@ impl NetcodeClientTransport {
     pub fn update(&mut self, duration: Duration, client: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
             // Mark the client as disconnected if an error occured in the transport layer
-            if client.is_connected() {
+            if !client.is_disconnected() {
                 client.disconnect_due_to_transport();
             }
+
             return Err(NetcodeError::Disconnected(reason).into());
         }
 

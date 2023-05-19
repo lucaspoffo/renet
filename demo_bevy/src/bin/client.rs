@@ -1,10 +1,9 @@
 use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
 
 use bevy::{
-    app::AppExit,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::{shape::Icosphere, *},
-    window::{exit_on_all_closed, PrimaryWindow},
+    window::PrimaryWindow,
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
@@ -82,7 +81,6 @@ fn main() {
     app.add_systems(
         (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::transport::client_connected),
     );
-    app.add_system(disconnect_on_exit.in_base_set(CoreSet::PostUpdate).after(exit_on_all_closed));
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
     app.add_system(update_visulizer_system);
@@ -293,11 +291,5 @@ fn camera_follow(
         cam_transform.eye.x = player_transform.translation.x;
         cam_transform.eye.z = player_transform.translation.z + 2.5;
         cam_transform.target = player_transform.translation;
-    }
-}
-
-fn disconnect_on_exit(exit: EventReader<AppExit>, mut client: ResMut<RenetClient>) {
-    if !exit.is_empty() && client.is_connected() {
-        client.disconnect();
     }
 }
