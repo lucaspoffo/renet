@@ -205,6 +205,11 @@ impl RenetServer {
             .collect()
     }
 
+    /// Returns the current number of connected clients1.
+    pub fn connected_clients(&self) -> usize {
+        self.connections.iter().filter(|(_, c)| c.is_disconnected()).count()
+    }
+
     pub fn is_connected(&self, client_id: u64) -> bool {
         if let Some(connection) = self.connections.get(&client_id) {
             return !connection.is_disconnected();
