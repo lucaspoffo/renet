@@ -225,11 +225,6 @@ impl RenetClient {
         self.disconnect_reason.is_some()
     }
 
-    #[inline]
-    pub fn is_connected(&self) -> bool {
-        self.disconnect_reason.is_none()
-    }
-
     /// Returns the disconneect reason if the client is disconnected.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         self.disconnect_reason
