@@ -114,12 +114,16 @@ impl NetcodeClientTransport {
     }
 
     /// Advances the transport by the duration, and receive packets from the network.
-    pub fn update(&mut self, duration: Duration, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
+    pub fn update(&mut self, duration: Duration, client: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
+            // Mark the client as disconnected if an error occured in the transport layer
+            if client.is_connected() {
+                client.disconnect_due_to_transport();
+            }
             return Err(NetcodeError::Disconnected(reason).into());
         }
 
-        if let Some(error) = connection.disconnect_reason() {
+        if let Some(error) = client.disconnect_reason() {
             let (addr, disconnect_packet) = self.netcode_client.disconnect()?;
             self.socket.send_to(disconnect_packet, addr)?;
             return Err(error.into());
@@ -141,7 +145,7 @@ impl NetcodeClientTransport {
             };
 
             if let Some(payload) = self.netcode_client.process_packet(packet) {
-                connection.process_packet(payload);
+                client.process_packet(payload);
             }
         }
 

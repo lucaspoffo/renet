@@ -231,7 +231,7 @@ impl RenetClient {
         self.disconnect_reason
     }
 
-    /// Disconnects the clients.
+    /// Disconnect the client.
     /// If the client is already disconnected, it does nothing.
     pub fn disconnect(&mut self) {
         if self.disconnect_reason.is_some() {
@@ -239,6 +239,17 @@ impl RenetClient {
         }
 
         self.disconnect_reason = Some(DisconnectReason::DisconnectedByClient);
+    }
+
+    /// Disconnect the client because an error that occured in the transport layer.
+    /// If the client is already disconnected, it does nothing.
+    /// This should only be called by the transport layer.
+    pub fn disconnect_due_to_transport(&mut self) {
+        if self.disconnect_reason.is_some() {
+            return;
+        }
+
+        self.disconnect_reason = Some(DisconnectReason::Transport);
     }
 
     // pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
