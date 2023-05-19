@@ -32,6 +32,7 @@ pub struct ChannelConfig {
     /// Unreliable channels will drop new messages when this value is reached
     /// Reliable channels will cause a disconnect when this value is reached
     pub max_memory_usage_bytes: usize,
+    /// Delivery garantee of the channel
     pub send_type: SendType,
 }
 

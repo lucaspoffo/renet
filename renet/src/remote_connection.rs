@@ -66,9 +66,7 @@ pub struct NetworkInfo {
     /// Round-trip Time
     pub rtt: f64,
     pub packet_loss: f64,
-    /// Sent bytes per second.
     pub bytes_sent_per_second: f64,
-    /// Received bytes per second.
     pub bytes_received_per_second: f64,
 }
 
