@@ -109,7 +109,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     ui.separator();
 
     egui::ScrollArea::vertical().id_source("host_commands_scroll").show(ui, |ui| {
-        for client_id in chat_server.server.connections_id() {
+        for client_id in chat_server.server.clients_id() {
             ui.horizontal(|ui| {
                 ui.label(format!("Client {}", client_id));
                 if ui.button("X").on_hover_text("Disconnect client").clicked() {
