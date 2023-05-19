@@ -35,8 +35,8 @@ pub struct ChannelConfig {
     pub send_type: SendType,
 }
 
-/// Default channels used when using the default configuration.
-/// This an utility enum when using the default channels configuration.
+/// Utility enumerator when using the default channels configuration.
+/// The default configuration has 3 channels: unreliable, reliable ordered, and reliable unordered.
 pub enum DefaultChannel {
     Unreliable,
     ReliableOrdered,

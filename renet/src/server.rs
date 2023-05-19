@@ -31,7 +31,9 @@ impl RenetServer {
     }
 
     /// Adds a new connection to the server. If a connection already exits it does nothing.
-    /// This should be called by the transport layer when a new client has connected
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
     pub fn add_connection(&mut self, client_id: u64) {
         if self.connections.contains_key(&client_id) {
             return;
@@ -119,7 +121,9 @@ impl RenetServer {
 
     /// Removes a connection from the server, emits an disconnect server event.
     /// It does nothing if the client does not exits.
-    /// This should be called by the transport layer when a client disconnects
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
     pub fn remove_connection(&mut self, client_id: u64) {
         if let Some(connection) = self.connections.remove(&client_id) {
             let reason = connection.disconnect_reason().unwrap_or(DisconnectReason::Transport);
@@ -130,7 +134,7 @@ impl RenetServer {
     /// Disconnects a client, it does nothing if the client does not exits.
     pub fn disconnect(&mut self, client_id: u64) {
         if let Some(connection) = self.connections.get_mut(&client_id) {
-            if connection.is_connected() {
+            if !connection.is_disconnected() {
                 connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
             }
         }
@@ -139,18 +143,11 @@ impl RenetServer {
     /// Disconnects all client.
     pub fn disconnect_all(&mut self) {
         for connection in self.connections.values_mut() {
-            if connection.is_connected() {
+            if !connection.is_disconnected() {
                 connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
             }
         }
     }
-
-    // pub fn can_send_message<I: Into<u8>>(&self, connection_id: &C, channel_id: I) -> bool {
-    //     match self.connections.get(connection_id) {
-    //         Some(connection) => connection.can_send_message(channel_id),
-    //         None => false,
-    //     }
-    // }
 
     /// Send a message to all clients over a channel.
     pub fn broadcast_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
@@ -191,7 +188,7 @@ impl RenetServer {
     }
 
     /// Return ids for all connected clients
-    pub fn connections_id(&self) -> Vec<u64> {
+    pub fn clients_id(&self) -> Vec<u64> {
         self.connections
             .iter()
             .filter(|(_, c)| !c.is_disconnected())
@@ -210,7 +207,7 @@ impl RenetServer {
 
     pub fn is_connected(&self, client_id: u64) -> bool {
         if let Some(connection) = self.connections.get(&client_id) {
-            return connection.is_connected();
+            return !connection.is_disconnected();
         }
 
         false
@@ -225,7 +222,9 @@ impl RenetServer {
     }
 
     /// Returns a list of packets to be sent to the client.
-    /// This should be called by the transport layer.
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
     pub fn get_packets_to_send(&mut self, client_id: u64) -> Result<Vec<Payload>, ClientNotFound> {
         match self.connections.get_mut(&client_id) {
             Some(connection) => Ok(connection.get_packets_to_send()),
@@ -234,7 +233,9 @@ impl RenetServer {
     }
 
     /// Process a packet received from the client.
-    /// This should be called by the transport layer.
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
     pub fn process_packet_from(&mut self, payload: &[u8], client_id: u64) -> Result<(), ClientNotFound> {
         match self.connections.get_mut(&client_id) {
             Some(connection) => {
