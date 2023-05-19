@@ -1,6 +1,6 @@
 # Renet changelog
 
-## Unreleased
+## 0.0.12 - 19-05-2023
 
 This release comes with 3 major changes:
 
@@ -44,7 +44,7 @@ Rechannel has been deprecrated, all its logic has been moved inside renet.
 
 * Removed the `clear_events` options, you can achieve the same functionality by adding the Events yourself before the Plugin.
 
-## 0.0.11 - 2023-03-12
+## 0.0.11 - 12-03-2023
 
 ### Added ⭐
 
@@ -61,7 +61,7 @@ Rechannel has been deprecrated, all its logic has been moved inside renet.
 
 * [Shatur](https://github.com/Shatur)
 
-## 0.0.10 - 2022-11-18
+## 0.0.10 - 18-11-2022
 
 ### Added ⭐
 
@@ -86,7 +86,7 @@ Rechannel has been deprecrated, all its logic has been moved inside renet.
 * [Aceeri](https://github.com/Aceeri)
 * [Alainx277](https://github.com/Alainx277)
 
-## 0.0.9 - 2022-07-25
+## 0.0.9 - 25-07-2022
 ### Added ⭐
 * Rechannel: added max_message_size configuration for channels. This also fixes an exploit over the block channel,
 it was possible to send a SliceMessage with a high value of number of slices, this would cause the channel to allocate a lot of memory causing out of memories errors. [(commit)](https://github.com/lucaspoffo/renet/commit/774d0eeb1d05356edc29a368561e735b0eb8ab9f)
