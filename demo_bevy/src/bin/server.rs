@@ -163,7 +163,7 @@ fn server_update_system(
         }
     }
 
-    for client_id in server.connections_id() {
+    for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, ClientChannel::Command) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
