@@ -52,6 +52,8 @@ pub enum Packet {
 pub enum SerializationError {
     BufferTooShort,
     InvalidNumSlices,
+    SliceSizeAboveLimit,
+    EmptySlice,
     InvalidAckRange,
     InvalidPacketType,
 }
@@ -67,6 +69,8 @@ impl fmt::Display for SerializationError {
             InvalidNumSlices => write!(fmt, "invalid number of slices"),
             InvalidAckRange => write!(fmt, "invalid ack range"),
             InvalidPacketType => write!(fmt, "invalid packet type"),
+            SliceSizeAboveLimit => write!(fmt, "invalid slice size, it's above the limit of {} bytes", SLICE_SIZE),
+            EmptySlice => write!(fmt, "invalid slice, slices cannot be empty"),
         }
     }
 }
@@ -252,6 +256,14 @@ impl Packet {
                 }
 
                 let payload = b.get_bytes_with_varint_length()?;
+
+                if payload.len() == 0 {
+                    return Err(SerializationError::EmptySlice);
+                }
+
+                if payload.len() > SLICE_SIZE {
+                    return Err(SerializationError::SliceSizeAboveLimit);
+                }
 
                 let slice = Slice {
                     message_id,
