@@ -257,7 +257,7 @@ impl Packet {
 
                 let payload = b.get_bytes_with_varint_length()?;
 
-                if payload.len() == 0 {
+                if payload.is_empty() {
                     return Err(SerializationError::EmptySlice);
                 }
 

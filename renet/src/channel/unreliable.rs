@@ -79,7 +79,8 @@ impl SendChannelUnreliable {
 
                 self.sliced_message_id += 1;
             } else {
-                if small_messages_bytes + message.len() > SLICE_SIZE {
+                let serialized_size = message.len() + octets::varint_len(message.len() as u64);
+                if small_messages_bytes + serialized_size > SLICE_SIZE {
                     packets.push(Packet::SmallUnreliable {
                         sequence: *packet_sequence,
                         channel_id: self.channel_id,
@@ -89,7 +90,7 @@ impl SendChannelUnreliable {
                     small_messages_bytes = 0;
                 }
 
-                small_messages_bytes += message.len();
+                small_messages_bytes += serialized_size;
                 small_messages.push(message);
             }
         }
@@ -210,6 +211,8 @@ impl ReceiveChannelUnreliable {
 
 #[cfg(test)]
 mod tests {
+    use octets::OctetsMut;
+
     use super::*;
 
     #[test]
@@ -336,5 +339,29 @@ mod tests {
         let mut available_bytes: u64 = u64::MAX;
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
         assert_eq!(packets.len(), 0);
+    }
+
+    #[test]
+    fn small_packet_max_size() {
+        let mut sequence: u64 = 0;
+        let mut available_bytes = u64::MAX;
+        let mut send = SendChannelUnreliable::new(0, usize::MAX);
+
+        // 4 bytes
+        let message: Bytes = vec![0, 1, 2, 3].into();
+
+        // (4 + 1) * 400 = 2000 = 2 packets
+        for _ in 0..400 {
+            send.send_message(message.clone());
+        }
+
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
+        assert_eq!(packets.len(), 2);
+        let mut buffer = [0u8; 1400];
+        for packet in packets {
+            let mut oct = OctetsMut::with_slice(&mut buffer);
+            let len = packet.to_bytes(&mut oct).unwrap();
+            assert!(len < 1300);
+        }
     }
 }

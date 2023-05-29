@@ -363,6 +363,8 @@ impl ReceiveChannelReliable {
 
 #[cfg(test)]
 mod tests {
+    use octets::OctetsMut;
+
     use super::*;
 
     #[test]
@@ -522,5 +524,31 @@ mod tests {
         let mut available_bytes: u64 = u64::MAX;
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
         assert_eq!(packets.len(), 0);
+    }
+
+    #[test]
+    fn small_packet_max_size() {
+        let mut sequence: u64 = 0;
+        let current_time: Duration = Duration::ZERO;
+        let mut available_bytes = u64::MAX;
+        let resend_time = Duration::from_millis(100);
+        let mut send = SendChannelReliable::new(0, resend_time, usize::MAX);
+
+        // 4 bytes
+        let message: Bytes = vec![0, 1, 2, 3].into();
+
+        // (4 + 1 + 2) * 300 = 2100 = 2 packets
+        for _ in 0..300 {
+            send.send_message(message.clone()).unwrap();
+        }
+
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 2);
+        let mut buffer = [0u8; 1400];
+        for packet in packets {
+            let mut oct = OctetsMut::with_slice(&mut buffer);
+            let len = packet.to_bytes(&mut oct).unwrap();
+            assert!(len < 1300);
+        }
     }
 }
