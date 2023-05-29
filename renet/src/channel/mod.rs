@@ -32,11 +32,12 @@ pub struct ChannelConfig {
     /// Unreliable channels will drop new messages when this value is reached
     /// Reliable channels will cause a disconnect when this value is reached
     pub max_memory_usage_bytes: usize,
+    /// Delivery garantee of the channel
     pub send_type: SendType,
 }
 
-/// Default channels used when using the default configuration.
-/// This an utility enum when using the default channels configuration.
+/// Utility enumerator when using the default channels configuration.
+/// The default configuration has 3 channels: unreliable, reliable ordered, and reliable unordered.
 pub enum DefaultChannel {
     Unreliable,
     ReliableOrdered,

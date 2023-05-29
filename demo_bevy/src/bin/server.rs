@@ -1,10 +1,8 @@
 use std::{collections::HashMap, f32::consts::PI, net::UdpSocket, time::SystemTime};
 
 use bevy::{
-    app::AppExit,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
-    window::exit_on_all_closed,
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
@@ -86,7 +84,8 @@ fn main() {
         spawn_bot,
         bot_autocast,
     ));
-    app.add_systems((projectile_on_removal_system, disconnect_clients_on_exit.after(exit_on_all_closed)).in_base_set(CoreSet::PostUpdate));
+
+    app.add_system(projectile_on_removal_system.in_base_set(CoreSet::PostUpdate));
 
     app.add_startup_systems((setup_level, setup_simple_camera));
 
@@ -163,7 +162,7 @@ fn server_update_system(
         }
     }
 
-    for client_id in server.connections_id() {
+    for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, ClientChannel::Command) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
             match command {
@@ -266,12 +265,6 @@ fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_pro
         let message = bincode::serialize(&message).unwrap();
 
         server.broadcast_message(ServerChannel::ServerMessages, message);
-    }
-}
-
-fn disconnect_clients_on_exit(exit: EventReader<AppExit>, mut server: ResMut<RenetServer>) {
-    if !exit.is_empty() {
-        server.disconnect_all();
     }
 }
 

@@ -106,7 +106,7 @@ fn server(public_addr: SocketAddr) {
             }
         }
 
-        for client_id in server.connections_id() {
+        for client_id in server.clients_id() {
             while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
                 let text = String::from_utf8(message.into()).unwrap();
                 let username = usernames.get(&client_id).unwrap();

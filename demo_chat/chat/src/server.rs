@@ -111,7 +111,7 @@ impl ChatServer {
             }
         }
 
-        for client_id in self.server.connections_id() {
+        for client_id in self.server.clients_id() {
             while let Some(message) = self.server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
                 if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);

@@ -171,7 +171,7 @@ fn server_update_system(
         }
     }
 
-    for client_id in server.connections_id().into_iter() {
+    for client_id in server.clients_id().into_iter() {
         while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
             if let Some(player_entity) = lobby.players.get(&client_id) {

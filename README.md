@@ -104,7 +104,7 @@ loop {
     server.send_message(client_id, DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
  
     // Send packets to clients
-    transport.send_packets(&mut server)?;
+    transport.send_packets(&mut server);
 }
 ```
 

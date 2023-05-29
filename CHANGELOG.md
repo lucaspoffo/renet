@@ -1,20 +1,70 @@
 # Renet changelog
 
-## 0.0.11 - 2023-03-12
+## 0.0.12 - 19-05-2023
+
+This release comes with 3 major changes:
+
+* Rewrite of the reliability/fragmentation protocol, it should handle any bandwidth.
+* Split of renet and the transport layer. Now its possible to use others transport protocols.
+* Configuration simplification
+
+### Renet
+
+#### Added ⭐
+
+* Added `NetcodeServer` and `NetcodeClient` all the network transport logic has been moved to these structs.
+  * You can check the documentation, examples, or demos to see how these new structs are used.
+
+#### Changed 🛠️
+
+* Replaced `RenetConnectionConfig` with `ConnectionConfig`, this new configuration has been greatly simplified. You only need to specify how many bytes you can use per update tick and the channels configuration (`ChannelConfiguration`).
+* Rework of `ChannelConfiguration`, only 3 fields now: `channel_id`, `max_memory_usage_bytes`, and `send_type`.
+* `RenetServer::new`and `RenetClient::new` now only has `ConnectionConfig` as argument.
+* Renamed `RenetServer::is_client_connected` to `is_connected`.
+* `NetworkInfo` has `bytes_sent_per_second` and `bytes_received_per_second` instead of `sent_kbps` and `received_kbps`.
+
+#### Removed 🔥
+
+* Removed `send_packets` from `RenetServer` and `RenetClient`, this is now done by the transport layer.
+* Removed `can_send_message`, this could cause some bad practices of checking before sending messages. If you cannot send a message you should change the channels configurations.
+
+### Rechannel
+
+Rechannel has been deprecrated, all its logic has been moved inside renet.
+
+### Bevy Renet
+
+#### Added ⭐
+
+* Added new Plugins for the transport layer: `NetcodeServerPlugin` and `NetcodeClientPlugin`.
+* Client disconnects when the app closes.
+* Server disconnects all clients when the app closes.
+
+#### Changed 🛠️
+
+* Removed the `clear_events` options, you can achieve the same functionality by adding the Events yourself before the Plugin.
+
+## 0.0.11 - 12-03-2023
+
 ### Added ⭐
+
 * BevyRenet: updated bevy to version 0.10. [(PR)](https://github.com/lucaspoffo/renet/pull/77) by [Shatur](https://github.com/Shatur)
 * RenetVisualizer: updated to egui 0.21.
 * Renet, Renetcode, BevyRenet: add client.is_connecting(). [(commit)](https://github.com/lucaspoffo/renet/commit/88834d4d2c9708ecec0c7f2997ca52b2b4d56641)
 * Renet: allow to send empty messages again, this was a bad change since some serialization methods can serialize to empty messages. [(commit)](https://github.com/lucaspoffo/renet/commit/1e287018c7201ec339406a8dd6483714ade7f0ba)
 
 ### Changed 🛠️
+
 * Renetcode: rename client.connected() with client.is_connected() for consistency. [(commit)](https://github.com/lucaspoffo/renet/commit/88834d4d2c9708ecec0c7f2997ca52b2b4d56641)
 
 ### Contributors 🙏
+
 * [Shatur](https://github.com/Shatur)
 
-## 0.0.10 - 2022-11-18
+## 0.0.10 - 18-11-2022
+
 ### Added ⭐
+
 * Added function `client_addr`, `user_data`, `is_client_connected`, `max_clients`, `connected_clients` for `RenetServer`, some utilities from `NetcodeServer`. [(commit)](https://github.com/lucaspoffo/renet/commit/576962e53a2e2b74f8f3c8355ae2abf706826f73) [(commit)](https://github.com/lucaspoffo/renet/commit/dff1fc5785ac2b82309b92477c90a250feb3af55)
 * Renetcode/Renet: make generate_random_bytes public, this can be used to generate a random private key. [(commit)](https://github.com/lucaspoffo/renet/commit/f8509f11017e2d234c8059cc181f9644468ea87f)
 * Rechannel: add `DefaultChannel` enum, usefull when using the default channel configuration. [(commit)](https://github.com/lucaspoffo/renet/commit/58311b4e7293555bd50e0c1d3cd325f7aa26d068)
@@ -36,7 +86,7 @@
 * [Aceeri](https://github.com/Aceeri)
 * [Alainx277](https://github.com/Alainx277)
 
-## 0.0.9 - 2022-07-25
+## 0.0.9 - 25-07-2022
 ### Added ⭐
 * Rechannel: added max_message_size configuration for channels. This also fixes an exploit over the block channel,
 it was possible to send a SliceMessage with a high value of number of slices, this would cause the channel to allocate a lot of memory causing out of memories errors. [(commit)](https://github.com/lucaspoffo/renet/commit/774d0eeb1d05356edc29a368561e735b0eb8ab9f)

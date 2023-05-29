@@ -66,9 +66,7 @@ pub struct NetworkInfo {
     /// Round-trip Time
     pub rtt: f64,
     pub packet_loss: f64,
-    /// Sent bytes per second.
     pub bytes_sent_per_second: f64,
-    /// Received bytes per second.
     pub bytes_received_per_second: f64,
 }
 
@@ -216,14 +214,13 @@ impl RenetClient {
         }
     }
 
+    /// Returns if the client is disconnected.
+    ///
+    /// Note: to check if a client is connecting you need to use the transport layer [NetcodeClientTransport::is_connecting][crate::transport::NetcodeClientTransport::is_connecting].
+    /// You can't use `!client.is_disconnected()` for that.
     #[inline]
     pub fn is_disconnected(&self) -> bool {
         self.disconnect_reason.is_some()
-    }
-
-    #[inline]
-    pub fn is_connected(&self) -> bool {
-        self.disconnect_reason.is_none()
     }
 
     /// Returns the disconneect reason if the client is disconnected.
@@ -231,7 +228,7 @@ impl RenetClient {
         self.disconnect_reason
     }
 
-    /// Disconnects the clients.
+    /// Disconnect the client.
     /// If the client is already disconnected, it does nothing.
     pub fn disconnect(&mut self) {
         if self.disconnect_reason.is_some() {
@@ -241,10 +238,18 @@ impl RenetClient {
         self.disconnect_reason = Some(DisconnectReason::DisconnectedByClient);
     }
 
-    // pub fn can_send_message<I: Into<u8>>(&self, channel_id: I) -> bool {
-    //     let channel = self.send_channels.get(&channel_id.into()).expect("invalid channel id");
-    //     channel.can_send_message()
-    // }
+    /// Disconnect the client because an error occurred in the transport layer.
+    /// If the client is already disconnected, it does nothing.
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
+    pub fn disconnect_due_to_transport(&mut self) {
+        if self.disconnect_reason.is_some() {
+            return;
+        }
+
+        self.disconnect_reason = Some(DisconnectReason::Transport);
+    }
 
     /// Send a message to the server over a channel.
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
@@ -280,7 +285,7 @@ impl RenetClient {
         }
     }
 
-    /// Advances the client by the duration
+    /// Advances the client by the duration.
     /// Should be called every tick
     pub fn update(&mut self, duration: Duration) {
         self.current_time += duration;
@@ -309,7 +314,9 @@ impl RenetClient {
     }
 
     /// Process a packet received from the server.
-    /// This should be called by the transport layer.
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
     pub fn process_packet(&mut self, packet: &[u8]) {
         if self.is_disconnected() {
             return;
@@ -419,7 +426,9 @@ impl RenetClient {
     }
 
     /// Returns a list of packets to be sent to the server.
-    /// This should be called by the transport layer.
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
     pub fn get_packets_to_send(&mut self) -> Vec<Payload> {
         let mut packets: Vec<Packet> = vec![];
         if self.is_disconnected() {

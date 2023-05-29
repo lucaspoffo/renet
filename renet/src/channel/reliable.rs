@@ -50,7 +50,7 @@ enum ReliableOrder {
 pub struct ReceiveChannelReliable {
     slices: HashMap<u64, SliceConstructor>,
     messages: BTreeMap<u64, Bytes>,
-    next_message_id: u64,
+    oldest_pending_message_id: u64,
     reliable_order: ReliableOrder,
     memory_usage_bytes: usize,
     max_memory_usage_bytes: usize,
@@ -256,7 +256,7 @@ impl ReceiveChannelReliable {
         Self {
             slices: HashMap::new(),
             messages: BTreeMap::new(),
-            next_message_id: 0,
+            oldest_pending_message_id: 0,
             reliable_order,
             memory_usage_bytes: 0,
             max_memory_usage_bytes,
@@ -264,7 +264,7 @@ impl ReceiveChannelReliable {
     }
 
     pub fn process_message(&mut self, message: Bytes, message_id: u64) -> Result<(), ChannelError> {
-        if message_id < self.next_message_id {
+        if message_id < self.oldest_pending_message_id {
             // Discard old message already received
             return Ok(());
         }
@@ -304,7 +304,7 @@ impl ReceiveChannelReliable {
     }
 
     pub fn process_slice(&mut self, slice: Slice) -> Result<(), ChannelError> {
-        if self.messages.contains_key(&slice.message_id) || slice.message_id < self.next_message_id {
+        if self.messages.contains_key(&slice.message_id) || slice.message_id < self.oldest_pending_message_id {
             // Message already assembled
             return Ok(());
         }
@@ -334,11 +334,11 @@ impl ReceiveChannelReliable {
     pub fn receive_message(&mut self) -> Option<Bytes> {
         match &mut self.reliable_order {
             ReliableOrder::Ordered => {
-                let Some(message) = self.messages.remove(&self.next_message_id) else {
+                let Some(message) = self.messages.remove(&self.oldest_pending_message_id) else {
                     return None;
                 };
 
-                self.next_message_id += 1;
+                self.oldest_pending_message_id += 1;
                 self.memory_usage_bytes -= message.len();
                 Some(message)
             }
@@ -347,10 +347,12 @@ impl ReceiveChannelReliable {
                     return None;
                 };
 
-                if self.next_message_id == message_id {
-                    while received_messages.contains(&self.next_message_id) {
-                        received_messages.remove(&message_id);
-                        self.next_message_id += 1;
+                if self.oldest_pending_message_id == message_id {
+                    // Remove all next items that could have been received out of order,
+                    // until we find an message that was not received
+                    while received_messages.contains(&self.oldest_pending_message_id) {
+                        received_messages.remove(&self.oldest_pending_message_id);
+                        self.oldest_pending_message_id += 1;
                     }
                 }
 
@@ -412,6 +414,76 @@ mod tests {
         current_time += resend_time;
         send.process_message_ack(0);
         send.process_message_ack(1);
+
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert!(packets.is_empty());
+    }
+
+    #[test]
+    fn small_packet_unordered() {
+        let max_memory: usize = 10000;
+        let mut available_bytes = u64::MAX;
+        let mut sequence: u64 = 0;
+        let mut current_time: Duration = Duration::ZERO;
+        let resend_time = Duration::from_millis(100);
+        let mut recv = ReceiveChannelReliable::new(max_memory, false);
+        let mut send = SendChannelReliable::new(0, resend_time, max_memory);
+
+        let message1 = vec![1, 2, 3];
+        let message2 = vec![3, 4, 5];
+        let message3 = vec![6, 7, 8];
+
+        send.send_message(message1.clone().into()).unwrap();
+        send.send_message(message2.clone().into()).unwrap();
+        send.send_message(message3.clone().into()).unwrap();
+
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 1);
+        let Packet::SmallReliable { messages, .. } = &packets[0] else {
+            unreachable!();
+        };
+
+        assert_eq!(messages.len(), 3);
+
+        // Process and receive out of order
+        recv.process_message(messages[2].1.clone(), messages[2].0).unwrap();
+        let new_message3 = recv.receive_message().unwrap();
+
+        recv.process_message(messages[1].1.clone(), messages[1].0).unwrap();
+        let new_message2 = recv.receive_message().unwrap();
+
+        recv.process_message(messages[0].1.clone(), messages[0].0).unwrap();
+        let new_message1 = recv.receive_message().unwrap();
+
+        assert_eq!(message1, new_message1);
+        assert_eq!(message2, new_message2);
+        assert_eq!(message3, new_message3);
+
+        match &recv.reliable_order {
+            ReliableOrder::Ordered => unreachable!(),
+            ReliableOrder::Unordered {
+                most_recent_message_id,
+                received_messages,
+            } => {
+                assert_eq!(*most_recent_message_id, 2);
+                assert!(received_messages.is_empty());
+            }
+        }
+
+        // Should not resend anything
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert!(packets.is_empty());
+
+        current_time += resend_time;
+        // Should resend now
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
+        assert_eq!(packets.len(), 1);
+
+        // Should not resend after ack
+        current_time += resend_time;
+        send.process_message_ack(0);
+        send.process_message_ack(1);
+        send.process_message_ack(2);
 
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
         assert!(packets.is_empty());

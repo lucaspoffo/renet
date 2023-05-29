@@ -92,6 +92,24 @@ impl NetcodeClientTransport {
         self.netcode_client.time_since_last_received_packet()
     }
 
+    /// Disconnect the client from the transport layer.
+    /// This sends the disconnect packet instantly, use this when closing/exiting games,
+    /// should use [RenetClient::disconnect][crate::RenetClient::disconnect] otherwise.
+    pub fn disconnect(&mut self) {
+        if self.netcode_client.is_disconnected() {
+            return;
+        }
+
+        match self.netcode_client.disconnect() {
+            Ok((addr, packet)) => {
+                if let Err(e) = self.socket.send_to(packet, addr) {
+                    log::error!("Failed to send disconnect packet: {e}");
+                }
+            }
+            Err(e) => log::error!("Failed to generate disconnect packet: {e}"),
+        }
+    }
+
     /// If the client is disconnected, returns the reason.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         self.netcode_client.disconnect_reason()
@@ -114,12 +132,17 @@ impl NetcodeClientTransport {
     }
 
     /// Advances the transport by the duration, and receive packets from the network.
-    pub fn update(&mut self, duration: Duration, connection: &mut RenetClient) -> Result<(), NetcodeTransportError> {
+    pub fn update(&mut self, duration: Duration, client: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
+            // Mark the client as disconnected if an error occured in the transport layer
+            if !client.is_disconnected() {
+                client.disconnect_due_to_transport();
+            }
+
             return Err(NetcodeError::Disconnected(reason).into());
         }
 
-        if let Some(error) = connection.disconnect_reason() {
+        if let Some(error) = client.disconnect_reason() {
             let (addr, disconnect_packet) = self.netcode_client.disconnect()?;
             self.socket.send_to(disconnect_packet, addr)?;
             return Err(error.into());
@@ -141,7 +164,7 @@ impl NetcodeClientTransport {
             };
 
             if let Some(payload) = self.netcode_client.process_packet(packet) {
-                connection.process_packet(payload);
+                client.process_packet(payload);
             }
         }
 
