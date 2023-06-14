@@ -1,70 +1,24 @@
 use bincode::Options;
 use eframe::{
-    egui::{self, lerp, Align, Color32, Layout, Pos2, Ui, Vec2, Widget},
+    egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2},
     epaint::PathShape,
 };
-use egui_extras::{Column, TableBuilder};
-use matcher::{LobbyListing, RequestConnection};
-use renet::DefaultChannel;
+use renet::{
+    transport::{ClientAuthentication, NetcodeClientTransport},
+    ConnectionConfig, DefaultChannel, RenetClient,
+};
 
-use std::{collections::HashMap, sync::mpsc};
+use std::{
+    collections::HashMap,
+    net::{SocketAddr, UdpSocket},
+    time::SystemTime,
+};
 
-use crate::{client::connect_token_request, ClientMessages};
 use crate::{
     client::{AppState, UiState},
     server::ChatServer,
 };
-
-pub fn draw_lobby_list(ui: &mut Ui, lobby_list: Vec<LobbyListing>) -> Option<(u64, bool)> {
-    ui.separator();
-    ui.heading("Lobby list");
-    if lobby_list.is_empty() {
-        ui.label("No lobbies available");
-        return None;
-    }
-
-    let mut connect_server_id = None;
-    TableBuilder::new(ui)
-        .striped(true)
-        .cell_layout(Layout::left_to_right(Align::Min))
-        .column(Column::exact(12.))
-        .column(Column::remainder())
-        .column(Column::exact(40.))
-        .column(Column::exact(60.))
-        .header(12.0, |mut header| {
-            header.col(|_| {});
-            header.col(|ui| {
-                ui.label("Name");
-            });
-        })
-        .body(|mut body| {
-            for lobby in lobby_list.iter() {
-                body.row(30., |mut row| {
-                    row.col(|ui| {
-                        if lobby.is_protected {
-                            ui.label("🔒");
-                        }
-                    });
-
-                    row.col(|ui| {
-                        ui.label(&lobby.name);
-                    });
-
-                    row.col(|ui| {
-                        ui.label(format!("{}/{}", lobby.current_clients, lobby.max_clients));
-                    });
-
-                    row.col(|ui| {
-                        if ui.button("connect").clicked() {
-                            connect_server_id = Some((lobby.id, lobby.is_protected));
-                        }
-                    });
-                });
-            }
-        });
-
-    connect_server_id
-}
+use crate::{ClientMessages, Username, PROTOCOL_ID};
 
 pub fn draw_loader(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -120,7 +74,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     });
 }
 
-pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list: Vec<LobbyListing>, ctx: &egui::Context) {
+pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         egui::Area::new("buttons")
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -134,22 +88,39 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list
                     });
 
                     ui.horizontal(|ui| {
-                        ui.label("Lobby name:");
-                        ui.text_edit_singleline(&mut ui_state.lobby_name)
+                        ui.label("Server Addr:");
+                        ui.text_edit_singleline(&mut ui_state.server_addr)
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label("Lobby password:").on_hover_text("Password can be empty");
-                        egui::TextEdit::singleline(&mut ui_state.password).password(true).ui(ui)
+                    ui.vertical_centered_justified(|ui| {
+                        if ui.button("Connect").clicked() {
+                            match ui_state.server_addr.parse::<SocketAddr>() {
+                                Err(_) => ui_state.error = Some("Failed to parse server address".to_string()),
+                                Ok(server_addr) => {
+                                    if ui_state.username.is_empty() {
+                                        ui_state.error = Some("Nick can't be empty".to_owned());
+                                    } else {
+                                        let (client, transport) = create_renet_client(ui_state.username.clone(), server_addr);
+
+                                        *state = AppState::ClientChat {
+                                            visualizer: Box::default(),
+                                            client: Box::new(client),
+                                            transport: Box::new(transport),
+                                            messages: vec![],
+                                            usernames: HashMap::new(),
+                                        };
+                                    }
+                                }
+                            }
+                        }
                     });
 
                     ui.vertical_centered_justified(|ui| {
                         if ui.button("Host").clicked() {
-                            if ui_state.username.is_empty() || ui_state.lobby_name.is_empty() {
-                                ui_state.error = Some("Nick or Lobby name can't be empty".to_owned());
+                            if ui_state.username.is_empty() {
+                                ui_state.error = Some("Nick can't be empty".to_owned());
                             } else {
-                                let server =
-                                    ChatServer::new(ui_state.lobby_name.clone(), ui_state.username.clone(), ui_state.password.clone());
+                                let server = ChatServer::new(ui_state.username.clone());
                                 *state = AppState::HostChat {
                                     chat_server: Box::new(server),
                                 };
@@ -160,29 +131,6 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, lobby_list
                     if let Some(error) = &ui_state.error {
                         ui.separator();
                         ui.colored_label(Color32::RED, format!("Error: {}", error));
-                    }
-
-                    if let Some((connect_server_id, is_protected)) = draw_lobby_list(ui, lobby_list) {
-                        if ui_state.username.is_empty() {
-                            ui_state.error = Some("Nick can't be empty".to_owned());
-                        } else if is_protected && ui_state.password.is_empty() {
-                            ui_state.error = Some("Lobby is protected, please insert a password".to_owned());
-                        } else {
-                            let (sender, receiver) = mpsc::channel();
-                            let password = if is_protected { Some(ui_state.password.clone()) } else { None };
-                            let request_connection = RequestConnection {
-                                username: ui_state.username.clone(),
-                                password,
-                            };
-
-                            std::thread::spawn(move || {
-                                if let Err(e) = connect_token_request(connect_server_id, request_connection, sender) {
-                                    log::error!("Failed to get connect token for server {}: {}", connect_server_id, e);
-                                }
-                            });
-
-                            *state = AppState::RequestingToken { token: receiver };
-                        }
                     }
                 });
             });
@@ -241,7 +189,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
             }
             _ => {}
         }
-        *state = AppState::main_screen();
+        *state = AppState::MainScreen;
         ui_state.error = None;
         return;
     }
@@ -301,4 +249,23 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                 }
             });
     });
+}
+
+fn create_renet_client(username: String, server_addr: SocketAddr) -> (RenetClient, NetcodeClientTransport) {
+    let connection_config = ConnectionConfig::default();
+    let client = RenetClient::new(connection_config);
+
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    let client_id = current_time.as_millis() as u64;
+    let authentication = ClientAuthentication::Unsecure {
+        server_addr,
+        client_id,
+        user_data: Some(Username(username).to_netcode_user_data()),
+        protocol_id: PROTOCOL_ID,
+    };
+
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+
+    (client, transport)
 }
