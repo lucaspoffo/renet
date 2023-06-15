@@ -15,11 +15,11 @@ default = ["transport"]
 transport = ["renet/transport"]
 
 [dependencies]
-bevy = {git = "https://github.com/bevyengine/bevy.git", default-features = false}
+bevy = {git = "https://github.com/bevyengine/bevy?rev=8ec8149", default-features = false}
 renet = {path = "../renet", version = "0.0.12", features = ["bevy"]}
 
 [dev-dependencies]
-bevy = {git = "https://github.com/bevyengine/bevy.git", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "ktx2", "tonemapping_luts", "zstd"]}
+bevy = {git = "https://github.com/bevyengine/bevy?rev=8ec8149", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "ktx2", "tonemapping_luts", "zstd"]}
 bincode = "1.3.1"
 env_logger = "0.10.0"
 serde = {version = "1.0", features = ["derive"]}

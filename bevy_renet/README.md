@@ -124,3 +124,37 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 |0.9|0.0.6|
 |0.8|0.0.5|
 |0.7|0.0.4|
+
+## The Bleeding Edge
+
+Read more about Bleeding Edge Bevy in the [Unofficial Bevy Cheat Book](https://bevy-cheatbook.github.io/setup/bevy-git.html). Please note: bleeding edge Bevy and by extension bleeding edge Renet is very unstable.
+
+There is more than one way to do this but I will be covering only one. The idea is to make your project depend on the exact same commit of Bevy that Renet depends on. This makes sure Renet and your project are on the same page and there aren't conflicting definitions. Manual updates are required but it means you can choose when to deal with breaking changes.
+
+Open `bevy_renet/Cargo.toml` on the `bleeding-edge` branch. Copy the `bevy` dependency into your project's `Cargo.toml`. It will look something like:
+```toml 
+bevy = {git = "https://github.com/bevyengine/bevy?rev=a420beb0"}
+```
+Notice it specifies an exact commit using `?rev=` followed by a commit hash. Now copy the latest commit hash in the `bleeding-edge` branch and add a dependency for `bevy_renet` in your project's Cargo.toml. It should look something like:
+```toml 
+bevy_renet = {git = "https://github.com/roanv/renet?rev=146123ea"}
+```
+
+You should end up with something like:
+
+```toml
+# YOUR_PROJECT/Cargo.toml
+[dependencies]
+bevy = {git = "https://github.com/bevyengine/bevy?rev=a420beb0"} # matching bevy/main commit
+bevy_renet = {git = "https://github.com/roanv/renet?rev=146123ea"} # latest bleeding-edge commit 
+```
+```toml
+# bevy_renet/Cargo.toml on bleeding-edge branch for latest commit #146123ea
+bevy = {git = "https://github.com/bevyengine/bevy?rev=a420beb0"} # matching bevy/main commit
+```
+
+To update, simply repeat the process with the latest commit in the `bleeding-edge` branch.
+
+#### bUt i WaNt tHe lAteSt bEvY!
+
+Have a look at the [Unofficial Bevy Cheat Book](https://bevy-cheatbook.github.io/setup/bevy-git.html). There is a way to patch bleeding-edge to depend on a more recent Bevy commit. This will only work if no breaking changes have been made to parts Renet uses.
