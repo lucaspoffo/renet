@@ -22,18 +22,15 @@ impl Plugin for NetcodeServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NetcodeTransportError>();
         app.configure_set(
+            Main,
             TransportSet::Server
                 .run_if(resource_exists::<NetcodeServerTransport>().and_then(resource_exists::<RenetServer>()))
                 .after(RenetSet::Server),
         );
 
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Server));
-        app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Server));
-        app.add_system(
-            Self::disconnect_on_exit
-                .in_base_set(CoreSet::PostUpdate)
-                .in_set(TransportSet::Server),
-        );
+        app.add_systems(PreUpdate, Self::update_system.in_set(TransportSet::Server));
+        app.add_systems(PreUpdate, Self::send_packets.in_set(TransportSet::Server));
+        app.add_systems(PostUpdate, Self::disconnect_on_exit.in_set(TransportSet::Server));
     }
 }
 
@@ -65,18 +62,15 @@ impl Plugin for NetcodeClientPlugin {
         app.add_event::<NetcodeTransportError>();
 
         app.configure_set(
+            Main,
             TransportSet::Client
                 .run_if(resource_exists::<NetcodeClientTransport>().and_then(resource_exists::<RenetClient>()))
                 .after(RenetSet::Client),
         );
 
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Client));
-        app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Client));
-        app.add_system(
-            Self::disconnect_on_exit
-                .in_base_set(CoreSet::PostUpdate)
-                .in_set(TransportSet::Client),
-        );
+        app.add_systems(PreUpdate, Self::update_system.in_set(TransportSet::Client));
+        app.add_systems(PostUpdate, Self::send_packets.in_set(TransportSet::Client));
+        app.add_systems(PostUpdate, Self::disconnect_on_exit.in_set(TransportSet::Client));
     }
 }
 
