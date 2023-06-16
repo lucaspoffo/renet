@@ -1,0 +1,16 @@
+[package]
+name = "renet_steam_transport"
+version = "0.0.1"
+keywords = ["gamedev", "networking", "transport"]
+description = "steam transport for the renet crate: Server/Client network library for multiplayer games"
+repository = "https://github.com/lucaspoffo/renet"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+renet = { path = "../renet" }
+steamworks = "0.10"
+renetcode = { path = "../renetcode", version = "0.0.8" }
