@@ -13,4 +13,3 @@ edition = "2021"
 [dependencies]
 renet = { path = "../renet" }
 steamworks = "0.10"
-renetcode = { path = "../renetcode", version = "0.0.8" }
