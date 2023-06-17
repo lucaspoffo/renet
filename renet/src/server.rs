@@ -205,7 +205,7 @@ impl RenetServer {
             .collect()
     }
 
-    /// Returns the current number of connected clients1.
+    /// Returns the current number of connected clients.
     pub fn connected_clients(&self) -> usize {
         self.connections.iter().filter(|(_, c)| c.is_disconnected()).count()
     }
