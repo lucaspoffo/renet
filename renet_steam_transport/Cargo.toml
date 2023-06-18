@@ -14,3 +14,4 @@ edition = "2021"
 renet = { path = "../renet" }
 steamworks = "0.10"
 log = "0.4.19"
+bevy_ecs = { version = "0.10.1", optional = true }
