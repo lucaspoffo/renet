@@ -36,40 +36,9 @@ trait Transport {
 // ClientManager implementation
 
 impl Transport for Server<ClientManager> {
+    /// Update should run after client run the callback
     fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
-        match self.listen_socket.try_receive_event() {
-            Some(event) => match event {
-                ListenSocketEvent::Connected(event) => {
-                    let client_id = server.get_free_id();
-                    match event.remote().steam_id() {
-                        Some(steam_id) => {
-                            self.connections_steam_id.insert(steam_id, client_id);
-                        }
-                        _ => {}
-                    }
-                    server.add_connection(client_id);
-                    self.connections.insert(client_id, event.take_connection());
-                }
-                ListenSocketEvent::Disconnected(event) => match event.remote().steam_id() {
-                    Some(steam_id) => {
-                        if let Some(client_id) = self.connections_steam_id.get(&steam_id.clone()) {
-                            server.remove_connection(*client_id);
-                            self.connections.remove(&client_id);
-                            self.connections_steam_id.remove(&steam_id);
-                        }
-                    }
-                    None => {}
-                },
-                ListenSocketEvent::Connecting(event) => {
-                    if server.connected_clients() < self.config.max_clients {
-                        let _ = event.accept();
-                    } else {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
-                    }
-                }
-            },
-            _ => {}
-        }
+        self.handle_events(server);
         for (id, connection) in self.connections.iter_mut() {
             if id == &HOST_CLIENT {
                 for packet in self.host_queue.iter() {
@@ -94,7 +63,7 @@ impl Transport for Server<ClientManager> {
                 continue;
             }
             if let Some(connection) = self.connections.get(&client_id) {
-                Server::<ClientManager>::send_packet_to_connection(packets, connection, *client_id);
+                self.send_packet_to_connection(packets, connection, *client_id);
             }
         }
     }
@@ -143,6 +112,7 @@ impl Server<ClientManager> {
                 panic!("Failed to create listen socket: {:?}", handle);
             }
         }
+
         Self {
             listen_socket: socket,
             config,
@@ -191,7 +161,7 @@ impl Server<ClientManager> {
     }
     /// while this works fine we should probaly use the send_messages function from the listen_socket
     /// TODO to evaluate
-    fn send_packet_to_connection(packets: Vec<Vec<u8>>, connection: &NetConnection<ClientManager>, client_id: u64) {
+    fn send_packet_to_connection(&self, packets: Vec<Vec<u8>>, connection: &NetConnection<ClientManager>, client_id: u64) {
         for packet in packets {
             // TODO send reliable or unreliable depending on the packet
             if let Err(error) = connection.send_message(&packet, SendFlags::RELIABLE) {
@@ -200,6 +170,46 @@ impl Server<ClientManager> {
         }
         if let Err(error) = connection.flush_messages() {
             log::warn!("Failed to flush messages for client {}: {}", client_id, error);
+        }
+    }
+
+    /// Handle the events of the listen_socket until there are no more events
+    fn handle_events(&mut self, server: &mut RenetServer) {
+        let mut has_pending_events: bool = true;
+        while has_pending_events {
+            match self.listen_socket.try_receive_event() {
+                Some(event) => match event {
+                    ListenSocketEvent::Connected(event) => {
+                        let client_id = server.get_free_id();
+                        match event.remote().steam_id() {
+                            Some(steam_id) => {
+                                self.connections_steam_id.insert(steam_id, client_id);
+                            }
+                            _ => {}
+                        }
+                        server.add_connection(client_id);
+                        self.connections.insert(client_id, event.take_connection());
+                    }
+                    ListenSocketEvent::Disconnected(event) => match event.remote().steam_id() {
+                        Some(steam_id) => {
+                            if let Some(client_id) = self.connections_steam_id.get(&steam_id.clone()) {
+                                server.remove_connection(*client_id);
+                                self.connections.remove(&client_id);
+                                self.connections_steam_id.remove(&steam_id);
+                            }
+                        }
+                        None => {}
+                    },
+                    ListenSocketEvent::Connecting(event) => {
+                        if server.connected_clients() < self.config.max_clients {
+                            let _ = event.accept();
+                        } else {
+                            event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
+                        }
+                    }
+                },
+                None => has_pending_events = false,
+            }
         }
     }
 }
