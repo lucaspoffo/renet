@@ -101,7 +101,7 @@ fn main() {
         app.insert_resource(server);
         app.insert_resource(transport);
 
-        app.add_systems(Main, (server_update_system, server_sync_players, move_players_system));
+        app.add_systems(Update, (server_update_system, server_sync_players, move_players_system));
     } else {
         app.add_plugin(RenetClientPlugin);
         app.add_plugin(NetcodeClientPlugin);
@@ -111,13 +111,13 @@ fn main() {
         app.insert_resource(transport);
 
         app.add_systems(
-            Main,
+            Update,
             (player_input, client_send_input, client_sync_players).distributive_run_if(bevy_renet::transport::client_connected),
         );
     }
 
     app.add_systems(Startup, setup);
-    app.add_systems(Main, panic_on_error_system);
+    app.add_systems(Update, panic_on_error_system);
 
     app.run();
 }

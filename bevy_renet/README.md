@@ -137,7 +137,7 @@ bevy = {git = "https://github.com/bevyengine/bevy?rev=a420beb0"}
 ```
 Notice it specifies an exact commit using `?rev=` followed by a commit hash. Now copy the latest commit hash in the `bleeding-edge` branch and add a dependency for `bevy_renet` in your project's Cargo.toml. It should look something like:
 ```toml 
-bevy_renet = {git = "https://github.com/roanv/renet?rev=146123ea"}
+bevy_renet = {git = "https://github.com/roanvonb/renet?rev=146123ea"}
 ```
 
 You should end up with something like:
@@ -146,7 +146,7 @@ You should end up with something like:
 # YOUR_PROJECT/Cargo.toml
 [dependencies]
 bevy = {git = "https://github.com/bevyengine/bevy?rev=a420beb0"} # matching bevy/main commit
-bevy_renet = {git = "https://github.com/roanv/renet?rev=146123ea"} # latest bleeding-edge commit 
+bevy_renet = {git = "https://github.com/roanvonb/renet?rev=146123ea"} # latest bleeding-edge commit 
 ```
 ```toml
 # bevy_renet/Cargo.toml on bleeding-edge branch for latest commit #146123ea

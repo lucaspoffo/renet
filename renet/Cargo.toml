@@ -16,7 +16,7 @@ default = ["transport"]
 transport = ["dep:renetcode"]
 
 [dependencies]
-bevy_ecs = { git = "https://github.com/bevyengine/bevy?rev=8ec8149", optional = true }
+bevy_ecs = { git = "https://github.com/bevyengine/bevy?rev=84de9e7", optional = true }
 bytes = "1.1"
 log = "0.4.17"
 octets = "0.2"

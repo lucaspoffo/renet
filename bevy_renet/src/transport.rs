@@ -22,7 +22,7 @@ impl Plugin for NetcodeServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NetcodeTransportError>();
         app.configure_set(
-            Main,
+            Update,
             TransportSet::Server
                 .run_if(resource_exists::<NetcodeServerTransport>().and_then(resource_exists::<RenetServer>()))
                 .after(RenetSet::Server),
@@ -62,7 +62,7 @@ impl Plugin for NetcodeClientPlugin {
         app.add_event::<NetcodeTransportError>();
 
         app.configure_set(
-            Main,
+            Update,
             TransportSet::Client
                 .run_if(resource_exists::<NetcodeClientTransport>().and_then(resource_exists::<RenetClient>()))
                 .after(RenetSet::Client),
