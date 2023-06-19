@@ -1,12 +1,23 @@
+#[cfg(feature = "transport")]
 use client::ChatApp;
 use eframe::{egui, App};
 use renet::transport::NETCODE_USER_DATA_BYTES;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "steam_transport")]
+use steam_client::SteamChatApp;
 
 use std::collections::HashMap;
-
+#[cfg(feature = "transport")]
 mod client;
+#[cfg(feature = "transport")]
 mod server;
+#[cfg(feature = "steam_transport")]
+mod steam_client;
+#[cfg(feature = "steam_transport")]
+mod steam_server;
+#[cfg(feature = "steam_transport")]
+mod steam_ui;
+#[cfg(feature = "transport")]
 mod ui;
 
 const PROTOCOL_ID: u64 = 27;
@@ -38,8 +49,17 @@ impl Message {
         Self { client_id, text }
     }
 }
+#[cfg(feature = "transport")]
 
 impl App for ChatApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.draw(ctx);
+        self.update_chat();
+        ctx.request_repaint();
+    }
+}
+#[cfg(feature = "steam_transport")]
+impl App for SteamChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.draw(ctx);
         self.update_chat();
@@ -67,6 +87,7 @@ impl Username {
         Self(username)
     }
 }
+#[cfg(feature = "transport")]
 
 fn main() -> eframe::Result<()> {
     env_logger::init();
@@ -77,6 +98,20 @@ fn main() -> eframe::Result<()> {
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
             Box::<ChatApp>::default()
+        }),
+    )
+}
+
+#[cfg(feature = "steam_transport")]
+fn main() -> eframe::Result<()> {
+    env_logger::init();
+    let options = eframe::NativeOptions::default();
+    eframe::run_native(
+        "Renet Demo Chat",
+        options,
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Box::<SteamChatApp>::default()
         }),
     )
 }

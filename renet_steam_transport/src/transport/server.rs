@@ -14,6 +14,12 @@ pub struct SteamTransportConfig {
     max_clients: usize,
 }
 
+impl SteamTransportConfig {
+    pub fn from_max_clients(max_clients: usize) -> Self {
+        Self { max_clients }
+    }
+}
+
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct SteamServerTransport<Manager = Client> {
     /// hold the active socket of the server
