@@ -187,6 +187,15 @@ impl RenetServer {
         None
     }
 
+    /// Recieve only the last message from a client over the unreliable channel.
+    /// This will discard all previous messages in the channel.
+    pub fn receive_only_last_message_unreliable<I: Into<u8>>(&mut self, client_id: u64, channel_id: I) -> Option<Bytes> {
+        if let Some(connection) = self.connections.get_mut(&client_id) {
+            return connection.receive_only_last_message_unreliable(channel_id);
+        }
+        None
+    }
+
     /// Return ids for all connected clients
     pub fn clients_id(&self) -> Vec<u64> {
         self.connections

@@ -207,6 +207,20 @@ impl ReceiveChannelUnreliable {
 
         None
     }
+
+    /// Returns the last message received on the channel.
+    /// Discard all the previous messages.
+    pub fn receive_last_message(&mut self) -> Option<Bytes> {
+        while self.messages.len() > 1 {
+            let message = self.messages.pop_front().unwrap();
+            self.memory_usage_bytes -= message.len();
+        }
+        if let Some(message) = self.messages.pop_front() {
+            self.memory_usage_bytes -= message.len();
+            return Some(message);
+        };
+        None
+    }
 }
 
 #[cfg(test)]
@@ -363,5 +377,42 @@ mod tests {
             let len = packet.to_bytes(&mut oct).unwrap();
             assert!(len < 1300);
         }
+    }
+
+    #[test]
+    fn receive_last_message_unreliable() {
+        let max_memory: usize = 1000;
+        let mut available_bytes = u64::MAX;
+        let mut sequence: u64 = 0;
+        let mut recv = ReceiveChannelUnreliable::new(0, max_memory);
+        let mut send = SendChannelUnreliable::new(0, max_memory);
+
+        let message1 = vec![1, 2, 3];
+        let message2 = vec![3, 4, 5];
+        let message3 = vec![6, 7, 8];
+
+        send.send_message(message1.clone().into());
+        send.send_message(message2.clone().into());
+        send.send_message(message3.clone().into());
+
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
+        for packet in packets {
+            let Packet::SmallUnreliable { messages, .. } = packet else {
+                unreachable!();
+            };
+            for message in messages {
+                recv.process_message(message);
+            }
+        }
+
+        let new_message1 = recv.receive_message().unwrap();
+        let new_message2 = recv.receive_last_message().unwrap();
+        assert!(recv.receive_message().is_none());
+
+        assert_eq!(message1, new_message1);
+        assert_eq!(message3, new_message2);
+
+        let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes);
+        assert!(packets.is_empty());
     }
 }

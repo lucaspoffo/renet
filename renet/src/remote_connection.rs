@@ -285,6 +285,21 @@ impl RenetClient {
         }
     }
 
+    /// Recieve the last message from the server over a unreliable channel
+    /// This will discard all previous messages in the channel.
+    pub fn receive_only_last_message_unreliable<I: Into<u8>>(&mut self, channel_id: I) -> Option<Bytes> {
+        if self.is_disconnected() {
+            return None;
+        }
+
+        let channel_id = channel_id.into();
+        if let Some(unreliable_channel) = self.receive_unreliable_channels.get_mut(&channel_id) {
+            unreliable_channel.receive_last_message()
+        } else {
+            panic!("Tried to receive message from a non unreliable channel {channel_id}");
+        }
+    }
+
     /// Advances the client by the duration.
     /// Should be called every tick
     pub fn update(&mut self, duration: Duration) {
