@@ -10,11 +10,11 @@ use steamworks::{
 use super::{Transport, MAX_MESSAGE_BATCH_SIZE};
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 
-pub struct Client {
+pub struct SteamClientTransport {
     connection: NetConnection<ClientManager>,
 }
 
-impl Client {
+impl SteamClientTransport {
     /// Create a new client connection to the server
     ///
     /// If the connection is not possible, it will return [`InvalidHandle`](steamworks::networking_sockets)
@@ -42,7 +42,7 @@ impl Client {
     }
 }
 
-impl Transport<RenetClient> for Client {
+impl Transport<RenetClient> for SteamClientTransport {
     fn update(&mut self, _duration: Duration, client: &mut RenetClient) {
         let messages = self.connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
         messages.iter().for_each(|message| {

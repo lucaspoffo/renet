@@ -5,7 +5,7 @@ pub mod transport {
 
     const MAX_MESSAGE_BATCH_SIZE: usize = 255;
 
-    trait Transport<T = (RenetServer, RenetClient)> {
+    pub trait Transport<T = (RenetServer, RenetClient)> {
         fn update(&mut self, duration: Duration, handler: &mut T);
         fn send_packets(&mut self, handler: &mut T);
     }

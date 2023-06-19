@@ -15,7 +15,7 @@ pub struct SteamTransportConfig {
 }
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
-pub struct Server<Manager = Client> {
+pub struct SteamServerTransport<Manager = Client> {
     /// hold the active socket of the server
     listen_socket: ListenSocket<Manager>,
     /// hold the configuration of the server
@@ -26,7 +26,7 @@ pub struct Server<Manager = Client> {
 
 // ClientManager implementation
 
-impl Transport<RenetServer> for Server<ClientManager> {
+impl Transport<RenetServer> for SteamServerTransport<ClientManager> {
     /// Update should run after client run the callback
     fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
         self.handle_events(server);
@@ -54,7 +54,7 @@ impl Transport<RenetServer> for Server<ClientManager> {
     }
 }
 
-impl Server<ClientManager> {
+impl SteamServerTransport<ClientManager> {
     /// Create a new server
     /// it will return [`InvalidHandle`](steamworks::networking_sockets) if the server can't be created
     /// # Arguments
@@ -172,10 +172,10 @@ impl Server<ClientManager> {
 }
 // ServerManager implementation
 
-impl Transport<RenetServer> for Server<ServerManager> {
+impl Transport<RenetServer> for SteamServerTransport<ServerManager> {
     fn send_packets(&mut self, _server: &mut RenetServer) {}
 
     fn update(&mut self, _duration: Duration, _server: &mut RenetServer) {}
 }
 
-impl Server<ServerManager> {}
+impl SteamServerTransport<ServerManager> {}

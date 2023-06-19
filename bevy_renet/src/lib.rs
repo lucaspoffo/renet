@@ -7,6 +7,9 @@ use renet::{RenetClient, RenetServer, ServerEvent};
 #[cfg(feature = "transport")]
 pub mod transport;
 
+#[cfg(feature = "steam_transport")]
+pub mod steam_transport;
+
 /// Set for networking systems.
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum RenetSet {
