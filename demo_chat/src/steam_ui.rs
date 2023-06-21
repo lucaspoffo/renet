@@ -250,7 +250,7 @@ fn create_renet_client(username: String, host_steam_id: u64) -> (RenetClient, St
     let connection_config = ConnectionConfig::default();
     let client = RenetClient::new(connection_config);
     let (steam_client, single_client) = {
-        let this = Client::init();
+        let this = Client::init_app(480);
         match this {
             Ok(t) => t,
             Err(e) => panic!("Client could not be init. Reason: {}", e),

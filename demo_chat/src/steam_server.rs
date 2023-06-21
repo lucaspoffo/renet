@@ -30,7 +30,7 @@ impl SteamChatServer {
     pub fn new(host_username: String) -> Self {
         let steam_config = SteamTransportConfig::from_max_clients(10);
 
-        let this = Client::init();
+        let this = Client::init_app(480);
         let (client, single) = match this {
             Ok(t) => t,
             Err(e) => panic!("called `Result::unwrap()` on an `Err` value {}", e),

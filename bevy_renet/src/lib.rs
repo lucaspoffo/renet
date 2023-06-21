@@ -1,5 +1,8 @@
 pub use renet;
 
+#[cfg(feature = "steam_transport")]
+pub use renet_steam_transport;
+
 use bevy::prelude::*;
 
 use renet::{RenetClient, RenetServer, ServerEvent};
