@@ -260,7 +260,7 @@ impl<const N: usize> RenetServerVisualizer<N> {
     /// visualizer.update(&renet_server);
     /// ```
     pub fn update(&mut self, server: &RenetServer) {
-        for client_id in server.clients_id().into_iter() {
+        for client_id in server.clients_id_iter() {
             if let Ok(network_info) = server.network_info(client_id) {
                 self.add_network_info(client_id, network_info);
             }
