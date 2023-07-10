@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    io,
-    time::{Duration, SystemTime},
-};
+use std::{collections::HashMap, io, time::Duration};
 
 use renet::{ConnectionConfig, DefaultChannel, RenetServer, ServerEvent};
 use renet_steam_transport::transport::{
