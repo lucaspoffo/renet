@@ -95,7 +95,7 @@ pub fn draw_main_screen(ui_state: &mut SteamUiState, state: &mut SteamAppState, 
                                     if ui_state.username.is_empty() {
                                         ui_state.error = Some("Nick can't be empty".to_owned());
                                     } else {
-                                        let (client, transport) = create_renet_client(ui_state.username.clone(), server_addr.0.raw());
+                                        let (client, transport) = create_renet_client(server_addr.0.raw());
 
                                         *state = SteamAppState::ClientChat {
                                             visualizer: Box::default(),
@@ -246,7 +246,7 @@ pub fn draw_chat(ui_state: &mut SteamUiState, state: &mut SteamAppState, usernam
     });
 }
 
-fn create_renet_client(username: String, host_steam_id: u64) -> (RenetClient, SteamClientTransport) {
+fn create_renet_client(host_steam_id: u64) -> (RenetClient, SteamClientTransport) {
     let connection_config = ConnectionConfig::default();
     let client = RenetClient::new(connection_config);
     let (steam_client, single_client) = {

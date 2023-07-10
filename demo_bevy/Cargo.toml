@@ -29,4 +29,4 @@ bevy_egui = { git = "https://github.com/mvlabat/bevy_egui.git", branch = "depend
 renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
 smooth-bevy-cameras = "0.8.0"
 fastrand = "2.0.0"
-steamworks = "0.10.0"
+steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327" }

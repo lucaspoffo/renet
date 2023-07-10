@@ -16,7 +16,7 @@ bincode = "1.3.1"
 log = { version = "0.4.11", features = ["std"] }
 env_logger = "0.10.0"
 renet_steam_transport = { path = "../renet_steam_transport", version = "0.0.1", optional = true }
-steamworks = { version = "0.10", optional = true }
+steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327", optional = true }
 
 [features]
 default = ["transport"]

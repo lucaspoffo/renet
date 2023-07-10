@@ -42,7 +42,8 @@ struct SteamClient(Client<ClientManager>);
 fn new_steam_client(steam_client: &Client<ClientManager>) -> (RenetClient, SteamClientTransport) {
     let client = RenetClient::new(connection_config());
 
-    let transport = SteamClientTransport::new(&steam_client, &SteamId::from_raw(YOUR_STEAM_ID)).unwrap();
+    let mut transport = SteamClientTransport::new(&steam_client, &SteamId::from_raw(YOUR_STEAM_ID)).unwrap();
+    transport = transport.register_callback(&steam_client);
 
     (client, transport)
 }
@@ -86,7 +87,9 @@ fn main() {
     app.insert_resource(NetworkMapping::default());
 
     app.add_systems((player_input, camera_follow, update_target_system));
-    app.add_systems((client_send_input, client_send_player_commands, client_sync_players));
+    app.add_systems(
+        (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::transport::client_connected),
+    );
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
     app.add_system(update_visulizer_system);

@@ -15,6 +15,7 @@ bevy = ["dep:bevy_ecs"]
 
 [dependencies]
 renet = { path = "../renet" }
-steamworks = "0.10"
+# its version 0.10 but we need to use the rev because of a missing feature
+steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327" }
 log = "0.4.19"
 bevy_ecs = { version = "0.10.1", optional = true }

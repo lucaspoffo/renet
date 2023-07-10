@@ -58,7 +58,7 @@ impl SteamChatApp {
             SteamAppState::MainScreen => {
                 draw_main_screen(&mut self.ui_state, &mut self.state, ctx);
             }
-            //SteamAppState::ClientChat { transport, .. } => draw_loader(ctx),
+            SteamAppState::ClientChat { transport, .. } if transport.is_connecting() => draw_loader(ctx),
             SteamAppState::ClientChat { usernames, .. } => {
                 let usernames = usernames.clone();
                 draw_chat(&mut self.ui_state, &mut self.state, usernames, ctx);
@@ -84,7 +84,9 @@ impl SteamChatApp {
                 visualizer,
             } => {
                 client.update(duration);
-                transport.update(duration, client);
+                if transport.is_connected() {
+                    transport.update(duration, client);
+                }
 
                 if let Some(e) = client.disconnect_reason() {
                     self.state = SteamAppState::MainScreen;
@@ -112,8 +114,9 @@ impl SteamChatApp {
                             }
                         }
                     }
-
-                    transport.send_packets(client)
+                    if transport.is_connected() {
+                        transport.send_packets(client)
+                    }
                 }
             }
             SteamAppState::HostChat { chat_server: server } => {
