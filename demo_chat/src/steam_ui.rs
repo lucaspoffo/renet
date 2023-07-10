@@ -5,7 +5,7 @@ use eframe::{
 };
 use renet::{ConnectionConfig, DefaultChannel, RenetClient};
 use renet_steam_transport::transport::client::SteamClientTransport;
-use steamworks::{Client, SteamId};
+use steamworks::{Client, SingleClient, SteamId};
 
 use std::{collections::HashMap, str::FromStr};
 
@@ -95,11 +95,12 @@ pub fn draw_main_screen(ui_state: &mut SteamUiState, state: &mut SteamAppState, 
                                     if ui_state.username.is_empty() {
                                         ui_state.error = Some("Nick can't be empty".to_owned());
                                     } else {
-                                        let (client, transport) = create_renet_client(server_addr.0.raw());
+                                        let (client, transport, SingleClient) = create_renet_client(server_addr.0.raw());
 
                                         *state = SteamAppState::ClientChat {
                                             visualizer: Box::default(),
                                             client: Box::new(client),
+                                            single_client: Box::new(SingleClient),
                                             transport: Box::new(transport),
                                             messages: vec![],
                                             usernames: HashMap::new(),
@@ -246,11 +247,11 @@ pub fn draw_chat(ui_state: &mut SteamUiState, state: &mut SteamAppState, usernam
     });
 }
 
-fn create_renet_client(host_steam_id: u64) -> (RenetClient, SteamClientTransport) {
+fn create_renet_client(host_steam_id: u64) -> (RenetClient, SteamClientTransport, SingleClient) {
     let connection_config = ConnectionConfig::default();
     let client = RenetClient::new(connection_config);
     let (steam_client, single_client) = {
-        let this = Client::init_app(480);
+        let this = Client::init();
         match this {
             Ok(t) => t,
             Err(e) => panic!("Client could not be init. Reason: {}", e),
@@ -262,15 +263,15 @@ fn create_renet_client(host_steam_id: u64) -> (RenetClient, SteamClientTransport
         single_client.run_callbacks();
         std::thread::sleep(::std::time::Duration::from_millis(50));
     }
-    let transport = {
+    let mut transport = {
         let this = SteamClientTransport::new(&steam_client, &SteamId::from_raw(host_steam_id));
         match this {
             Ok(t) => t,
             Err(e) => panic!("Connection to host failed {}", e),
         }
     };
-
-    (client, transport)
+    transport = transport.register_callback(&steam_client);
+    (client, transport, single_client)
 }
 
 struct WrapperSteamId(SteamId);

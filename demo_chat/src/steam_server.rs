@@ -56,6 +56,7 @@ impl SteamChatServer {
     }
 
     pub fn update(&mut self, duration: Duration) -> Result<(), io::Error> {
+        self.single_client.run_callbacks();
         self.server.update(duration);
         self.transport.update(duration, &mut self.server);
 

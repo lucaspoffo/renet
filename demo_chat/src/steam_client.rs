@@ -4,6 +4,7 @@ use log::error;
 use renet::{DefaultChannel, RenetClient};
 use renet_steam_transport::transport::{client::SteamClientTransport, Transport};
 use renet_visualizer::RenetClientVisualizer;
+use steamworks::SingleClient;
 
 use std::{collections::HashMap, time::Instant};
 
@@ -26,6 +27,7 @@ pub enum SteamAppState {
     MainScreen,
     ClientChat {
         client: Box<RenetClient>,
+        single_client: Box<SingleClient>,
         transport: Box<SteamClientTransport>,
         usernames: HashMap<u64, String>,
         messages: Vec<Message>,
@@ -81,8 +83,10 @@ impl SteamChatApp {
                 transport,
                 usernames,
                 messages,
+                single_client,
                 visualizer,
             } => {
+                single_client.run_callbacks();
                 client.update(duration);
                 if transport.is_connected() {
                     transport.update(duration, client);
