@@ -95,13 +95,13 @@ pub fn draw_main_screen(ui_state: &mut SteamUiState, state: &mut SteamAppState, 
                                     if ui_state.username.is_empty() {
                                         ui_state.error = Some("Nick can't be empty".to_owned());
                                     } else {
-                                        let (client, transport, SingleClient) = create_renet_client(server_addr.0.raw());
+                                        let (client, transport, single_client) = create_renet_client(server_addr.0.raw());
 
                                         *state = SteamAppState::ClientChat {
                                             visualizer: Box::default(),
                                             client: Box::new(client),
-                                            single_client: Box::new(SingleClient),
-                                            transport: Box::new(transport),
+                                            single_client,
+                                            transport,
                                             messages: vec![],
                                             usernames: HashMap::new(),
                                         };
@@ -270,7 +270,7 @@ fn create_renet_client(host_steam_id: u64) -> (RenetClient, SteamClientTransport
             Err(e) => panic!("Connection to host failed {}", e),
         }
     };
-    transport = transport.register_callback(&steam_client);
+    transport.register_callback(&steam_client);
     (client, transport, single_client)
 }
 

@@ -55,6 +55,8 @@ impl Transport<RenetServer> for SteamServerTransport<ClientManager> {
                 if let Err(e) = self.send_packets_to_connection(packets, connection) {
                     log::error!("Error while sending packet: {}", e);
                 }
+            } else {
+                log::error!("Error while sending packet: connection not found");
             }
         }
     }

@@ -17,7 +17,7 @@ use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 use steamworks::{Client, ClientManager, SingleClient, SteamId};
 
-const YOUR_STEAM_ID: u64 = 123456789;
+const YOUR_STEAM_ID: u64 = 76561198280571336;
 
 #[derive(Component)]
 struct ControlledPlayer;
@@ -43,18 +43,21 @@ fn new_steam_client(steam_client: &Client<ClientManager>) -> (RenetClient, Steam
     let client = RenetClient::new(connection_config());
 
     let mut transport = SteamClientTransport::new(&steam_client, &SteamId::from_raw(YOUR_STEAM_ID)).unwrap();
-    transport = transport.register_callback(&steam_client);
+    transport.register_callback(&steam_client);
 
     (client, transport)
 }
 
-fn steam_callbacks(client: NonSend<SingleClient>) {
+fn steam_callbacks(client: NonSend<SingleClient>, transport: Option<ResMut<SteamClientTransport>>) {
     client.run_callbacks();
+    if let Some(mut transport) = transport {
+        transport.handle_callbacks();
+    }
 }
 
 fn main() {
     let mut app = App::new();
-    let (steam_client, single) = match Client::init_app(480) {
+    let (steam_client, single) = match Client::init() {
         Ok(result) => result,
         Err(err) => panic!("Failed to initialize Steam client: {}", err),
     };
@@ -88,7 +91,8 @@ fn main() {
 
     app.add_systems((player_input, camera_follow, update_target_system));
     app.add_systems(
-        (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::transport::client_connected),
+        (client_send_input, client_send_player_commands, client_sync_players)
+            .distributive_run_if(bevy_renet::steam_transport::client_connected),
     );
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
@@ -137,7 +141,6 @@ fn player_input(
 
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
     let input_message = bincode::serialize(&*player_input).unwrap();
-
     client.send_message(ClientChannel::Input, input_message);
 }
 

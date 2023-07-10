@@ -104,7 +104,7 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(feature = "steam_transport")]
 fn main() -> eframe::Result<()> {
-    env_logger::init();
+    env_logger::builder().filter_level(log::LevelFilter::Debug).init();
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Renet Demo Chat",

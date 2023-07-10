@@ -43,7 +43,7 @@ impl SteamServerPlugin {
     }
 }
 
-/// Configure the client transport to run only if the client is connected.
+/// Configure the client transport to run only if the client is connected. Otherwise it will throw log errors in the connecting state
 impl Plugin for SteamClientPlugin {
     fn build(&self, app: &mut App) {
         app.configure_set(

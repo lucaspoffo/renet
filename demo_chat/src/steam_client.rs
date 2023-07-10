@@ -6,7 +6,7 @@ use renet_steam_transport::transport::{client::SteamClientTransport, Transport};
 use renet_visualizer::RenetClientVisualizer;
 use steamworks::SingleClient;
 
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, fmt::Display, time::Instant};
 
 use crate::{
     steam_server::SteamChatServer,
@@ -27,8 +27,8 @@ pub enum SteamAppState {
     MainScreen,
     ClientChat {
         client: Box<RenetClient>,
-        single_client: Box<SingleClient>,
-        transport: Box<SteamClientTransport>,
+        single_client: SingleClient,
+        transport: SteamClientTransport,
         usernames: HashMap<u64, String>,
         messages: Vec<Message>,
         visualizer: Box<RenetClientVisualizer<240>>,
@@ -36,6 +36,16 @@ pub enum SteamAppState {
     HostChat {
         chat_server: Box<SteamChatServer>,
     },
+}
+
+impl Display for SteamAppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SteamAppState::MainScreen => write!(f, "MainScreen"),
+            SteamAppState::ClientChat { .. } => write!(f, "ClientChat"),
+            SteamAppState::HostChat { .. } => write!(f, "HostChat"),
+        }
+    }
 }
 
 pub struct SteamChatApp {
@@ -76,7 +86,6 @@ impl SteamChatApp {
         let now = Instant::now();
         let duration = now - self.last_updated;
         self.last_updated = now;
-
         match &mut self.state {
             SteamAppState::ClientChat {
                 client,
@@ -87,6 +96,7 @@ impl SteamChatApp {
                 visualizer,
             } => {
                 single_client.run_callbacks();
+                transport.handle_callbacks();
                 client.update(duration);
                 if transport.is_connected() {
                     transport.update(duration, client);
