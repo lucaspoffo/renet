@@ -1,40 +1,18 @@
-use std::collections::HashMap;
-
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::{shape::Icosphere, *},
-    window::PrimaryWindow,
 };
-use bevy_egui::{EguiContexts, EguiPlugin};
+use bevy_egui::EguiPlugin;
 use bevy_renet::{
     renet::RenetClient, renet_steam_transport::transport::client::SteamClientTransport, steam_transport::SteamClientPlugin,
     RenetClientPlugin,
 };
-use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
+use demo_bevy::{client::*, connection_config, setup_level, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
-use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
+use smooth_bevy_cameras::LookTransformPlugin;
 use steamworks::{Client, ClientManager, SingleClient, SteamId};
 
-const YOUR_STEAM_ID: u64 = 76561198280571336;
-
-#[derive(Component)]
-struct ControlledPlayer;
-
-#[derive(Default, Resource)]
-struct NetworkMapping(HashMap<Entity, Entity>);
-
-#[derive(Debug)]
-struct PlayerInfo {
-    client_entity: Entity,
-    server_entity: Entity,
-}
-
-#[derive(Debug, Default, Resource)]
-struct ClientLobby {
-    players: HashMap<u64, PlayerInfo>,
-}
+const YOUR_STEAM_ID: u64 = 123456789;
 
 #[derive(Resource, Clone)]
 struct SteamClient(Client<ClientManager>);
@@ -46,13 +24,6 @@ fn new_steam_client(steam_client: &Client<ClientManager>) -> (RenetClient, Steam
     transport.register_callback(&steam_client);
 
     (client, transport)
-}
-
-fn steam_callbacks(client: NonSend<SingleClient>, transport: Option<ResMut<SteamClientTransport>>) {
-    client.run_callbacks();
-    if let Some(mut transport) = transport {
-        transport.handle_callbacks();
-    }
 }
 
 fn main() {
@@ -101,54 +72,6 @@ fn main() {
     app.add_startup_systems((setup_level, setup_camera, setup_target));
 
     app.run();
-}
-
-fn update_visulizer_system(
-    mut egui_contexts: EguiContexts,
-    mut visualizer: ResMut<RenetClientVisualizer<200>>,
-    client: Res<RenetClient>,
-    mut show_visualizer: Local<bool>,
-    keyboard_input: Res<Input<KeyCode>>,
-) {
-    visualizer.add_network_info(client.network_info());
-    if keyboard_input.just_pressed(KeyCode::F1) {
-        *show_visualizer = !*show_visualizer;
-    }
-    if *show_visualizer {
-        visualizer.show_window(egui_contexts.ctx_mut());
-    }
-}
-
-fn player_input(
-    keyboard_input: Res<Input<KeyCode>>,
-    mut player_input: ResMut<PlayerInput>,
-    mouse_button_input: Res<Input<MouseButton>>,
-    target_query: Query<&Transform, With<Target>>,
-    mut player_commands: EventWriter<PlayerCommand>,
-) {
-    player_input.left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
-    player_input.right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
-    player_input.up = keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up);
-    player_input.down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
-
-    if mouse_button_input.just_pressed(MouseButton::Left) {
-        let target_transform = target_query.single();
-        player_commands.send(PlayerCommand::BasicAttack {
-            cast_at: target_transform.translation,
-        });
-    }
-}
-
-fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
-    let input_message = bincode::serialize(&*player_input).unwrap();
-    client.send_message(ClientChannel::Input, input_message);
-}
-
-fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
-    for command in player_commands.iter() {
-        let command_message = bincode::serialize(command).unwrap();
-        client.send_message(ClientChannel::Command, command_message);
-    }
 }
 
 fn client_sync_players(
@@ -234,66 +157,9 @@ fn client_sync_players(
     }
 }
 
-#[derive(Component)]
-struct Target;
-
-fn update_target_system(
-    primary_window: Query<&Window, With<PrimaryWindow>>,
-    mut target_query: Query<&mut Transform, With<Target>>,
-    camera_query: Query<(&Camera, &GlobalTransform)>,
-) {
-    let (camera, camera_transform) = camera_query.single();
-    let mut target_transform = target_query.single_mut();
-    if let Some(cursor_pos) = primary_window.single().cursor_position() {
-        if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
-            if let Some(distance) = ray.intersect_plane(Vec3::Y, Vec3::Y) {
-                target_transform.translation = ray.direction * distance + ray.origin;
-            }
-        }
-    }
-}
-
-fn setup_camera(mut commands: Commands) {
-    commands
-        .spawn(LookTransformBundle {
-            transform: LookTransform {
-                eye: Vec3::new(0.0, 8., 2.5),
-                target: Vec3::new(0.0, 0.5, 0.0),
-                up: Vec3::Y,
-            },
-            smoother: Smoother::new(0.9),
-        })
-        .insert(Camera3dBundle {
-            transform: Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
-            ..default()
-        });
-}
-
-fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(
-                Mesh::try_from(Icosphere {
-                    radius: 0.1,
-                    subdivisions: 5,
-                })
-                .unwrap(),
-            ),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-            transform: Transform::from_xyz(0.0, 0., 0.0),
-            ..Default::default()
-        })
-        .insert(Target);
-}
-
-fn camera_follow(
-    mut camera_query: Query<&mut LookTransform, (With<Camera>, Without<ControlledPlayer>)>,
-    player_query: Query<&Transform, With<ControlledPlayer>>,
-) {
-    let mut cam_transform = camera_query.single_mut();
-    if let Ok(player_transform) = player_query.get_single() {
-        cam_transform.eye.x = player_transform.translation.x;
-        cam_transform.eye.z = player_transform.translation.z + 2.5;
-        cam_transform.target = player_transform.translation;
+fn steam_callbacks(client: NonSend<SingleClient>, transport: Option<ResMut<SteamClientTransport>>) {
+    client.run_callbacks();
+    if let Some(mut transport) = transport {
+        transport.handle_callbacks();
     }
 }
