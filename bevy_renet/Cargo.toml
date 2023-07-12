@@ -15,11 +15,11 @@ default = ["transport"]
 transport = ["renet/transport"]
 
 [dependencies]
-bevy = {version = "0.10.1", default-features = false}
+bevy = {version = "0.11.0", default-features = false}
 renet = {path = "../renet", version = "0.0.12", features = ["bevy"]}
 
 [dev-dependencies]
-bevy = {version = "0.10.1", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11"]}
+bevy = {version = "0.11.0", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11"]}
 bincode = "1.3.1"
 env_logger = "0.10.0"
 serde = {version = "1.0", features = ["derive"]}
