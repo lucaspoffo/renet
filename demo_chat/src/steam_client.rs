@@ -96,7 +96,6 @@ impl SteamChatApp {
                 visualizer,
             } => {
                 single_client.run_callbacks();
-                transport.handle_callbacks();
                 client.update(duration);
                 if transport.is_connected() {
                     transport.update(duration, client);

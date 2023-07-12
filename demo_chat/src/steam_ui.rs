@@ -263,14 +263,13 @@ fn create_renet_client(host_steam_id: u64) -> (RenetClient, SteamClientTransport
         single_client.run_callbacks();
         std::thread::sleep(::std::time::Duration::from_millis(50));
     }
-    let mut transport = {
+    let transport = {
         let this = SteamClientTransport::new(&steam_client, &SteamId::from_raw(host_steam_id));
         match this {
             Ok(t) => t,
             Err(e) => panic!("Connection to host failed {}", e),
         }
     };
-    transport.register_callback(&steam_client);
     (client, transport, single_client)
 }
 

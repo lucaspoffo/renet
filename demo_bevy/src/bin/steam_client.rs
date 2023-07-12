@@ -20,8 +20,7 @@ struct SteamClient(Client<ClientManager>);
 fn new_steam_client(steam_client: &Client<ClientManager>) -> (RenetClient, SteamClientTransport) {
     let client = RenetClient::new(connection_config());
 
-    let mut transport = SteamClientTransport::new(&steam_client, &SteamId::from_raw(YOUR_STEAM_ID)).unwrap();
-    transport.register_callback(&steam_client);
+    let transport = SteamClientTransport::new(&steam_client, &SteamId::from_raw(YOUR_STEAM_ID)).unwrap();
 
     (client, transport)
 }
@@ -157,9 +156,6 @@ fn client_sync_players(
     }
 }
 
-fn steam_callbacks(client: NonSend<SingleClient>, transport: Option<ResMut<SteamClientTransport>>) {
+fn steam_callbacks(client: NonSend<SingleClient>) {
     client.run_callbacks();
-    if let Some(mut transport) = transport {
-        transport.handle_callbacks();
-    }
 }

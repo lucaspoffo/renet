@@ -43,12 +43,12 @@ impl SteamServerPlugin {
     }
 }
 
-/// Configure the client transport to run only if the client is connected. Otherwise it will throw log errors in the connecting state
+/// Configure the client transport to run only if the client is connected.
 impl Plugin for SteamClientPlugin {
     fn build(&self, app: &mut App) {
         app.configure_set(
             TransportSet::Client
-                .run_if(resource_exists::<SteamClientTransport>().and_then(resource_exists::<RenetClient>().and_then(client_connected)))
+                .run_if(resource_exists::<SteamClientTransport>().and_then(resource_exists::<RenetClient>()))
                 .after(RenetSet::Client),
         );
         app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Client));
