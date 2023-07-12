@@ -143,33 +143,34 @@ impl SteamServerTransport<ClientManager> {
 
     /// Handle the events of the listen_socket until there are no more events
     fn handle_events(&mut self, server: &mut RenetServer) {
-while let Some(event) = self.listen_socket.try_receive_event() {
-    match event {
-        ListenSocketEvent::Connected(event) => match event.remote().steam_id() {
-            Some(steam_id) => {
-                let client_id = steam_id.raw();
-                server.add_connection(client_id);
-                self.connections.insert(client_id, event.take_connection());
-            }
-            _ => {}
-        },
-        ListenSocketEvent::Disconnected(event) => match event.remote().steam_id() {
-            Some(steam_id) => {
-                let client_id = steam_id.raw();
-                server.remove_connection(client_id);
-                self.connections.remove(&client_id);
-            }
-            None => {}
-        },
-        ListenSocketEvent::Connecting(event) => {
-            if server.connected_clients() < self.config.max_clients {
-                let _ = event.accept();
-            } else {
-                event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
+        while let Some(event) = self.listen_socket.try_receive_event() {
+            match event {
+                ListenSocketEvent::Connected(event) => match event.remote().steam_id() {
+                    Some(steam_id) => {
+                        let client_id = steam_id.raw();
+                        server.add_connection(client_id);
+                        self.connections.insert(client_id, event.take_connection());
+                    }
+                    _ => {}
+                },
+                ListenSocketEvent::Disconnected(event) => match event.remote().steam_id() {
+                    Some(steam_id) => {
+                        let client_id = steam_id.raw();
+                        server.remove_connection(client_id);
+                        self.connections.remove(&client_id);
+                    }
+                    None => {}
+                },
+                ListenSocketEvent::Connecting(event) => {
+                    if server.connected_clients() < self.config.max_clients {
+                        let _ = event.accept();
+                    } else {
+                        event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
+                    }
+                }
             }
         }
     }
-}
 }
 // ServerManager implementation
 
