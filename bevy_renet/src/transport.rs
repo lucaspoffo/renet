@@ -30,10 +30,7 @@ impl Plugin for NetcodeServerPlugin {
 
         app.add_systems(PreUpdate, Self::update_system.in_set(TransportSet::Server));
         app.add_systems(PostUpdate, Self::send_packets.in_set(TransportSet::Server));
-        app.add_systems(PostUpdate, 
-            Self::disconnect_on_exit
-                .in_set(TransportSet::Server),
-        );
+        app.add_systems(PostUpdate, Self::disconnect_on_exit.in_set(TransportSet::Server));
     }
 }
 
@@ -64,7 +61,8 @@ impl Plugin for NetcodeClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NetcodeTransportError>();
 
-        app.configure_set(Update,
+        app.configure_set(
+            Update,
             TransportSet::Client
                 .run_if(resource_exists::<NetcodeClientTransport>().and_then(resource_exists::<RenetClient>()))
                 .after(RenetSet::Client),
@@ -72,11 +70,7 @@ impl Plugin for NetcodeClientPlugin {
 
         app.add_systems(PreUpdate, Self::update_system.in_set(TransportSet::Client));
         app.add_systems(PostUpdate, Self::send_packets.in_set(TransportSet::Client));
-        app.add_systems(
-            PostUpdate,
-            Self::disconnect_on_exit
-                .in_set(TransportSet::Client),
-        );
+        app.add_systems(PostUpdate, Self::disconnect_on_exit.in_set(TransportSet::Client));
     }
 }
 
