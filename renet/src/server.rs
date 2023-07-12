@@ -8,6 +8,7 @@ use bytes::Bytes;
 
 /// Connection and disconnection events in the server.
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Event))]
 pub enum ServerEvent {
     ClientConnected { client_id: u64 },
     ClientDisconnected { client_id: u64, reason: DisconnectReason },

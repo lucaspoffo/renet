@@ -24,9 +24,9 @@ impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Events<ServerEvent>>();
 
-        app.configure_set(RenetSet::Server.run_if(resource_exists::<RenetServer>()));
+        app.configure_set(Update, RenetSet::Server.run_if(resource_exists::<RenetServer>()));
 
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(RenetSet::Server));
+        app.add_systems(PreUpdate, Self::update_system.in_set(RenetSet::Server));
     }
 }
 
@@ -42,9 +42,9 @@ impl RenetServerPlugin {
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_set(RenetSet::Client.run_if(resource_exists::<RenetClient>()));
+        app.configure_set(Update, RenetSet::Client.run_if(resource_exists::<RenetClient>()));
 
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(RenetSet::Client));
+        app.add_systems(PreUpdate, Self::update_system.in_set(RenetSet::Client));
     }
 }
 
