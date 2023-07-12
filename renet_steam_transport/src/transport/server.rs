@@ -92,14 +92,12 @@ impl SteamServerTransport<ClientManager> {
     /// ```
     pub fn new(client: &Client<ClientManager>, config: SteamTransportConfig) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
-        match client.networking_sockets().create_listen_socket_p2p(0, options) {
-            Ok(listen_socket) => Ok(Self {
-                listen_socket,
-                config,
-                connections: HashMap::new(),
-            }),
-            Err(h) => Err(h),
-        }
+        let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
+        Ok(Self {
+            listen_socket,
+            config,
+            connections: HashMap::new(),
+        })
     }
 
     pub fn max_clients(&self) -> usize {
