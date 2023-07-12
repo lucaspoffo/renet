@@ -29,8 +29,10 @@ impl Plugin for NetcodeServerPlugin {
         );
 
         app.add_systems(PreUpdate, Self::update_system.in_set(TransportSet::Server));
-        app.add_systems(PostUpdate, Self::send_packets.in_set(TransportSet::Server));
-        app.add_systems(PostUpdate, Self::disconnect_on_exit.in_set(TransportSet::Server));
+        app.add_systems(
+            PostUpdate,
+            (Self::send_packets, Self::disconnect_on_exit).in_set(TransportSet::Server),
+        );
     }
 }
 
