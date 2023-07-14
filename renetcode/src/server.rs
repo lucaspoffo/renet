@@ -519,7 +519,7 @@ impl NetcodeServer {
         self.max_clients
     }
 
-    /// Returns the maximum number of clients that can be connected.
+    /// Returns current number of clients connected.
     pub fn connected_clients(&self) -> usize {
         self.clients.iter().filter(|slot| slot.is_some()).count()
     }

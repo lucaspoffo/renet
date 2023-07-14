@@ -73,20 +73,29 @@ impl NetcodeServerTransport {
         })
     }
 
+    /// Returns the server public address
     pub fn addr(&self) -> SocketAddr {
         self.netcode_server.address()
     }
 
+    /// Returns the maximum number of clients that can be connected.
     pub fn max_clients(&self) -> usize {
         self.netcode_server.max_clients()
     }
 
+    /// Returns current number of clients connected.
     pub fn connected_clients(&self) -> usize {
         self.netcode_server.connected_clients()
     }
 
+    /// Returns the user data for client if connected.
     pub fn user_data(&self, client_id: u64) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
         self.netcode_server.user_data(client_id)
+    }
+
+    /// Returns the client address if connected.
+    pub fn client_addr(&self, client_id: u64) -> Option<SocketAddr> {
+        self.netcode_server.client_addr(client_id)
     }
 
     /// Disconnects all connected clients.
