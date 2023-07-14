@@ -61,7 +61,7 @@ fn main() {
     app.add_plugins(NetcodeServerPlugin);
     app.add_plugins(RapierPhysicsPlugin::<NoUserData>::default());
     app.add_plugins(RapierDebugRenderPlugin::default());
-    app.add_plugins(FrameTimeDiagnosticsPlugin::default());
+    app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
 

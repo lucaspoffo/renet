@@ -63,7 +63,7 @@ fn main() {
     app.add_plugins(RenetClientPlugin);
     app.add_plugins(NetcodeClientPlugin);
     app.add_plugins(LookTransformPlugin);
-    app.add_plugins(FrameTimeDiagnosticsPlugin::default());
+    app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
 
