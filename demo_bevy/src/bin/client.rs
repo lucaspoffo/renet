@@ -60,12 +60,12 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_plugin(RenetClientPlugin);
-    app.add_plugin(NetcodeClientPlugin);
-    app.add_plugin(LookTransformPlugin);
-    app.add_plugin(FrameTimeDiagnosticsPlugin::default());
-    app.add_plugin(LogDiagnosticsPlugin::default());
-    app.add_plugin(EguiPlugin);
+    app.add_plugins(RenetClientPlugin);
+    app.add_plugins(NetcodeClientPlugin);
+    app.add_plugins(LookTransformPlugin);
+    app.add_plugins(FrameTimeDiagnosticsPlugin::default());
+    app.add_plugins(LogDiagnosticsPlugin::default());
+    app.add_plugins(EguiPlugin);
 
     app.add_event::<PlayerCommand>();
 
@@ -77,16 +77,17 @@ fn main() {
 
     app.insert_resource(NetworkMapping::default());
 
-    app.add_systems((player_input, camera_follow, update_target_system));
+    app.add_systems(Update, (player_input, camera_follow, update_target_system));
     app.add_systems(
-        (client_send_input, client_send_player_commands, client_sync_players).distributive_run_if(bevy_renet::transport::client_connected),
+        Update,
+        (client_send_input, client_send_player_commands, client_sync_players).run_if(bevy_renet::transport::client_connected),
     );
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
-    app.add_system(update_visulizer_system);
 
-    app.add_startup_systems((setup_level, setup_camera, setup_target));
-    app.add_system(panic_on_error_system);
+    app.add_systems(Startup, (setup_level, setup_camera, setup_target));
+    app.add_systems(Update, update_visulizer_system);
+    app.add_systems(Update, panic_on_error_system);
 
     app.run();
 }

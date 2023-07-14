@@ -57,13 +57,13 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
 
-    app.add_plugin(RenetServerPlugin);
-    app.add_plugin(NetcodeServerPlugin);
-    app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
-    app.add_plugin(RapierDebugRenderPlugin::default());
-    app.add_plugin(FrameTimeDiagnosticsPlugin::default());
-    app.add_plugin(LogDiagnosticsPlugin::default());
-    app.add_plugin(EguiPlugin);
+    app.add_plugins(RenetServerPlugin);
+    app.add_plugins(NetcodeServerPlugin);
+    app.add_plugins(RapierPhysicsPlugin::<NoUserData>::default());
+    app.add_plugins(RapierDebugRenderPlugin::default());
+    app.add_plugins(FrameTimeDiagnosticsPlugin::default());
+    app.add_plugins(LogDiagnosticsPlugin::default());
+    app.add_plugins(EguiPlugin);
 
     app.insert_resource(ServerLobby::default());
     app.insert_resource(BotId(0));
@@ -74,20 +74,23 @@ fn main() {
 
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
-    app.add_systems((
-        server_update_system,
-        server_network_sync,
-        move_players_system,
-        update_projectiles_system,
-        update_visulizer_system,
-        despawn_projectile_system,
-        spawn_bot,
-        bot_autocast,
-    ));
+    app.add_systems(
+        Update,
+        (
+            server_update_system,
+            server_network_sync,
+            move_players_system,
+            update_projectiles_system,
+            update_visulizer_system,
+            despawn_projectile_system,
+            spawn_bot,
+            bot_autocast,
+        ),
+    );
 
-    app.add_system(projectile_on_removal_system.in_base_set(CoreSet::PostUpdate));
+    app.add_systems(PostUpdate, projectile_on_removal_system);
 
-    app.add_startup_systems((setup_level, setup_simple_camera));
+    app.add_systems(Startup, (setup_level, setup_simple_camera));
 
     app.run();
 }
