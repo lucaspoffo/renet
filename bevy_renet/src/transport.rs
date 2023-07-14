@@ -5,14 +5,7 @@ use renet::{
 
 use bevy::{app::AppExit, prelude::*};
 
-use crate::RenetSet;
-
-/// Set for networking systems.
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum TransportSet {
-    Client,
-    Server,
-}
+use crate::{RenetClientPlugin, RenetServerPlugin};
 
 pub struct NetcodeServerPlugin;
 
@@ -27,14 +20,14 @@ impl Plugin for NetcodeServerPlugin {
             Self::update_system
                 .run_if(resource_exists::<NetcodeServerTransport>())
                 .run_if(resource_exists::<RenetServer>())
-                .after(RenetSet::Server),
+                .after(RenetServerPlugin::update_system),
         );
+
         app.add_systems(
             PostUpdate,
             (Self::send_packets, Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeServerTransport>())
-                .run_if(resource_exists::<RenetServer>())
-                .after(RenetSet::Server),
+                .run_if(resource_exists::<RenetServer>()),
         );
     }
 }
@@ -71,14 +64,13 @@ impl Plugin for NetcodeClientPlugin {
             Self::update_system
                 .run_if(resource_exists::<NetcodeClientTransport>())
                 .run_if(resource_exists::<RenetClient>())
-                .after(RenetSet::Client),
+                .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
             (Self::send_packets, Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeClientTransport>())
-                .run_if(resource_exists::<RenetClient>())
-                .after(RenetSet::Client),
+                .run_if(resource_exists::<RenetClient>()),
         );
     }
 }
