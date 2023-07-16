@@ -12,6 +12,7 @@ pub use renetcode::{
 };
 
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Event))]
 pub enum NetcodeTransportError {
     Netcode(NetcodeError),
     Renet(crate::DisconnectReason),

@@ -504,12 +504,14 @@ impl NetcodeServer {
             .collect()
     }
 
+    /// Returns the ids from the connected clients (iterator).
+    pub fn clients_id_iter(&self) -> impl Iterator<Item = ClientID> + '_ {
+        self.clients.iter().filter_map(|slot| slot.as_ref().map(|client| client.client_id))
+    }
+
     /// Returns the ids from the connected clients.
     pub fn clients_id(&self) -> Vec<ClientID> {
-        self.clients
-            .iter()
-            .filter_map(|slot| slot.as_ref().map(|client| client.client_id))
-            .collect()
+        self.clients_id_iter().collect()
     }
 
     /// Returns the maximum number of clients that can be connected.
@@ -517,7 +519,7 @@ impl NetcodeServer {
         self.max_clients
     }
 
-    /// Returns the maximum number of clients that can be connected.
+    /// Returns current number of clients connected.
     pub fn connected_clients(&self) -> usize {
         self.clients.iter().filter(|slot| slot.is_some()).count()
     }

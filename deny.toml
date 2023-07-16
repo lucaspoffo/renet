@@ -32,6 +32,6 @@ unknown-registry = "deny"
 unknown-git = "deny"
 
 allow-git = [
-    # Used in Demo Bevy, remove when new version supports 0.22
-    "https://github.com/mvlabat/bevy_egui.git",
+    # Used in Demo Bevy, remove when new version supports bevy 0.11
+    "https://github.com/bonsairobo/smooth-bevy-cameras.git",
 ]

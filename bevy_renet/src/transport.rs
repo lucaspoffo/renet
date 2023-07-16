@@ -5,14 +5,7 @@ use renet::{
 
 use bevy::{app::AppExit, prelude::*};
 
-use crate::RenetSet;
-
-/// Set for networking systems.
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum TransportSet {
-    Client,
-    Server,
-}
+use crate::{RenetClientPlugin, RenetServerPlugin};
 
 pub struct NetcodeServerPlugin;
 
@@ -21,18 +14,20 @@ pub struct NetcodeClientPlugin;
 impl Plugin for NetcodeServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NetcodeTransportError>();
-        app.configure_set(
-            TransportSet::Server
-                .run_if(resource_exists::<NetcodeServerTransport>().and_then(resource_exists::<RenetServer>()))
-                .after(RenetSet::Server),
+
+        app.add_systems(
+            PreUpdate,
+            Self::update_system
+                .run_if(resource_exists::<NetcodeServerTransport>())
+                .run_if(resource_exists::<RenetServer>())
+                .after(RenetServerPlugin::update_system),
         );
 
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Server));
-        app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Server));
-        app.add_system(
-            Self::disconnect_on_exit
-                .in_base_set(CoreSet::PostUpdate)
-                .in_set(TransportSet::Server),
+        app.add_systems(
+            PostUpdate,
+            (Self::send_packets, Self::disconnect_on_exit)
+                .run_if(resource_exists::<NetcodeServerTransport>())
+                .run_if(resource_exists::<RenetServer>()),
         );
     }
 }
@@ -64,18 +59,18 @@ impl Plugin for NetcodeClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NetcodeTransportError>();
 
-        app.configure_set(
-            TransportSet::Client
-                .run_if(resource_exists::<NetcodeClientTransport>().and_then(resource_exists::<RenetClient>()))
-                .after(RenetSet::Client),
+        app.add_systems(
+            PreUpdate,
+            Self::update_system
+                .run_if(resource_exists::<NetcodeClientTransport>())
+                .run_if(resource_exists::<RenetClient>())
+                .after(RenetClientPlugin::update_system),
         );
-
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Client));
-        app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Client));
-        app.add_system(
-            Self::disconnect_on_exit
-                .in_base_set(CoreSet::PostUpdate)
-                .in_set(TransportSet::Client),
+        app.add_systems(
+            PostUpdate,
+            (Self::send_packets, Self::disconnect_on_exit)
+                .run_if(resource_exists::<NetcodeClientTransport>())
+                .run_if(resource_exists::<RenetClient>()),
         );
     }
 }

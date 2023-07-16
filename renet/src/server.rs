@@ -8,6 +8,7 @@ use bytes::Bytes;
 
 /// Connection and disconnection events in the server.
 #[derive(Debug)]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Event))]
 pub enum ServerEvent {
     ClientConnected { client_id: u64 },
     ClientDisconnected { client_id: u64, reason: DisconnectReason },
@@ -187,22 +188,24 @@ impl RenetServer {
         None
     }
 
+    /// Return ids for all connected clients (iterator)
+    pub fn clients_id_iter(&self) -> impl Iterator<Item = u64> + '_ {
+        self.connections.iter().filter(|(_, c)| !c.is_disconnected()).map(|(id, _)| *id)
+    }
+
     /// Return ids for all connected clients
     pub fn clients_id(&self) -> Vec<u64> {
-        self.connections
-            .iter()
-            .filter(|(_, c)| !c.is_disconnected())
-            .map(|(id, _)| *id)
-            .collect()
+        self.clients_id_iter().collect()
+    }
+
+    /// Return ids for all disconnected clients (iterator)
+    pub fn disconnections_id_iter(&self) -> impl Iterator<Item = u64> + '_ {
+        self.connections.iter().filter(|(_, c)| c.is_disconnected()).map(|(id, _)| *id)
     }
 
     /// Return ids for all disconnected clients
     pub fn disconnections_id(&self) -> Vec<u64> {
-        self.connections
-            .iter()
-            .filter(|(_, c)| c.is_disconnected())
-            .map(|(id, _)| *id)
-            .collect()
+        self.disconnections_id_iter().collect()
     }
 
     /// Returns the current number of connected clients.

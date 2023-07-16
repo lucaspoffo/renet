@@ -70,6 +70,10 @@ impl NetcodeClientTransport {
         })
     }
 
+    pub fn addr(&self) -> io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
+
     pub fn client_id(&self) -> u64 {
         self.netcode_client.client_id()
     }
