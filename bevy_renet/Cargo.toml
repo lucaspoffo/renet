@@ -18,11 +18,9 @@ steam_transport = ["renet_steam_transport", "steamworks"]
 [dependencies]
 
 
-bevy = { version = "0.10.1", default-features = false }
+bevy = { version = "0.11", default-features = false }
 renet = { path = "../renet", version = "0.0.12", features = ["bevy"] }
-renet_steam_transport = { path = "../renet_steam_transport", version = "0.0.1", features = [
-    "bevy",
-], optional = true }
+renet_steam_transport = { path = "../renet_steam_transport", version = "0.0.1", features = [ "bevy" ], optional = true }
 steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327", optional = true }
 
 [dev-dependencies]

@@ -4,10 +4,10 @@ use renet::RenetServer;
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
-    Client, ClientManager, ServerManager,
+    Client, Manager, ClientManager,
 };
 
-use super::{Transport, MAX_MESSAGE_BATCH_SIZE};
+use super::MAX_MESSAGE_BATCH_SIZE;
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct SteamTransportConfig {
@@ -21,7 +21,7 @@ impl SteamTransportConfig {
 }
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
-pub struct SteamServerTransport<Manager = Client> {
+pub struct SteamServerTransport<Manager = ClientManager > {
     /// hold the active socket of the server
     listen_socket: ListenSocket<Manager>,
     /// hold the configuration of the server
@@ -30,39 +30,7 @@ pub struct SteamServerTransport<Manager = Client> {
     connections: HashMap<u64, NetConnection<Manager>>,
 }
 
-// ClientManager implementation
-
-impl Transport<RenetServer> for SteamServerTransport<ClientManager> {
-    /// Update should run after client run the callback
-    fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
-        self.handle_events(server);
-        for (client_id, connection) in self.connections.iter_mut() {
-            // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
-            let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
-            messages.iter().for_each(|message| {
-                match server.process_packet_from(message.data(), *client_id) {
-                    Err(e) => log::error!("Error while processing payload for {}: {}", client_id, e),
-                    _ => (),
-                };
-            });
-        }
-    }
-
-    fn send_packets(&mut self, server: &mut RenetServer) {
-        for client_id in self.connections.keys() {
-            let packets = server.get_packets_to_send(*client_id).unwrap();
-            if let Some(connection) = self.connections.get(&client_id) {
-                if let Err(e) = self.send_packets_to_connection(packets, connection) {
-                    log::error!("Error while sending packet: {}", e);
-                }
-            } else {
-                log::error!("Error while sending packet: connection not found");
-            }
-        }
-    }
-}
-
-impl SteamServerTransport<ClientManager> {
+impl<T: Manager + 'static> SteamServerTransport<T> {
     /// Create a new server
     /// it will return [`InvalidHandle`](steamworks::networking_sockets) if the server can't be created
     /// # Arguments
@@ -90,7 +58,7 @@ impl SteamServerTransport<ClientManager> {
     ///         _ => {}
     /// }
     /// ```
-    pub fn new(client: &Client<ClientManager>, config: SteamTransportConfig) -> Result<Self, InvalidHandle> {
+    pub fn new(client: &Client<T>, config: SteamTransportConfig) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
         Ok(Self {
@@ -128,7 +96,7 @@ impl SteamServerTransport<ClientManager> {
     fn send_packets_to_connection(
         &self,
         packets: Vec<Vec<u8>>,
-        connection: &NetConnection<ClientManager>,
+        connection: &NetConnection<T>,
     ) -> Result<(), steamworks::SteamError> {
         for packet in packets {
             if let Err(_e) = connection.send_message(&packet, SendFlags::UNRELIABLE) {
@@ -171,13 +139,32 @@ impl SteamServerTransport<ClientManager> {
             }
         }
     }
+
+    /// Update should run after client run the callback
+    pub fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
+        self.handle_events(server);
+        for (client_id, connection) in self.connections.iter_mut() {
+            // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
+            let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
+            messages.iter().for_each(|message| {
+                match server.process_packet_from(message.data(), *client_id) {
+                    Err(e) => log::error!("Error while processing payload for {}: {}", client_id, e),
+                    _ => (),
+                };
+            });
+        }
+    }
+
+    pub fn send_packets(&mut self, server: &mut RenetServer) {
+        for client_id in self.connections.keys() {
+            let packets = server.get_packets_to_send(*client_id).unwrap();
+            if let Some(connection) = self.connections.get(&client_id) {
+                if let Err(e) = self.send_packets_to_connection(packets, connection) {
+                    log::error!("Error while sending packet: {}", e);
+                }
+            } else {
+                log::error!("Error while sending packet: connection not found");
+            }
+        }
+    }
 }
-// ServerManager implementation
-
-impl Transport<RenetServer> for SteamServerTransport<ServerManager> {
-    fn send_packets(&mut self, _server: &mut RenetServer) {}
-
-    fn update(&mut self, _duration: Duration, _server: &mut RenetServer) {}
-}
-
-impl SteamServerTransport<ServerManager> {}

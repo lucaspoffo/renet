@@ -1,44 +1,42 @@
-use bevy::{
-    prelude::{resource_exists, App, Condition, CoreSet, IntoSystemConfig, IntoSystemSetConfig, Plugin, Res, ResMut, SystemSet},
-    time::Time,
-};
+use bevy::prelude::*;
 use renet::{RenetClient, RenetServer};
-use renet_steam_transport::transport::Transport;
-use renet_steam_transport::transport::{client::SteamClientTransport, server::SteamServerTransport};
-use steamworks::ClientManager;
+use renet_steam_transport::{client::SteamClientTransport, server::SteamServerTransport};
+use std::marker::PhantomData;
+use steamworks::Manager;
 
-use crate::RenetSet;
+use crate::{RenetClientPlugin, RenetServerPlugin};
 
 #[cfg(feature = "steam_transport")]
-/// Set for networking systems.
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum TransportSet {
-    Client,
-    Server,
-}
-#[cfg(feature = "steam_transport")]
-pub struct SteamServerPlugin;
+#[derive(Default)]
+pub struct SteamServerPlugin<T>(PhantomData<T>);
+
 #[cfg(feature = "steam_transport")]
 pub struct SteamClientPlugin;
 
-impl Plugin for SteamServerPlugin {
+impl<T: Manager + Sync + Send + 'static> Plugin for SteamServerPlugin<T> {
     fn build(&self, app: &mut App) {
-        app.configure_set(
-            TransportSet::Server
-                .run_if(resource_exists::<SteamServerTransport<ClientManager>>().and_then(resource_exists::<RenetServer>()))
-                .after(RenetSet::Server),
+        app.add_systems(
+            PreUpdate,
+            Self::update_system
+                .run_if(resource_exists::<SteamServerTransport<T>>())
+                .run_if(resource_exists::<RenetServer>())
+                .after(RenetServerPlugin::update_system),
         );
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Server));
-        app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Server));
+        app.add_systems(
+            PostUpdate,
+            Self::send_packets
+                .run_if(resource_exists::<SteamServerTransport<T>>())
+                .run_if(resource_exists::<RenetServer>()),
+        );
     }
 }
 
-impl SteamServerPlugin {
-    pub fn update_system(mut transport: ResMut<SteamServerTransport<ClientManager>>, mut server: ResMut<RenetServer>, time: Res<Time>) {
+impl<T: Manager + Sync + Send + 'static> SteamServerPlugin<T> {
+    pub fn update_system(mut transport: ResMut<SteamServerTransport<T>>, mut server: ResMut<RenetServer>, time: Res<Time>) {
         transport.update(time.delta(), &mut server)
     }
 
-    pub fn send_packets(mut transport: ResMut<SteamServerTransport<ClientManager>>, mut server: ResMut<RenetServer>) {
+    pub fn send_packets(mut transport: ResMut<SteamServerTransport<T>>, mut server: ResMut<RenetServer>) {
         transport.send_packets(&mut server);
     }
 }
@@ -46,13 +44,19 @@ impl SteamServerPlugin {
 /// Configure the client transport to run only if the client is connected.
 impl Plugin for SteamClientPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_set(
-            TransportSet::Client
-                .run_if(resource_exists::<SteamClientTransport>().and_then(resource_exists::<RenetClient>()))
-                .after(RenetSet::Client),
+        app.add_systems(
+            PreUpdate,
+            Self::update_system
+                .run_if(resource_exists::<SteamClientTransport>())
+                .run_if(resource_exists::<RenetClient>())
+                .after(RenetClientPlugin::update_system),
         );
-        app.add_system(Self::update_system.in_base_set(CoreSet::PreUpdate).in_set(TransportSet::Client));
-        app.add_system(Self::send_packets.in_base_set(CoreSet::PostUpdate).in_set(TransportSet::Client));
+        app.add_systems(
+            PostUpdate,
+            Self::send_packets
+                .run_if(resource_exists::<SteamClientTransport>())
+                .run_if(resource_exists::<RenetClient>()),
+        );
     }
 }
 

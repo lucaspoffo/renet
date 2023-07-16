@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tokio::sync::mpsc::{self, Receiver};
 
-use super::{Transport, MAX_MESSAGE_BATCH_SIZE};
+use super::MAX_MESSAGE_BATCH_SIZE;
 use renet::RenetClient;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection},
@@ -87,10 +87,8 @@ impl SteamClientTransport {
         );
         self.callback_handle.disconnect();
     }
-}
 
-impl Transport<RenetClient> for SteamClientTransport {
-    fn update(&mut self, _duration: Duration, client: &mut RenetClient) {
+    pub fn update(&mut self, _duration: Duration, client: &mut RenetClient) {
         self.status_change_receiver.try_recv().ok().map(|event| {
             self.handle_callback(event);
         });
@@ -103,7 +101,7 @@ impl Transport<RenetClient> for SteamClientTransport {
         });
     }
 
-    fn send_packets(&mut self, client: &mut RenetClient) {
+    pub fn send_packets(&mut self, client: &mut RenetClient) {
         if !self.is_connected() {
             return;
         }

@@ -18,6 +18,5 @@ renet = { path = "../renet" }
 # its version 0.10 but we need to use the rev because of a missing feature
 steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327" }
 log = "0.4.19"
-bevy_ecs = { version = "0.10.1", optional = true }
-bevy_utils = "0.10.1"
+bevy_ecs = { version = "0.11", optional = true }
 tokio = { version = "1.29.1", features = ["sync"] }
