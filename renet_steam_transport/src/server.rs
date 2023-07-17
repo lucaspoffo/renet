@@ -79,6 +79,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         }
         server.remove_connection(client_id);
     }
+
     /// Disconnects all active clients including the host client from the server.
     pub fn disconnect_all(&mut self, server: &mut RenetServer, flush_last_packets: bool) {
         let keys = self.connections.keys().cloned().collect::<Vec<u64>>();
@@ -91,6 +92,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             server.remove_connection(client_id);
         }
     }
+    
     /// while this works fine we should probaly use the send_messages function from the listen_socket
     /// TODO to evaluate
     fn send_packets_to_connection(

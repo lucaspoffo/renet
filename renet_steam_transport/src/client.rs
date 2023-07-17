@@ -1,5 +1,5 @@
-use std::time::Duration;
-use tokio::sync::mpsc::{self, Receiver};
+use std::{time::Duration, sync::mpsc::Receiver};
+use std::sync::mpsc;
 
 use super::MAX_MESSAGE_BATCH_SIZE;
 use renet::RenetClient;
@@ -12,7 +12,7 @@ use steamworks::{
 pub struct SteamClientTransport {
     connection: NetConnection<ClientManager>,
     status: NetworkingConnectionState,
-    callback_handle: CallbackHandle<ClientManager>,
+    _callback_handle: CallbackHandle<ClientManager>,
     disconnect_reason: Option<NetConnectionEnd>,
     status_change_receiver: Receiver<NetConnectionStatusChanged>,
 }
@@ -24,9 +24,11 @@ impl SteamClientTransport {
     pub fn new(client: &steamworks::Client<ClientManager>, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         let options = Vec::new();
         // it shouldnt be the case here to buffer more then 2 events, but just in case
-        let (sender, status_change_receiver) = mpsc::channel(3);
-        let callback_handle = client.register_callback::<NetConnectionStatusChanged, _>(move |event| {
-            let _ = sender.send(event);
+        let (sender, status_change_receiver) = mpsc::channel();
+        let _callback_handle = client.register_callback::<NetConnectionStatusChanged, _>(move |event| {
+            if let Err(e) = sender.send(event) {
+                log::error!("Failed to send connection status change: {e}");
+            }
         });
         let connection = client
             .networking_sockets()
@@ -34,7 +36,7 @@ impl SteamClientTransport {
         Ok(Self {
             connection,
             status: NetworkingConnectionState::Connecting,
-            callback_handle,
+            _callback_handle,
             disconnect_reason: None,
             status_change_receiver,
         })
@@ -85,16 +87,17 @@ impl SteamClientTransport {
             Some("Disconnecting from server"),
             send_last_packets,
         );
-        self.callback_handle.disconnect();
     }
 
     pub fn update(&mut self, _duration: Duration, client: &mut RenetClient) {
-        self.status_change_receiver.try_recv().ok().map(|event| {
+        if let Ok(event) = self.status_change_receiver.try_recv() {
             self.handle_callback(event);
-        });
+        }
+
         if !self.is_connected() {
             return;
         };
+
         let messages = self.connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
         messages.iter().for_each(|message| {
             client.process_packet(message.data());

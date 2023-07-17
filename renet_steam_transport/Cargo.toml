@@ -19,4 +19,6 @@ renet = { path = "../renet" }
 steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327" }
 log = "0.4.19"
 bevy_ecs = { version = "0.11", optional = true }
-tokio = { version = "1.29.1", features = ["sync"] }
+
+[dev-dependencies]
+env_logger = "0.10.0"
