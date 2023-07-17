@@ -5,10 +5,7 @@ use std::{
 };
 
 use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
-use renet_steam_transport::{
-    client::SteamClientTransport,
-    server::{SteamServerTransport, SteamTransportConfig},
-};
+use renet_steam_transport::{client::SteamClientTransport, server::SteamServerTransport};
 use steamworks::{Client, ClientManager, SingleClient, SteamId};
 
 fn main() {
@@ -38,8 +35,7 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient) {
     let connection_config = ConnectionConfig::default();
     let mut server: RenetServer = RenetServer::new(connection_config);
 
-    let steam_config = SteamTransportConfig::from_max_clients(10);
-    let mut transport = SteamServerTransport::new(&steam_client, steam_config).unwrap();
+    let mut transport = SteamServerTransport::new(&steam_client, 10).unwrap();
 
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
@@ -80,7 +76,7 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient) {
         }
 
         transport.send_packets(&mut server);
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(Duration::from_millis(20));
     }
 }
 
@@ -103,7 +99,9 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
 
         if transport.is_connected() {
             match stdin_channel.try_recv() {
-                Ok(text) => client.send_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec()),
+                Ok(text) => {
+                    client.send_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec());
+                }
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
             }
@@ -115,7 +113,7 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
         }
 
         transport.send_packets(&mut client);
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(Duration::from_millis(20));
     }
 }
 

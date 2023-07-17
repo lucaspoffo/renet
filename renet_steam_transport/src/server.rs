@@ -4,38 +4,21 @@ use renet::RenetServer;
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
-    Client, Manager, ClientManager,
+    Client, ClientManager, Manager,
 };
 
 use super::MAX_MESSAGE_BATCH_SIZE;
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
-pub struct SteamTransportConfig {
-    max_clients: usize,
-}
-
-impl SteamTransportConfig {
-    pub fn from_max_clients(max_clients: usize) -> Self {
-        Self { max_clients }
-    }
-}
-
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
-pub struct SteamServerTransport<Manager = ClientManager > {
-    /// hold the active socket of the server
+pub struct SteamServerTransport<Manager = ClientManager> {
     listen_socket: ListenSocket<Manager>,
-    /// hold the configuration of the server
-    config: SteamTransportConfig,
-    /// hold the active connections of the server (key is the client id) (value is the connection)
+    max_clients: usize,
     connections: HashMap<u64, NetConnection<Manager>>,
 }
 
 impl<T: Manager + 'static> SteamServerTransport<T> {
     /// Create a new server
     /// it will return [`InvalidHandle`](steamworks::networking_sockets) if the server can't be created
-    /// # Arguments
-    /// * `client` - the steamworks client
-    /// * `config` - the configuration of the server
     ///
     /// # Example
     ///
@@ -58,18 +41,18 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     ///         _ => {}
     /// }
     /// ```
-    pub fn new(client: &Client<T>, config: SteamTransportConfig) -> Result<Self, InvalidHandle> {
+    pub fn new(client: &Client<T>, max_clients: usize) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
         Ok(Self {
             listen_socket,
-            config,
+            max_clients,
             connections: HashMap::new(),
         })
     }
 
     pub fn max_clients(&self) -> usize {
-        self.config.max_clients
+        self.max_clients
     }
 
     /// Disconnects a client from the server.
@@ -92,27 +75,9 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             server.remove_connection(client_id);
         }
     }
-    
-    /// while this works fine we should probaly use the send_messages function from the listen_socket
-    /// TODO to evaluate
-    fn send_packets_to_connection(
-        &self,
-        packets: Vec<Vec<u8>>,
-        connection: &NetConnection<T>,
-    ) -> Result<(), steamworks::SteamError> {
-        for packet in packets {
-            if let Err(_e) = connection.send_message(&packet, SendFlags::UNRELIABLE) {
-                continue;
-            }
-        }
-        if let Err(e) = connection.flush_messages() {
-            return Err(e);
-        }
-        Ok(())
-    }
 
-    /// Handle the events of the listen_socket until there are no more events
-    fn handle_events(&mut self, server: &mut RenetServer) {
+    /// Update should run after client run the callback
+    pub fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
         while let Some(event) = self.listen_socket.try_receive_event() {
             match event {
                 ListenSocketEvent::Connected(event) => match event.remote().steam_id() {
@@ -132,7 +97,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                     None => {}
                 },
                 ListenSocketEvent::Connecting(event) => {
-                    if server.connected_clients() < self.config.max_clients {
+                    if server.connected_clients() < self.max_clients {
                         let _ = event.accept();
                     } else {
                         event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
@@ -140,11 +105,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                 }
             }
         }
-    }
 
-    /// Update should run after client run the callback
-    pub fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
-        self.handle_events(server);
         for (client_id, connection) in self.connections.iter_mut() {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
             let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
@@ -158,14 +119,22 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     }
 
     pub fn send_packets(&mut self, server: &mut RenetServer) {
-        for client_id in self.connections.keys() {
-            let packets = server.get_packets_to_send(*client_id).unwrap();
-            if let Some(connection) = self.connections.get(&client_id) {
-                if let Err(e) = self.send_packets_to_connection(packets, connection) {
-                    log::error!("Error while sending packet: {}", e);
-                }
-            } else {
+        'clients: for client_id in server.clients_id() {
+            let Some(connection) = self.connections.get(&client_id) else {
                 log::error!("Error while sending packet: connection not found");
+                continue;
+            };
+            let packets = server.get_packets_to_send(client_id).unwrap();
+            // TODO: while this works fine we should probaly use the send_messages function from the listen_socket
+            for packet in packets {
+                if let Err(e) = connection.send_message(&packet, SendFlags::UNRELIABLE) {
+                    log::error!("Failed to send packet to client {client_id}: {e}");
+                    continue 'clients;
+                }
+            }
+
+            if let Err(e) = connection.flush_messages() {
+                log::error!("Failed flush messages for {client_id}: {e}");
             }
         }
     }

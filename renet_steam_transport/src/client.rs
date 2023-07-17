@@ -1,20 +1,18 @@
-use std::{time::Duration, sync::mpsc::Receiver};
-use std::sync::mpsc;
+use std::time::Duration;
 
 use super::MAX_MESSAGE_BATCH_SIZE;
 use renet::RenetClient;
+use steamworks::networking_sockets::NetworkingSockets;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection},
-    networking_types::{NetConnectionEnd, NetConnectionStatusChanged, NetworkingConnectionState, NetworkingIdentity, SendFlags},
-    CallbackHandle, ClientManager, SteamId,
+    networking_types::{NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
+    ClientManager, SteamId,
 };
+
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct SteamClientTransport {
+    networking_sockets: NetworkingSockets<ClientManager>,
     connection: NetConnection<ClientManager>,
-    status: NetworkingConnectionState,
-    _callback_handle: CallbackHandle<ClientManager>,
-    disconnect_reason: Option<NetConnectionEnd>,
-    status_change_receiver: Receiver<NetConnectionStatusChanged>,
 }
 
 impl SteamClientTransport {
@@ -22,59 +20,52 @@ impl SteamClientTransport {
     ///
     /// If the connection is not possible, it will return [`InvalidHandle`](steamworks::networking_sockets)
     pub fn new(client: &steamworks::Client<ClientManager>, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+        let networking_sockets = client.networking_sockets();
+
         let options = Vec::new();
-        // it shouldnt be the case here to buffer more then 2 events, but just in case
-        let (sender, status_change_receiver) = mpsc::channel();
-        let _callback_handle = client.register_callback::<NetConnectionStatusChanged, _>(move |event| {
-            if let Err(e) = sender.send(event) {
-                log::error!("Failed to send connection status change: {e}");
-            }
-        });
         let connection = client
             .networking_sockets()
             .connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, options)?;
         Ok(Self {
+            networking_sockets,
             connection,
-            status: NetworkingConnectionState::Connecting,
-            _callback_handle,
-            disconnect_reason: None,
-            status_change_receiver,
         })
     }
 
-    fn handle_callback(&mut self, event: NetConnectionStatusChanged) {
-        self.status = match event.connection_info.state() {
-            Ok(state) => state,
-            Err(e) => {
-                log::error!("Error while getting connection state: {}", e);
-                NetworkingConnectionState::None
-            }
-        };
-        if self.status == NetworkingConnectionState::ClosedByPeer || self.status == NetworkingConnectionState::ProblemDetectedLocally {
-            self.disconnect_reason = event.connection_info.end_reason();
-        }
-    }
-
     pub fn is_connected(&self) -> bool {
-        self.status == NetworkingConnectionState::Connected
+        let status = self.connection_state();
+
+        status == NetworkingConnectionState::Connected
     }
 
     pub fn is_disconnected(&self) -> bool {
-        self.status == NetworkingConnectionState::ClosedByPeer
-            || self.status == NetworkingConnectionState::ProblemDetectedLocally
-            || self.status == NetworkingConnectionState::None
+        let status = self.connection_state();
+        status == NetworkingConnectionState::ClosedByPeer
+            || status == NetworkingConnectionState::ProblemDetectedLocally
+            || status == NetworkingConnectionState::None
     }
 
     pub fn is_connecting(&self) -> bool {
-        self.status == NetworkingConnectionState::Connecting || self.status == NetworkingConnectionState::FindingRoute
+        let status = self.connection_state();
+        status == NetworkingConnectionState::Connecting || status == NetworkingConnectionState::FindingRoute
     }
 
-    pub fn get_connection_state(&self) -> NetworkingConnectionState {
-        self.status
+    pub fn connection_state(&self) -> NetworkingConnectionState {
+        if let Ok(info) = self.networking_sockets.get_connection_info(&self.connection) {
+            if let Ok(state) = info.state() {
+                return state;
+            }
+        }
+
+        NetworkingConnectionState::None
     }
 
     pub fn disconnect_reason(&self) -> Option<NetConnectionEnd> {
-        self.disconnect_reason
+        if let Ok(info) = self.networking_sockets.get_connection_info(&self.connection) {
+            return info.end_reason();
+        }
+
+        None
     }
 
     pub fn client_id(&self, steam_client: &steamworks::Client<ClientManager>) -> u64 {
@@ -90,10 +81,6 @@ impl SteamClientTransport {
     }
 
     pub fn update(&mut self, _duration: Duration, client: &mut RenetClient) {
-        if let Ok(event) = self.status_change_receiver.try_recv() {
-            self.handle_callback(event);
-        }
-
         if !self.is_connected() {
             return;
         };
@@ -108,6 +95,7 @@ impl SteamClientTransport {
         if !self.is_connected() {
             return;
         }
+
         let packets = client.get_packets_to_send();
         for packet in packets {
             if let Err(e) = self.connection.send_message(&packet, SendFlags::UNRELIABLE) {
