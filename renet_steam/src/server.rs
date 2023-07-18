@@ -17,8 +17,6 @@ pub struct SteamServerTransport<Manager = ClientManager> {
 }
 
 impl<T: Manager + 'static> SteamServerTransport<T> {
-    /// Create a new server
-    /// it will return [`InvalidHandle`](steamworks::networking_sockets) if the server can't be created
     pub fn new(client: &Client<T>, max_clients: usize) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
@@ -54,7 +52,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         }
     }
 
-    /// Update should run after client run the callback
+    /// Update server connections, and receive packets from the network.
     pub fn update(&mut self, server: &mut RenetServer) {
         while let Some(event) = self.listen_socket.try_receive_event() {
             match event {

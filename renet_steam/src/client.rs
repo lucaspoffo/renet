@@ -15,9 +15,6 @@ pub struct SteamClientTransport {
 }
 
 impl SteamClientTransport {
-    /// Create a new client connection to the server
-    ///
-    /// If the connection is not possible, it will return [`InvalidHandle`](steamworks::networking_sockets)
     pub fn new(client: &steamworks::Client<ClientManager>, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
