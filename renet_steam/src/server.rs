@@ -58,24 +58,23 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     pub fn update(&mut self, server: &mut RenetServer) {
         while let Some(event) = self.listen_socket.try_receive_event() {
             match event {
-                ListenSocketEvent::Connected(event) => match event.remote().steam_id() {
-                    Some(steam_id) => {
+                ListenSocketEvent::Connected(event) => {
+                    if let Some(steam_id) = event.remote().steam_id() {
                         let client_id = steam_id.raw();
                         server.add_connection(client_id);
                         self.connections.insert(client_id, event.take_connection());
                     }
-                    _ => {}
-                },
-                ListenSocketEvent::Disconnected(event) => match event.remote().steam_id() {
-                    Some(steam_id) => {
+                }
+                ListenSocketEvent::Disconnected(event) => {
+                    if let Some(steam_id) = event.remote().steam_id() {
                         let client_id = steam_id.raw();
                         server.remove_connection(client_id);
                         self.connections.remove(&client_id);
                     }
-                    None => {}
-                },
+                }
                 ListenSocketEvent::Connecting(event) => {
                     if server.connected_clients() < self.max_clients {
+                        // TODO: add permissions, for now everyone is allowed to connect
                         let _ = event.accept();
                     } else {
                         event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
@@ -88,9 +87,8 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
             let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
             messages.iter().for_each(|message| {
-                match server.process_packet_from(message.data(), *client_id) {
-                    Err(e) => log::error!("Error while processing payload for {}: {}", client_id, e),
-                    _ => (),
+                if let Err(e) = server.process_packet_from(message.data(), *client_id) {
+                    log::error!("Error while processing payload for {}: {}", client_id, e);
                 };
             });
         }

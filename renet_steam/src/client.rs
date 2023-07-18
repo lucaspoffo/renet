@@ -5,7 +5,7 @@ use renet::RenetClient;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection, NetworkingSockets},
     networking_types::{NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
-    ClientManager, SteamId,
+    ClientManager, SteamError, SteamId,
 };
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
@@ -90,20 +90,20 @@ impl SteamClientTransport {
         });
     }
 
-    pub fn send_packets(&mut self, client: &mut RenetClient) {
-        if !self.is_connected() {
-            return;
+    pub fn send_packets(&mut self, client: &mut RenetClient) -> Result<(), SteamError> {
+        if self.is_disconnected() {
+            return Err(SteamError::NoConnection);
+        }
+
+        if self.is_connecting() {
+            return Ok(());
         }
 
         let packets = client.get_packets_to_send();
         for packet in packets {
-            if let Err(e) = self.connection.send_message(&packet, SendFlags::UNRELIABLE) {
-                log::error!("Error while sending packet: {}", e);
-            }
+            self.connection.send_message(&packet, SendFlags::UNRELIABLE)?;
         }
-        match self.connection.flush_messages() {
-            Err(e) => log::error!("Error while flushing messages: {}", e),
-            _ => (),
-        }
+
+        self.connection.flush_messages()
     }
 }

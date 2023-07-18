@@ -112,7 +112,7 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
             }
         }
 
-        transport.send_packets(&mut client);
+        transport.send_packets(&mut client).unwrap();
         thread::sleep(Duration::from_millis(20));
     }
 }
