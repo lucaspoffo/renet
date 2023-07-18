@@ -11,10 +11,3 @@ This app demonstrate how to use [renet](https://github.com/lucaspoffo/renet) and
 - Client self host
 
 You can run the application with `cargo run`. You need two running applications to test.
-
-# Steam Demo Chat
-
-You need to use the feature `steam_transport`.
-You need to add a steam_appid.txt (likely with 480 as content) to the target folder and also the [steam-SDK](https://github.com/Noxime/steamworks-rs/tree/master/steamworks-sys/lib/steam/redistributable_bin).
-You cannot run both at the same time. You will need two different devices.
-If your SteamID is not yet known to you, it will be printed in the console.

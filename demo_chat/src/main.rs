@@ -4,11 +4,11 @@ use renet::transport::NETCODE_USER_DATA_BYTES;
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
+
 mod client;
 mod server;
 mod ui;
 
-#[cfg(feature = "transport")]
 const PROTOCOL_ID: u64 = 27;
 
 // Helper struct to pass an username in user data inside the ConnectToken

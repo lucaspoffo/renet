@@ -1,18 +1,11 @@
 pub use renet;
 
-#[cfg(feature = "steam_transport")]
-pub use renet_steam_transport;
-
 use bevy::prelude::*;
 
 use renet::{RenetClient, RenetServer, ServerEvent};
 
 #[cfg(feature = "transport")]
 pub mod transport;
-
-#[cfg(feature = "steam_transport")]
-pub mod steam_transport;
-
 pub struct RenetServerPlugin;
 
 pub struct RenetClientPlugin;

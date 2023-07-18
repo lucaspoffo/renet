@@ -8,10 +8,6 @@ use serde::{Deserialize, Serialize};
 pub const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
 pub const PROTOCOL_ID: u64 = 7;
 
-pub mod client;
-
-pub mod server;
-
 #[derive(Debug, Component)]
 pub struct Player {
     pub id: u64,
@@ -162,27 +158,25 @@ pub fn spawn_fireball(
         direction = Vec3::X;
     }
     commands
-        .spawn((
-            PbrBundle {
-                mesh: meshes.add(
-                    Mesh::try_from(Icosphere {
-                        radius: 0.1,
-                        subdivisions: 5,
-                    })
-                    .unwrap(),
-                ),
-                material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-                transform: Transform::from_translation(translation),
-                ..Default::default()
-            },
-            RigidBody::Dynamic,
-            LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y,
-            Velocity::linear(direction * 10.),
-            ActiveEvents::COLLISION_EVENTS,
-            Projectile {
-                duration: Timer::from_seconds(1.5, TimerMode::Once),
-            },
-        ))
+        .spawn(PbrBundle {
+            mesh: meshes.add(
+                Mesh::try_from(Icosphere {
+                    radius: 0.1,
+                    subdivisions: 5,
+                })
+                .unwrap(),
+            ),
+            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+            transform: Transform::from_translation(translation),
+            ..Default::default()
+        })
+        .insert(RigidBody::Dynamic)
+        .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
         // .insert(Collider::ball(0.1))
+        .insert(Velocity::linear(direction * 10.))
+        .insert(ActiveEvents::COLLISION_EVENTS)
+        .insert(Projectile {
+            duration: Timer::from_seconds(1.5, TimerMode::Once),
+        })
         .id()
 }

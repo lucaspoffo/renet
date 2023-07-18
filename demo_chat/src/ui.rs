@@ -3,30 +3,22 @@ use eframe::{
     egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2},
     epaint::PathShape,
 };
-use renet::{ConnectionConfig, DefaultChannel, RenetClient};
+use renet::{
+    transport::{ClientAuthentication, NetcodeClientTransport},
+    ConnectionConfig, DefaultChannel, RenetClient,
+};
 
-use std::collections::HashMap;
-
-#[cfg(feature = "transport")]
 use std::{
+    collections::HashMap,
     net::{SocketAddr, UdpSocket},
     time::SystemTime,
 };
 
-#[cfg(feature = "transport")]
-use renet::transport::{ClientAuthentication, NetcodeClientTransport};
-
-use crate::ClientMessages;
 use crate::{
-    client::{AppState, ClientTransport, PlatformState, UiState, UiStateTransport},
+    client::{AppState, UiState},
     server::ChatServer,
 };
-
-#[cfg(feature = "transport")]
-use crate::Username;
-
-#[cfg(feature = "transport")]
-use crate::PROTOCOL_ID;
+use crate::{ClientMessages, Username, PROTOCOL_ID};
 
 pub fn draw_loader(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -58,20 +50,15 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
         ui.heading("Server Commands");
     });
 
-    // ui.separator();
-    // ui.horizontal(|ui| match &chat_server.transport {
-    //     #[cfg(feature = "steam_transport")]
-    //     ServerTransport::Steam(steam_transport) => {}
-    //     #[cfg(feature = "transport")]
-    //     ServerTransport::Netcode(netcode_transport) => {
-    //         let server_addr = chat_server.transport.addr();
-    //         ui.label(format!("Address: {}", server_addr));
-    //         let tooltip = "Click to copy the server address";
-    //         if ui.button("📋").on_hover_text(tooltip).clicked() {
-    //             ui.output_mut(|output| output.copied_text = server_addr.to_string());
-    //         }
-    //     }
-    // });
+    ui.separator();
+    ui.horizontal(|ui| {
+        let server_addr = chat_server.transport.addr();
+        ui.label(format!("Address: {}", server_addr));
+        let tooltip = "Click to copy the server address";
+        if ui.button("📋").on_hover_text(tooltip).clicked() {
+            ui.output_mut(|output| output.copied_text = server_addr.to_string());
+        }
+    });
 
     ui.separator();
 
@@ -87,7 +74,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     });
 }
 
-pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui::Context, platform: &PlatformState) {
+pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
         egui::Area::new("buttons")
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -100,59 +87,30 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui
                         ui.text_edit_singleline(&mut ui_state.username)
                     });
 
-                    ui.horizontal(|ui| match &mut ui_state.transport_state {
-                        #[cfg(feature = "steam_transport")]
-                        UiStateTransport::Steam { steam_server_id } => {
-                            ui.label("Server Steam ID:");
-                            ui.add(egui::DragValue::new(steam_server_id));
-                        }
-                        #[cfg(feature = "transport")]
-                        UiStateTransport::Netcode { server_addr } => {
-                            ui.label("Server Addr:");
-                            ui.text_edit_singleline(server_addr);
-                        }
+                    ui.horizontal(|ui| {
+                        ui.label("Server Addr:");
+                        ui.text_edit_singleline(&mut ui_state.server_addr)
                     });
 
                     ui.vertical_centered_justified(|ui| {
                         if ui.button("Connect").clicked() {
-                            match &ui_state.transport_state {
-                                #[cfg(feature = "steam_transport")]
-                                UiStateTransport::Steam { steam_server_id } => {
+                            match ui_state.server_addr.parse::<SocketAddr>() {
+                                Err(_) => ui_state.error = Some("Failed to parse server address".to_string()),
+                                Ok(server_addr) => {
                                     if ui_state.username.is_empty() {
                                         ui_state.error = Some("Nick can't be empty".to_owned());
                                     } else {
-                                        let client = create_renet_client();
-                                        let PlatformState::Steam { steam_client, .. } = &platform;
-                                        let transport = create_steam_transport(steam_client, *steam_server_id);
+                                        let (client, transport) = create_renet_client(ui_state.username.clone(), server_addr);
 
                                         *state = AppState::ClientChat {
                                             visualizer: Box::default(),
                                             client: Box::new(client),
-                                            transport: ClientTransport::Steam(transport),
+                                            transport: Box::new(transport),
                                             messages: vec![],
                                             usernames: HashMap::new(),
                                         };
                                     }
                                 }
-                                #[cfg(feature = "transport")]
-                                UiStateTransport::Netcode { server_addr } => match server_addr.parse::<SocketAddr>() {
-                                    Err(_) => ui_state.error = Some("Failed to parse server address".to_string()),
-                                    Ok(server_addr) => {
-                                        if ui_state.username.is_empty() {
-                                            ui_state.error = Some("Nick can't be empty".to_owned());
-                                        } else {
-                                            let (client, transport) = create_renet_client(ui_state.username.clone(), server_addr);
-
-                                            *state = AppState::ClientChat {
-                                                visualizer: Box::default(),
-                                                client: Box::new(client),
-                                                transport: ClientTransport::Netcode(transport),
-                                                messages: vec![],
-                                                usernames: HashMap::new(),
-                                            };
-                                        }
-                                    }
-                                },
                             }
                         }
                     });
@@ -162,7 +120,7 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui
                             if ui_state.username.is_empty() {
                                 ui_state.error = Some("Nick can't be empty".to_owned());
                             } else {
-                                let server = ChatServer::new(ui_state.username.clone(), platform);
+                                let server = ChatServer::new(ui_state.username.clone());
                                 *state = AppState::HostChat {
                                     chat_server: Box::new(server),
                                 };
@@ -293,13 +251,10 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
     });
 }
 
-fn create_renet_client() -> RenetClient {
+fn create_renet_client(username: String, server_addr: SocketAddr) -> (RenetClient, NetcodeClientTransport) {
     let connection_config = ConnectionConfig::default();
-    RenetClient::new(connection_config)
-}
+    let client = RenetClient::new(connection_config);
 
-#[cfg(feature = "transport")]
-fn create_netcode_transport(username: String, server_addr: SocketAddr) -> NetcodeClientTransport {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
@@ -311,12 +266,6 @@ fn create_netcode_transport(username: String, server_addr: SocketAddr) -> Netcod
     };
 
     let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
-}
 
-#[cfg(feature = "steam_transport")]
-fn create_steam_transport(
-    client: &steamworks::Client<steamworks::ClientManager>,
-    host_steam_id: u64,
-) -> renet_steam_transport::client::SteamClientTransport {
-    renet_steam_transport::client::SteamClientTransport::new(&client, &steamworks::SteamId::from_raw(host_steam_id)).unwrap()
+    (client, transport)
 }

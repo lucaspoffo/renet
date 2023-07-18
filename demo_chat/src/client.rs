@@ -1,16 +1,8 @@
 use bincode::Options;
 use eframe::egui;
 use log::error;
-use renet::{DefaultChannel, RenetClient};
+use renet::{transport::NetcodeClientTransport, DefaultChannel, RenetClient};
 use renet_visualizer::RenetClientVisualizer;
-
-#[cfg(feature = "transport")]
-use renet::transport::NetcodeClientTransport;
-
-#[cfg(feature = "steam_transport")]
-use renet_steam_transport::client::SteamClientTransport;
-#[cfg(feature = "steam_transport")]
-use steamworks::{Client, ClientManager, SingleClient};
 
 use std::{collections::HashMap, time::Instant};
 
@@ -23,44 +15,17 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct UiState {
     pub username: String,
-    pub transport_state: UiStateTransport,
+    pub server_addr: String,
     pub error: Option<String>,
     pub text_input: String,
     pub show_network_info: bool,
-}
-
-#[derive(Debug)]
-pub enum UiStateTransport {
-    #[cfg(feature = "transport")]
-    Netcode { server_addr: String },
-    #[cfg(feature = "steam_transport")]
-    Steam { steam_server_id: u64 },
-}
-
-impl Default for UiStateTransport {
-    fn default() -> Self {
-        #[cfg(feature = "transport")]
-        return Self::Netcode {
-            server_addr: String::new(),
-        };
-
-        #[cfg(feature = "steam_transport")]
-        return Self::Steam { steam_server_id: 0 };
-    }
-}
-
-pub enum ClientTransport {
-    #[cfg(feature = "transport")]
-    Netcode(NetcodeClientTransport),
-    #[cfg(feature = "steam_transport")]
-    Steam(SteamClientTransport),
 }
 
 pub enum AppState {
     MainScreen,
     ClientChat {
         client: Box<RenetClient>,
-        transport: ClientTransport,
+        transport: Box<NetcodeClientTransport>,
         usernames: HashMap<u64, String>,
         messages: Vec<Message>,
         visualizer: Box<RenetClientVisualizer<240>>,
@@ -74,53 +39,14 @@ pub struct ChatApp {
     state: AppState,
     ui_state: UiState,
     last_updated: Instant,
-    platform: PlatformState,
-}
-
-pub enum PlatformState {
-    #[cfg(feature = "transport")]
-    Native,
-    #[cfg(feature = "steam_transport")]
-    Steam {
-        steam_client: Client<ClientManager>,
-        steam_single: SingleClient<ClientManager>,
-    },
 }
 
 impl Default for ChatApp {
-    #[cfg(feature = "transport")]
     fn default() -> Self {
         Self {
             state: AppState::MainScreen,
             ui_state: UiState::default(),
             last_updated: Instant::now(),
-            platform: PlatformState::Native,
-        }
-    }
-
-    #[cfg(feature = "steam_transport")]
-    fn default() -> Self {
-        let (steam_client, steam_single) = Client::init().unwrap();
-
-        Self {
-            state: AppState::MainScreen,
-            ui_state: UiState::default(),
-            platform: PlatformState::Steam {
-                steam_client,
-                steam_single,
-            },
-            last_updated: Instant::now(),
-        }
-    }
-}
-
-impl ClientTransport {
-    pub fn is_connecting(&self) -> bool {
-        match self {
-            #[cfg(feature = "transport")]
-            ClientTransport::Netcode(netcode_transport) => netcode_transport.is_connecting(),
-            #[cfg(feature = "steam_transport")]
-            ClientTransport::Steam(steam_transport) => steam_transport.is_connecting(),
         }
     }
 }
@@ -129,7 +55,7 @@ impl ChatApp {
     pub fn draw(&mut self, ctx: &egui::Context) {
         match &mut self.state {
             AppState::MainScreen => {
-                draw_main_screen(&mut self.ui_state, &mut self.state, ctx, &self.platform);
+                draw_main_screen(&mut self.ui_state, &mut self.state, ctx);
             }
             AppState::ClientChat { transport, .. } if transport.is_connecting() => draw_loader(ctx),
             AppState::ClientChat { usernames, .. } => {
@@ -148,15 +74,6 @@ impl ChatApp {
         let duration = now - self.last_updated;
         self.last_updated = now;
 
-        match &self.platform {
-            #[cfg(feature = "steam_transport")]
-            PlatformState::Steam { steam_single, .. } => {
-                steam_single.run_callbacks();
-            }
-            #[cfg(feature = "transport")]
-            PlatformState::Native => {}
-        }
-
         match &mut self.state {
             AppState::ClientChat {
                 client,
@@ -166,19 +83,10 @@ impl ChatApp {
                 visualizer,
             } => {
                 client.update(duration);
-                match transport {
-                    #[cfg(feature = "transport")]
-                    ClientTransport::Netcode(netcode_transport) => {
-                        if let Err(e) = transport.update(duration, client) {
-                            self.state = AppState::MainScreen;
-                            self.ui_state.error = Some(e.to_string());
-                            return;
-                        }
-                    }
-                    #[cfg(feature = "steam_transport")]
-                    ClientTransport::Steam(steam_transport) => {
-                        steam_transport.update(duration, client);
-                    }
+                if let Err(e) = transport.update(duration, client) {
+                    self.state = AppState::MainScreen;
+                    self.ui_state.error = Some(e.to_string());
+                    return;
                 }
 
                 if let Some(e) = client.disconnect_reason() {
@@ -208,19 +116,10 @@ impl ChatApp {
                         }
                     }
 
-                    match transport {
-                        #[cfg(feature = "transport")]
-                        ClientTransport::Netcode(netcode_transport) => {
-                            if let Err(e) = transport.send_packets(client) {
-                                error!("Error sending packets: {}", e);
-                                self.state = AppState::MainScreen;
-                                self.ui_state.error = Some(e.to_string());
-                            }
-                        }
-                        #[cfg(feature = "steam_transport")]
-                        ClientTransport::Steam(steam_transport) => {
-                            steam_transport.send_packets(client);
-                        }
+                    if let Err(e) = transport.send_packets(client) {
+                        error!("Error sending packets: {}", e);
+                        self.state = AppState::MainScreen;
+                        self.ui_state.error = Some(e.to_string());
                     }
                 }
             }
