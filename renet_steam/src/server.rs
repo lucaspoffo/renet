@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use renet::RenetServer;
 use steamworks::{
@@ -19,28 +19,6 @@ pub struct SteamServerTransport<Manager = ClientManager> {
 impl<T: Manager + 'static> SteamServerTransport<T> {
     /// Create a new server
     /// it will return [`InvalidHandle`](steamworks::networking_sockets) if the server can't be created
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use steamworks::{Client, ClientManager, networking_utils::RelayNetworkStatus};
-    /// use renet_steam_transport::transport::server::{Server, SteamTransportConfig};
-    ///
-    /// let client = Client::init().unwrap();
-    /// client.networking_utils().relay_network_status_callback(relay_network_status);
-    /// client.networking_utils().init_relay_network_access();
-
-    ///
-    /// fn relay_network_status(relay: RelayNetworkStatus) {
-    ///     match relay.availability() {
-    ///        RelayNetworkAvailability::Current => {
-    ///           let config = SteamTransportConfig { max_clients: 10 };
-    ///           let mut server = Server::<ClientManager>::new(&client, config);
-    ///          // do something with the server    
-    ///         }
-    ///         _ => {}
-    /// }
-    /// ```
     pub fn new(client: &Client<T>, max_clients: usize) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
@@ -77,7 +55,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     }
 
     /// Update should run after client run the callback
-    pub fn update(&mut self, _duration: Duration, server: &mut RenetServer) {
+    pub fn update(&mut self, server: &mut RenetServer) {
         while let Some(event) = self.listen_socket.try_receive_event() {
             match event {
                 ListenSocketEvent::Connected(event) => match event.remote().steam_id() {
@@ -118,6 +96,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         }
     }
 
+    /// Send packets to connected clients.
     pub fn send_packets(&mut self, server: &mut RenetServer) {
         'clients: for client_id in server.clients_id() {
             let Some(connection) = self.connections.get(&client_id) else {

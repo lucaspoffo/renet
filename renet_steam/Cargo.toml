@@ -1,5 +1,5 @@
 [package]
-name = "renet_steam_transport"
+name = "renet_steam"
 version = "0.0.1"
 keywords = ["gamedev", "networking", "transport"]
 description = "steam transport for the renet crate: Server/Client network library for multiplayer games"

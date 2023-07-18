@@ -5,7 +5,7 @@ use std::{
 };
 
 use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
-use renet_steam_transport::{client::SteamClientTransport, server::SteamServerTransport};
+use renet_steam::{SteamClientTransport, SteamServerTransport};
 use steamworks::{Client, ClientManager, SingleClient, SteamId};
 
 fn main() {
@@ -47,7 +47,7 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient) {
         last_updated = now;
 
         server.update(duration);
-        transport.update(duration, &mut server);
+        transport.update(&mut server);
 
         received_messages.clear();
 

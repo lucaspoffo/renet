@@ -2,9 +2,8 @@ use std::time::Duration;
 
 use super::MAX_MESSAGE_BATCH_SIZE;
 use renet::RenetClient;
-use steamworks::networking_sockets::NetworkingSockets;
 use steamworks::{
-    networking_sockets::{InvalidHandle, NetConnection},
+    networking_sockets::{InvalidHandle, NetConnection, NetworkingSockets},
     networking_types::{NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
     ClientManager, SteamId,
 };
