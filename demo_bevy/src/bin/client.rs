@@ -80,7 +80,7 @@ fn main() {
     app.add_systems(Update, (player_input, camera_follow, update_target_system));
     app.add_systems(
         Update,
-        (client_send_input, client_send_player_commands, client_sync_players).run_if(bevy_renet::transport::client_connected),
+        (client_send_input, client_send_player_commands, client_sync_players).run_if(bevy_renet::transport::client_connected()),
     );
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));

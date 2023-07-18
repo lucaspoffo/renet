@@ -104,22 +104,22 @@ impl NetcodeClientPlugin {
     }
 }
 
-pub fn client_connected(transport: Option<Res<NetcodeClientTransport>>) -> bool {
-    match transport {
+pub fn client_connected() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
+    |transport| match transport {
         Some(transport) => transport.is_connected(),
         None => false,
     }
 }
 
-pub fn client_diconnected(transport: Option<Res<NetcodeClientTransport>>) -> bool {
-    match transport {
+pub fn client_diconnected() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
+    |transport| match transport {
         Some(transport) => transport.is_disconnected(),
         None => true,
     }
 }
 
-pub fn client_connecting(transport: Option<Res<NetcodeClientTransport>>) -> bool {
-    match transport {
+pub fn client_connecting() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
+    |transport| match transport {
         Some(transport) => transport.is_connecting(),
         None => false,
     }
