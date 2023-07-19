@@ -127,28 +127,26 @@ pub fn client_connecting() -> impl FnMut(Option<Res<NetcodeClientTransport>>) ->
 
 pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<NetcodeClientTransport>>) -> bool {
     |mut last_connected: Local<bool>, transport| {
-        let connected = transport.filter(|transport| transport.is_connected()).is_some();
+        let Some(transport) = transport else {
+           return false;
+        };
 
-        if !*last_connected && connected {
-            *last_connected = true;
-            true
-        } else {
-            *last_connected = connected;
-            false
-        }
+        let connected = transport.is_connected();
+        let just_connected = !*last_connected && connected;
+        *last_connected = connected;
+        just_connected
     }
 }
 
 pub fn client_just_diconnected() -> impl FnMut(Local<bool>, Option<Res<NetcodeClientTransport>>) -> bool {
     |mut last_disconnected: Local<bool>, transport| {
-        let disconnected = transport.filter(|transport| !transport.is_disconnected()).is_none();
+        let Some(transport) = transport else {
+           return true;
+        };
 
-        if !*last_disconnected && disconnected {
-            *last_disconnected = true;
-            true
-        } else {
-            *last_disconnected = disconnected;
-            false
-        }
+        let disconnected = transport.is_disconnected();
+        let just_disconnected = !*last_disconnected && disconnected;
+        *last_disconnected = disconnected;
+        just_disconnected
     }
 }
