@@ -1,4 +1,4 @@
-use std::{collections::HashMap, f32::consts::PI, net::UdpSocket, time::SystemTime};
+use std::{collections::HashMap, f32::consts::PI};
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -8,15 +8,13 @@ use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
     renet::{
-        transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
         RenetServer, ServerEvent,
     },
-    transport::NetcodeServerPlugin,
     RenetServerPlugin,
 };
 use demo_bevy::{
     connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile,
-    ServerChannel, ServerMessages, PROTOCOL_ID,
+    ServerChannel, ServerMessages,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -35,7 +33,15 @@ struct Bot {
 #[derive(Debug, Resource)]
 struct BotId(u64);
 
-fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
+#[cfg(feature = "transport")]
+fn add_netcode_network(app: &mut App) {
+    use demo_bevy::PROTOCOL_ID;
+    use bevy_renet::renet::transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig};
+    use bevy_renet::transport::NetcodeServerPlugin;
+    use std::{net::UdpSocket, time::SystemTime};
+
+    app.add_plugins(NetcodeServerPlugin);
+
     let server = RenetServer::new(connection_config());
 
     let public_addr = "127.0.0.1:5000".parse().unwrap();
@@ -49,16 +55,38 @@ fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
     let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
-
-    (server, transport)
+    app.insert_resource(server);
+    app.insert_resource(transport);
 }
+
+#[cfg(feature = "steam")]
+fn add_steam_network(app: &mut App) {
+    use steamworks::SingleClient;
+    use bevy_renet::steam::{SteamServerPlugin, SteamServerTransport};
+
+    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+
+    let server: RenetServer = RenetServer::new(connection_config());
+    let transport = SteamServerTransport::new(&steam_client, 10).unwrap();
+
+    app.add_plugins(SteamServerPlugin);
+    app.insert_resource(server);
+    app.insert_resource(transport);
+    app.insert_non_send_resource(single);
+
+    fn steam_callbacks(client: NonSend<SingleClient>) {
+        client.run_callbacks();
+    }
+
+    app.add_systems(PreUpdate, steam_callbacks);
+}
+
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
 
     app.add_plugins(RenetServerPlugin);
-    app.add_plugins(NetcodeServerPlugin);
     app.add_plugins(RapierPhysicsPlugin::<NoUserData>::default());
     app.add_plugins(RapierDebugRenderPlugin::default());
     app.add_plugins(FrameTimeDiagnosticsPlugin);
@@ -68,11 +96,13 @@ fn main() {
     app.insert_resource(ServerLobby::default());
     app.insert_resource(BotId(0));
 
-    let (server, transport) = new_renet_server();
-    app.insert_resource(server);
-    app.insert_resource(transport);
-
     app.insert_resource(RenetServerVisualizer::<200>::default());
+
+    #[cfg(feature = "transport")]
+    add_netcode_network(&mut app);
+
+    #[cfg(feature = "steam")]
+    add_steam_network(&mut app);
 
     app.add_systems(
         Update,
