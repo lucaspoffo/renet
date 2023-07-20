@@ -104,23 +104,49 @@ impl NetcodeClientPlugin {
     }
 }
 
-pub fn client_connected(transport: Option<Res<NetcodeClientTransport>>) -> bool {
-    match transport {
+pub fn client_connected() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
+    |transport| match transport {
         Some(transport) => transport.is_connected(),
         None => false,
     }
 }
 
-pub fn client_diconnected(transport: Option<Res<NetcodeClientTransport>>) -> bool {
-    match transport {
+pub fn client_diconnected() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
+    |transport| match transport {
         Some(transport) => transport.is_disconnected(),
         None => true,
     }
 }
 
-pub fn client_connecting(transport: Option<Res<NetcodeClientTransport>>) -> bool {
-    match transport {
+pub fn client_connecting() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
+    |transport| match transport {
         Some(transport) => transport.is_connecting(),
         None => false,
+    }
+}
+
+pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<NetcodeClientTransport>>) -> bool {
+    |mut last_connected: Local<bool>, transport| {
+        let Some(transport) = transport else {
+           return false;
+        };
+
+        let connected = transport.is_connected();
+        let just_connected = !*last_connected && connected;
+        *last_connected = connected;
+        just_connected
+    }
+}
+
+pub fn client_just_diconnected() -> impl FnMut(Local<bool>, Option<Res<NetcodeClientTransport>>) -> bool {
+    |mut last_disconnected: Local<bool>, transport| {
+        let Some(transport) = transport else {
+           return true;
+        };
+
+        let disconnected = transport.is_disconnected();
+        let just_disconnected = !*last_disconnected && disconnected;
+        *last_disconnected = disconnected;
+        just_disconnected
     }
 }
