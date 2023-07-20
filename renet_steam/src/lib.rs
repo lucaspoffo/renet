@@ -5,3 +5,6 @@ mod server;
 
 pub use client::SteamClientTransport;
 pub use server::SteamServerTransport;
+
+#[doc(hidden)]
+pub use steamworks;

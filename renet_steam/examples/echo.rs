@@ -95,7 +95,7 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
         last_updated = now;
 
         client.update(duration);
-        transport.update(duration, &mut client);
+        transport.update(&mut client);
 
         if transport.is_connected() {
             match stdin_channel.try_recv() {

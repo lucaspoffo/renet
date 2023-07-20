@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use super::MAX_MESSAGE_BATCH_SIZE;
 use renet::RenetClient;
 use steamworks::{
@@ -11,7 +9,7 @@ use steamworks::{
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct SteamClientTransport {
     networking_sockets: NetworkingSockets<ClientManager>,
-    connection: NetConnection<ClientManager>,
+    connection: Option<NetConnection<ClientManager>>,
 }
 
 impl SteamClientTransport {
@@ -24,7 +22,7 @@ impl SteamClientTransport {
             .connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, options)?;
         Ok(Self {
             networking_sockets,
-            connection,
+            connection: Some(connection),
         })
     }
 
@@ -47,17 +45,26 @@ impl SteamClientTransport {
     }
 
     pub fn connection_state(&self) -> NetworkingConnectionState {
-        if let Ok(info) = self.networking_sockets.get_connection_info(&self.connection) {
-            if let Ok(state) = info.state() {
-                return state;
-            }
-        }
+        let Some(connection) = &self.connection else {
+            return NetworkingConnectionState::ClosedByPeer;
+        };
 
-        NetworkingConnectionState::None
+        let Ok(info) = self.networking_sockets.get_connection_info(connection) else {
+            return NetworkingConnectionState::None;
+        };
+
+        match info.state() {
+            Ok(state) => state,
+            Err(_) => NetworkingConnectionState::None,
+        }
     }
 
     pub fn disconnect_reason(&self) -> Option<NetConnectionEnd> {
-        if let Ok(info) = self.networking_sockets.get_connection_info(&self.connection) {
+        let Some(connection) = &self.connection else {
+            return Some(NetConnectionEnd::AppGeneric);
+        };
+
+        if let Ok(info) = self.networking_sockets.get_connection_info(connection) {
             return info.end_reason();
         }
 
@@ -68,20 +75,22 @@ impl SteamClientTransport {
         steam_client.user().steam_id().raw()
     }
 
-    pub fn disconnect(self, send_last_packets: bool) {
-        self.connection.close(
-            steamworks::networking_types::NetConnectionEnd::AppGeneric,
-            Some("Disconnecting from server"),
-            send_last_packets,
-        );
+    pub fn disconnect(&mut self, send_last_packets: bool) {
+        if let Some(connection) = self.connection.take() {
+            connection.close(NetConnectionEnd::AppGeneric, Some("Disconnecting from server"), send_last_packets);
+        }
     }
 
-    pub fn update(&mut self, _duration: Duration, client: &mut RenetClient) {
-        if !self.is_connected() {
+    pub fn update(&mut self, client: &mut RenetClient) {
+        if self.is_disconnected() {
+            if self.connection.is_some() {
+                self.disconnect(false);
+            }
             return;
         };
 
-        let messages = self.connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
+        let connection = self.connection.as_mut().unwrap();
+        let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
         messages.iter().for_each(|message| {
             client.process_packet(message.data());
         });
@@ -96,11 +105,12 @@ impl SteamClientTransport {
             return Ok(());
         }
 
+        let connection = self.connection.as_mut().unwrap();
         let packets = client.get_packets_to_send();
         for packet in packets {
-            self.connection.send_message(&packet, SendFlags::UNRELIABLE)?;
+            connection.send_message(&packet, SendFlags::UNRELIABLE)?;
         }
 
-        self.connection.flush_messages()
+        connection.flush_messages()
     }
 }
