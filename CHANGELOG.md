@@ -1,5 +1,34 @@
 # Renet changelog
 
+## 0.0.13 - 19-07-2023
+
+### Renet
+
+#### Added ⭐
+
+* Added missing method for retriving clients `SocketAddr` for connected clients in the default server transport: `client_addr`. Also added method to retrieve client `SocketAddr` from default client transport: `addr`. [(commit)](https://github.com/lucaspoffo/renet/commit/1ce104b547cd559fd9e8445b3fe92bb55ec19bb5)
+* Add iterator access to client ids in the server: `clients_id_iter`, `disconnections_id_iter`. [(PR)](https://github.com/lucaspoffo/renet/pull/91) by [UkoeHB](https://github.com/UkoeHB)
+
+#### Fixed 🐛
+
+* Fix not removing items when receiving message out of order. [(commit)](https://github.com/lucaspoffo/renet/commit/3ff7dd0b7ed4cf30e2ee36a849986fc8e6e99f78)
+* Correctly calculate small packet size for unreliable channels. [(commit)](https://github.com/lucaspoffo/renet/commit/6d65002e0bd1a10959b9bff6ac723ea4e55b26bf)
+
+### Bevy Renet
+
+#### Added ⭐
+
+* Added new runs coditions: `client_just_connected` and `client_just_diconnected`. [(PR)](https://github.com/lucaspoffo/renet/pull/96) by [Shatur](https://github.com/Shatur)
+
+#### Changed 🛠️
+
+* Updated to bevy 0.11. [(PR)](https://github.com/lucaspoffo/renet/pull/93) by [Olle-Lukowski](https://github.com/Olle-Lukowski)
+* Run conditions now returns closures, similar to how bevy run conditions do. [(PR)](https://github.com/lucaspoffo/renet/pull/96) by [Shatur](https://github.com/Shatur)
+
+#### Removed 🔥
+
+* Removed `RenetSet` and `TransportSet`. Use `resource_exists::<RenetClient>()` and `resource_exists::<RenetServer>()` instead. [(commit)](https://github.com/lucaspoffo/renet/commit/5f61be5bcd9532bd6a10192ea921d25b731549b1)
+
 ## 0.0.12 - 19-05-2023
 
 This release comes with 3 major changes:
