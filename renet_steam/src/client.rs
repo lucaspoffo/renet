@@ -87,11 +87,16 @@ impl SteamClientTransport {
     }
 
     pub fn disconnect(&mut self) {
-        if let ConnectionState::Connected { .. } = &mut self.state {
-            // The drop impl for NetConnection closes the connection.
-            self.state = ConnectionState::Disconnected {
-                end_reason: NetConnectionEnd::AppGeneric,
-            }
+        if matches!(self.state, ConnectionState::Disconnected { .. }) {
+            return;
+        }
+
+        let disconnect_state = ConnectionState::Disconnected {
+            end_reason: NetConnectionEnd::AppGeneric,
+        };
+        let old_state = std::mem::replace(&mut self.state, disconnect_state);
+        if let ConnectionState::Connected { connection } = old_state {
+            connection.close(NetConnectionEnd::AppGeneric, Some("Client disconnected"), false);
         }
     }
 
