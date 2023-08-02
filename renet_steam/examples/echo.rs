@@ -5,15 +5,17 @@ use std::{
 };
 
 use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
-use renet_steam::{SteamClientTransport, SteamServerTransport};
-use steamworks::{Client, ClientManager, SingleClient, SteamId};
+use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
+use steamworks::{Client, ClientManager, LobbyType, SingleClient, SteamId};
 
 fn main() {
     env_logger::init();
     let (steam_client, single) = Client::init_app(480).unwrap();
     steam_client.networking_utils().init_relay_network_access();
 
-    println!("Usage: server or client [SERVER_STEAM_ID]");
+    println!("Client: client [SERVER_STEAM_ID] [LOBBY_ID?]");
+    println!("Client: server lobby");
+
     let args: Vec<String> = std::env::args().collect();
 
     let exec_type = &args[1];
@@ -23,7 +25,11 @@ fn main() {
             run_client(steam_client, single, SteamId::from_raw(server_steam_id));
         }
         "server" => {
-            run_server(steam_client, single);
+            let mut with_lobby = false;
+            if let Some(lobby) = args.get(2) {
+                with_lobby = lobby.as_str() == "lobby";
+            }
+            run_server(steam_client, single, with_lobby);
         }
         _ => {
             println!("Invalid argument, first one must be \"client\" or \"server\".");
@@ -31,11 +37,38 @@ fn main() {
     }
 }
 
-fn run_server(steam_client: Client<ClientManager>, single: SingleClient) {
+fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lobby: bool) {
     let connection_config = ConnectionConfig::default();
     let mut server: RenetServer = RenetServer::new(connection_config);
+    let (sender_create_lobby, receiver_create_lobby) = mpsc::channel();
 
-    let mut transport = SteamServerTransport::new(&steam_client, 10).unwrap();
+    let access_permission = if with_lobby {
+        steam_client.matchmaking().create_lobby(LobbyType::Public, 10, move |lobby| {
+            match lobby {
+                Ok(lobby) => {
+                    sender_create_lobby.send(lobby).unwrap();
+                }
+                Err(e) => panic!("Failed to create lobby: {e}"),
+            };
+        });
+
+        loop {
+            single.run_callbacks();
+            if let Ok(lobby) = receiver_create_lobby.try_recv() {
+                println!("Created lobby with id: {}", lobby.raw());
+                break AccessPermission::InLobby(lobby);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    } else {
+        AccessPermission::Public
+    };
+
+    let steam_transport_config = SteamServerConfig {
+        max_clients: 10,
+        access_permission,
+    };
+    let mut transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
 
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();

@@ -7,9 +7,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
-    renet::{
-        RenetServer, ServerEvent,
-    },
+    renet::{RenetServer, ServerEvent},
     RenetServerPlugin,
 };
 use demo_bevy::{
@@ -35,9 +33,9 @@ struct BotId(u64);
 
 #[cfg(feature = "transport")]
 fn add_netcode_network(app: &mut App) {
-    use demo_bevy::PROTOCOL_ID;
     use bevy_renet::renet::transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig};
     use bevy_renet::transport::NetcodeServerPlugin;
+    use demo_bevy::PROTOCOL_ID;
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(NetcodeServerPlugin);
@@ -61,13 +59,18 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
+    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
     use steamworks::SingleClient;
-    use bevy_renet::steam::{SteamServerPlugin, SteamServerTransport};
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
 
     let server: RenetServer = RenetServer::new(connection_config());
-    let transport = SteamServerTransport::new(&steam_client, 10).unwrap();
+
+    let steam_transport_config = SteamServerConfig {
+        max_clients: 10,
+        access_permission: AccessPermission::Public,
+    };
+    let transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
 
     app.add_plugins(SteamServerPlugin);
     app.insert_resource(server);
@@ -80,7 +83,6 @@ fn add_steam_network(app: &mut App) {
 
     app.add_systems(PreUpdate, steam_callbacks);
 }
-
 
 fn main() {
     let mut app = App::new();

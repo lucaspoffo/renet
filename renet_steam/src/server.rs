@@ -1,28 +1,52 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use renet::RenetServer;
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
-    Client, ClientManager, Manager,
+    Client, ClientManager, LobbyId, Manager, Matchmaking, SteamId,
 };
 
 use super::MAX_MESSAGE_BATCH_SIZE;
 
+pub enum AccessPermission {
+    /// Everyone can connect
+    Public,
+    /// No one can connect
+    Private,
+    // steamworks-rs friends API does not have the necessary function to check this
+    // We need to wait for this PR: https://github.com/Noxime/steamworks-rs/pull/135
+    // FriendsOnly,
+    /// Only user from this list can connect
+    InList(HashSet<SteamId>),
+    /// Users that are in the lobby can connect
+    InLobby(LobbyId),
+}
+
+pub struct SteamServerConfig {
+    pub max_clients: usize,
+    pub access_permission: AccessPermission,
+}
+
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct SteamServerTransport<Manager = ClientManager> {
     listen_socket: ListenSocket<Manager>,
+    matchmaking: Matchmaking<Manager>,
     max_clients: usize,
+    access_permission: AccessPermission,
     connections: HashMap<u64, NetConnection<Manager>>,
 }
 
 impl<T: Manager + 'static> SteamServerTransport<T> {
-    pub fn new(client: &Client<T>, max_clients: usize) -> Result<Self, InvalidHandle> {
+    pub fn new(client: &Client<T>, config: SteamServerConfig) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
+        let matchmaking = client.matchmaking();
         Ok(Self {
             listen_socket,
-            max_clients,
+            matchmaking,
+            max_clients: config.max_clients,
+            access_permission: config.access_permission,
             connections: HashMap::new(),
         })
     }
@@ -71,11 +95,32 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                     }
                 }
                 ListenSocketEvent::Connecting(event) => {
-                    if server.connected_clients() < self.max_clients {
-                        // TODO: add permissions, for now everyone is allowed to connect
-                        let _ = event.accept();
-                    } else {
+                    if server.connected_clients() >= self.max_clients {
                         event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
+                        continue;
+                    }
+
+                    let Some(steam_id) = event.remote().steam_id() else {
+                        event.reject(NetConnectionEnd::AppGeneric, Some("Invalid steam id"));
+                        continue;
+                    };
+
+                    let permitted = match &self.access_permission {
+                        AccessPermission::Public => true,
+                        AccessPermission::Private => false,
+                        AccessPermission::InList(list) => list.contains(&steam_id),
+                        AccessPermission::InLobby(lobby) => {
+                            let users_in_lobby = self.matchmaking.lobby_members(*lobby);
+                            users_in_lobby.contains(&steam_id)
+                        }
+                    };
+
+                    if permitted {
+                        if let Err(e) = event.accept() {
+                            log::error!("Failed to accept connection from {steam_id:?}: {e}");
+                        }
+                    } else {
+                        event.reject(NetConnectionEnd::AppGeneric, Some("Not allowed"));
                     }
                 }
             }
