@@ -110,7 +110,7 @@ impl SteamClientTransport {
             if let ConnectionState::Connected { connection } = &self.state {
                 let end_reason = self
                     .networking_sockets
-                    .get_connection_info(&connection)
+                    .get_connection_info(connection)
                     .map(|info| info.end_reason())
                     .unwrap_or_default()
                     .unwrap_or(NetConnectionEnd::AppGeneric);

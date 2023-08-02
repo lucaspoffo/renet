@@ -11,8 +11,8 @@ use bevy_renet::{
     RenetServerPlugin,
 };
 use demo_bevy::{
-    connection_config, setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile,
-    ServerChannel, ServerMessages,
+    setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
+    ServerMessages,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -35,7 +35,7 @@ struct BotId(u64);
 fn add_netcode_network(app: &mut App) {
     use bevy_renet::renet::transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig};
     use bevy_renet::transport::NetcodeServerPlugin;
-    use demo_bevy::PROTOCOL_ID;
+    use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(NetcodeServerPlugin);
@@ -60,6 +60,7 @@ fn add_netcode_network(app: &mut App) {
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
     use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
+    use demo_bevy::connection_config;
     use steamworks::SingleClient;
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
@@ -74,7 +75,7 @@ fn add_steam_network(app: &mut App) {
 
     app.add_plugins(SteamServerPlugin);
     app.insert_resource(server);
-    app.insert_resource(transport);
+    app.insert_non_send_resource(transport);
     app.insert_non_send_resource(single);
 
     fn steam_callbacks(client: NonSend<SingleClient>) {
