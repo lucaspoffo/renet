@@ -24,8 +24,7 @@ impl Plugin for SteamServerPlugin {
 
         app.add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
-                .run_if(resource_exists::<RenetServer>()),
+            (Self::send_packets, Self::disconnect_on_exit).run_if(resource_exists::<RenetServer>()),
         );
     }
 }
