@@ -6,7 +6,7 @@ use std::{
 
 use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
 use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
-use steamworks::{Client, ClientManager, LobbyType, SingleClient, SteamId};
+use steamworks::{Client, ClientManager, LobbyId, LobbyType, SingleClient, SteamId};
 
 fn main() {
     env_logger::init();
@@ -22,7 +22,12 @@ fn main() {
     match exec_type.as_str() {
         "client" => {
             let server_steam_id: u64 = args[2].parse().unwrap();
-            run_client(steam_client, single, SteamId::from_raw(server_steam_id));
+            let mut lobby_id: Option<LobbyId> = None;
+            if let Some(lobby) = args.get(3) {
+                let id: u64 = lobby.parse().unwrap();
+                lobby_id = Some(LobbyId::from_raw(id));
+            }
+            run_client(steam_client, single, SteamId::from_raw(server_steam_id), lobby_id);
         }
         "server" => {
             let mut with_lobby = false;
@@ -38,11 +43,9 @@ fn main() {
 }
 
 fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lobby: bool) {
-    let connection_config = ConnectionConfig::default();
-    let mut server: RenetServer = RenetServer::new(connection_config);
-    let (sender_create_lobby, receiver_create_lobby) = mpsc::channel();
-
+    // Create lobby if necessary
     let access_permission = if with_lobby {
+        let (sender_create_lobby, receiver_create_lobby) = mpsc::channel();
         steam_client.matchmaking().create_lobby(LobbyType::Public, 10, move |lobby| {
             match lobby {
                 Ok(lobby) => {
@@ -64,6 +67,8 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lo
         AccessPermission::Public
     };
 
+    let connection_config = ConnectionConfig::default();
+    let mut server: RenetServer = RenetServer::new(connection_config);
     let steam_transport_config = SteamServerConfig {
         max_clients: 10,
         access_permission,
@@ -113,7 +118,28 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lo
     }
 }
 
-fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_steam_id: SteamId) {
+fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_steam_id: SteamId, lobby_id: Option<LobbyId>) {
+    // Connect to lobby
+    if let Some(lobby_id) = lobby_id {
+        let (sender_join_lobby, receiver_join_lobby) = mpsc::channel();
+        steam_client.matchmaking().join_lobby(lobby_id, move |lobby| {
+            match lobby {
+                Ok(lobby) => {
+                    sender_join_lobby.send(lobby).unwrap();
+                }
+                Err(e) => panic!("Failed to join lobby: {e:?}"),
+            };
+        });
+
+        loop {
+            single.run_callbacks();
+            if let Ok(lobby) = receiver_join_lobby.try_recv() {
+                println!("Joined lobby with id: {}", lobby.raw());
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
     let connection_config = ConnectionConfig::default();
     let mut client = RenetClient::new(connection_config);
 
