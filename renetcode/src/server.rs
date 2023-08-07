@@ -225,7 +225,13 @@ impl NetcodeServer {
 
         let connect_token = PrivateConnectToken::decode(&data, self.protocol_id, expire_timestamp, &xnonce, &self.connect_key)?;
 
-        let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.public_address));
+        let in_host_list = (self.public_address.ip().to_string() == "0.0.0.0"
+            && connect_token
+                .server_addresses
+                .iter()
+                .filter(|x| x.is_some())
+                .any(|host| (*host).unwrap().port() == self.public_address.port()))
+            || connect_token.server_addresses.iter().any(|host| *host == Some(self.public_address));
         if !in_host_list {
             return Err(NetcodeError::NotInHostList);
         }
