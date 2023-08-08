@@ -67,15 +67,17 @@ fn server(public_addr: SocketAddr) {
     let connection_config = ConnectionConfig::default();
     let mut server: RenetServer = RenetServer::new(connection_config);
 
-    let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
+    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let server_config = ServerConfig {
+        current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addr,
+        public_addresses: vec![public_addr],
         authentication: ServerAuthentication::Unsecure,
     };
-    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+    let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
+
+    let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
     let mut usernames: HashMap<u64, String> = HashMap::new();
     let mut received_messages = vec![];

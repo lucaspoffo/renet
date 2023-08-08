@@ -51,14 +51,15 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     });
 
     ui.separator();
-    ui.horizontal(|ui| {
-        let server_addr = chat_server.transport.addr();
-        ui.label(format!("Address: {}", server_addr));
-        let tooltip = "Click to copy the server address";
-        if ui.button("📋").on_hover_text(tooltip).clicked() {
-            ui.output_mut(|output| output.copied_text = server_addr.to_string());
-        }
-    });
+    for server_addr in chat_server.transport.addresses() {
+        ui.horizontal(|ui| {
+            ui.label(format!("Address: {}", server_addr));
+            let tooltip = "Click to copy the server address";
+            if ui.button("📋").on_hover_text(tooltip).clicked() {
+                ui.output_mut(|output| output.copied_text = server_addr.to_string());
+            }
+        });
+    }
 
     ui.separator();
 

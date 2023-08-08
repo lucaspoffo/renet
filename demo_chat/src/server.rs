@@ -26,16 +26,16 @@ pub struct ChatServer {
 impl ChatServer {
     pub fn new(host_username: String) -> Self {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let public_addr = socket.local_addr().unwrap();
+        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server_config = ServerConfig {
+            current_time,
             max_clients: 64,
             protocol_id: PROTOCOL_ID,
-            public_addr,
+            public_addresses: vec![socket.local_addr().unwrap()],
             authentication: ServerAuthentication::Unsecure,
         };
 
-        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+        let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
         let server: RenetServer = RenetServer::new(ConnectionConfig::default());
 

@@ -54,9 +54,10 @@ pub struct NetcodeServer {
     max_clients: usize,
     challenge_sequence: u64,
     challenge_key: [u8; NETCODE_KEY_BYTES],
-    public_address: SocketAddr,
+    public_addresses: Vec<SocketAddr>,
     current_time: Duration,
     global_sequence: u64,
+    secure: bool,
     out: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
@@ -84,55 +85,85 @@ pub enum ServerResult<'a, 's> {
     },
 }
 
-impl NetcodeServer {
-    /// Starts a new NetcodeServer.
+/// Configuration to establish a secure or unsecure connection with the server.
+pub enum ServerAuthentication {
+    /// Establishes a safe connection using a private key for encryption. The private key cannot be
+    /// shared with the client. Connections are stablished using [crate::transport::ConnectToken].
     ///
-    /// # Arguments
+    /// See also [ClientAuthentication::Secure][crate::ClientAuthentication::Secure]
+    Secure { private_key: [u8; NETCODE_KEY_BYTES] },
+    /// Establishes unsafe connections with clients, useful for testing and prototyping.
     ///
-    /// * `public_address` - publicly available address to which clients will attempt to connect. This is
-    /// the address used to generate the ConnectToken.
-    ///
-    /// * `protocol_id` - unique identifier for this particular game/application.
+    /// See also [ClientAuthentication::Unsecure][crate::ClientAuthentication::Unsecure]
+    Unsecure,
+}
+
+pub struct ServerConfig {
+    pub current_time: Duration,
+    /// Maximum numbers of clients that can be connected at a time
+    pub max_clients: usize,
+    /// Unique identifier for this particular game/application.
     /// You can use a hash function with the current version of the game to generate this value
     /// so that older versions cannot connect to newer versions.
-    pub fn new(
-        current_time: Duration,
-        max_clients: usize,
-        protocol_id: u64,
-        public_address: SocketAddr,
-        private_key: [u8; NETCODE_KEY_BYTES],
-    ) -> Self {
-        if max_clients > NETCODE_MAX_CLIENTS {
+    pub protocol_id: u64,
+    /// Publicly available address to which clients will attempt to connect. This is
+    /// the address used to generate the ConnectToken.
+    pub public_addresses: Vec<SocketAddr>,
+    /// Authentication configuration for the server
+    pub authentication: ServerAuthentication,
+}
+
+impl NetcodeServer {
+    pub fn new(config: ServerConfig) -> Self {
+        if config.max_clients > NETCODE_MAX_CLIENTS {
             // TODO: do we really need to set a max?
             //       only using for token entries
             panic!("The max clients allowed is {}", NETCODE_MAX_CLIENTS);
         }
         let challenge_key = generate_random_bytes();
-        let clients = vec![None; max_clients].into_boxed_slice();
+        let clients = vec![None; config.max_clients].into_boxed_slice();
+
+        let connect_key = match config.authentication {
+            ServerAuthentication::Unsecure => [0; NETCODE_KEY_BYTES],
+            ServerAuthentication::Secure { private_key } => private_key,
+        };
+
+        let secure = match config.authentication {
+            ServerAuthentication::Unsecure => false,
+            ServerAuthentication::Secure { .. } => true,
+        };
 
         Self {
             clients,
             connect_token_entries: Box::new([None; NETCODE_MAX_CLIENTS * 2]),
             pending_clients: HashMap::new(),
-            protocol_id,
-            connect_key: private_key,
-            max_clients,
+            protocol_id: config.protocol_id,
+            connect_key,
+            max_clients: config.max_clients,
             challenge_sequence: 0,
             global_sequence: 0,
             challenge_key,
-            public_address,
-            current_time,
+            public_addresses: config.public_addresses,
+            current_time: config.current_time,
+            secure,
             out: [0u8; NETCODE_MAX_PACKET_BYTES],
         }
     }
 
     #[doc(hidden)]
     pub fn __test() -> Self {
-        Self::new(Duration::ZERO, 32, 0, "127.0.0.1:0".parse().unwrap(), [0u8; NETCODE_KEY_BYTES])
+        let config = ServerConfig {
+            current_time: Duration::ZERO,
+            max_clients: 32,
+            protocol_id: 0,
+            public_addresses: vec!["127.0.0.1:0".parse().unwrap()],
+            authentication: ServerAuthentication::Unsecure,
+        };
+        Self::new(config)
     }
 
-    pub fn address(&self) -> SocketAddr {
-        self.public_address
+    pub fn addresses(&self) -> Vec<SocketAddr> {
+        self.public_addresses.clone()
     }
 
     pub fn current_time(&self) -> Duration {
@@ -225,9 +256,17 @@ impl NetcodeServer {
 
         let connect_token = PrivateConnectToken::decode(&data, self.protocol_id, expire_timestamp, &xnonce, &self.connect_key)?;
 
-        let in_host_list = connect_token.server_addresses.iter().any(|host| *host == Some(self.public_address));
-        if !in_host_list {
-            return Err(NetcodeError::NotInHostList);
+        // Skip host list check when unsecure
+        if self.secure {
+            let in_host_list = connect_token
+                .server_addresses
+                .iter()
+                .filter_map(|host| *host)
+                .any(|addr| self.public_addresses.contains(&addr));
+
+            if !in_host_list {
+                return Err(NetcodeError::NotInHostList);
+            }
         }
 
         let addr_already_connected = find_client_mut_by_addr(&mut self.clients, addr).is_some();
@@ -676,7 +715,7 @@ fn find_client_mut_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr)
 
 #[cfg(test)]
 mod tests {
-    use crate::{client::NetcodeClient, token::ConnectToken};
+    use crate::{client::NetcodeClient, token::ConnectToken, ClientAuthentication};
 
     use super::*;
 
@@ -684,15 +723,20 @@ mod tests {
     const TEST_PROTOCOL_ID: u64 = 7;
 
     fn new_server() -> NetcodeServer {
-        let max_clients = 16;
-        let server_addr = "127.0.0.1:5000".parse().unwrap();
-        NetcodeServer::new(Duration::ZERO, max_clients, TEST_PROTOCOL_ID, server_addr, *TEST_KEY)
+        let config = ServerConfig {
+            current_time: Duration::ZERO,
+            max_clients: 16,
+            protocol_id: TEST_PROTOCOL_ID,
+            public_addresses: vec!["127.0.0.1:5000".parse().unwrap()],
+            authentication: ServerAuthentication::Secure { private_key: *TEST_KEY },
+        };
+        NetcodeServer::new(config)
     }
 
     #[test]
     fn server_connection() {
         let mut server = new_server();
-        let server_addresses: Vec<SocketAddr> = vec![server.address()];
+        let server_addresses: Vec<SocketAddr> = server.addresses();
         let user_data = generate_random_bytes();
         let expire_seconds = 3;
         let client_id = 4;
@@ -709,7 +753,8 @@ mod tests {
             TEST_KEY,
         )
         .unwrap();
-        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
+        let client_auth = ClientAuthentication::Secure { connect_token };
+        let mut client = NetcodeClient::new(Duration::ZERO, client_auth).unwrap();
         let (client_packet, _) = client.update(Duration::ZERO).unwrap();
 
         let result = server.process_packet(client_addr, client_packet);
