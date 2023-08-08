@@ -151,7 +151,12 @@ loop {
 
 ## Demos
 
-You can checkout the [echo example](https://github.com/lucaspoffo/renet/blob/master/renet/examples/echo.rs) for a simple usage of the library. Or you can look into the two demos that have more complex uses of renet:
+You can checkout the [echo example](https://github.com/lucaspoffo/renet/blob/master/renet/examples/echo.rs) for a simple usage of the library. Usage:
+
+- Server: `cargo run --example echo -- server 5000`
+- Client: `cargo run --example echo -- client 127.0.0.1:5000 CoolNickName`
+
+Or you can look into the two demos that have more complex uses of renet:
 
 <details><summary>Bevy Demo</summary>
 <br/>

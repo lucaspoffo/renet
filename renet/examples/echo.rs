@@ -41,18 +41,18 @@ impl Username {
 
 fn main() {
     env_logger::init();
-    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
+    println!("Usage: server [SERVER_PORT] or client [SERVER_ADDR] [USER_NAME]");
     let args: Vec<String> = std::env::args().collect();
 
     let exec_type = &args[1];
     match exec_type.as_str() {
         "client" => {
-            let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
+            let server_addr: SocketAddr = args[2].parse().unwrap();
             let username = Username(args[3].clone());
             client(server_addr, username);
         }
         "server" => {
-            let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
+            let server_addr: SocketAddr = format!("0.0.0.0:{}", args[2]).parse().unwrap();
             server(server_addr);
         }
         _ => {
