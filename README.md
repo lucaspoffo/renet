@@ -61,13 +61,13 @@ let mut server = RenetServer::new(ConnectionConfig::default());
 const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
 let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
 let server_config = ServerConfig {
-    max_clients:64
+    current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
+    max_clients: 64
     protocol_id: 0,
-    public_addr: SERVER_ADDR,
+    public_addresses: vec![SERVER_ADDR],
     authentication: ServerAuthentication::Unsecure
 };
-let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
 // Your gameplay loop
 loop {
