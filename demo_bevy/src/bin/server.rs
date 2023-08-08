@@ -40,15 +40,16 @@ fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
 
     let public_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(public_addr).unwrap();
+    let current_time: std::time::Duration = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let server_config = ServerConfig {
+        current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addr,
+        public_addresses: vec![public_addr],
         authentication: ServerAuthentication::Unsecure,
     };
-    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-    let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
     (server, transport)
 }

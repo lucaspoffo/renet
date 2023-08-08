@@ -7,8 +7,8 @@ pub use client::*;
 pub use server::*;
 
 pub use renetcode::{
-    generate_random_bytes, ConnectToken, DisconnectReason as NetcodeDisconnectReason, NetcodeError, TokenGenerationError,
-    NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES,
+    generate_random_bytes, ClientAuthentication, ConnectToken, DisconnectReason as NetcodeDisconnectReason, NetcodeError,
+    ServerAuthentication, ServerConfig, TokenGenerationError, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES,
 };
 
 #[derive(Debug)]

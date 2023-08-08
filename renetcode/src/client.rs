@@ -2,7 +2,7 @@ use std::{fmt, net::SocketAddr, time::Duration};
 
 use crate::{
     packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientID, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
-    NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE,
+    NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE, NETCODE_USER_DATA_BYTES,
 };
 
 /// The reason why a client is in error state
@@ -23,6 +23,25 @@ enum ClientState {
     SendingConnectionRequest,
     SendingConnectionResponse,
     Connected,
+}
+
+/// Configuration to establish an secure ou unsecure connection with the server.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum ClientAuthentication {
+    /// Establishes a safe connection with the server using the [crate::ConnectToken].
+    ///
+    /// See also [crate::ServerAuthentication::Secure]
+    Secure { connect_token: ConnectToken },
+    /// Establishes an unsafe connection with the server, useful for testing and prototyping.
+    ///
+    /// See also [crate::ServerAuthentication::Unsecure]
+    Unsecure {
+        protocol_id: u64,
+        client_id: u64,
+        server_addr: SocketAddr,
+        user_data: Option<[u8; NETCODE_USER_DATA_BYTES]>,
+    },
 }
 
 /// A client that can generate encrypted packets that be sent to the connected server, or consume
@@ -67,10 +86,29 @@ impl fmt::Display for DisconnectReason {
 }
 
 impl NetcodeClient {
-    pub fn new(current_time: Duration, connect_token: ConnectToken) -> Self {
+    pub fn new(current_time: Duration, authentication: ClientAuthentication) -> Result<Self, NetcodeError> {
+        let connect_token: ConnectToken = match authentication {
+            ClientAuthentication::Unsecure {
+                server_addr,
+                protocol_id,
+                client_id,
+                user_data,
+            } => ConnectToken::generate(
+                current_time,
+                protocol_id,
+                300,
+                client_id,
+                15,
+                vec![server_addr],
+                user_data.as_ref(),
+                &[0; NETCODE_KEY_BYTES],
+            )?,
+            ClientAuthentication::Secure { connect_token } => connect_token,
+        };
+
         let server_addr = connect_token.server_addresses[0].expect("cannot create or deserialize a ConnectToken without a server address");
 
-        Self {
+        Ok(Self {
             sequence: 0,
             client_id: connect_token.client_id,
             server_addr,
@@ -88,7 +126,7 @@ impl NetcodeClient {
             connect_token,
             replay_protection: ReplayProtection::new(),
             out: [0u8; NETCODE_MAX_PACKET_BYTES],
-        }
+        })
     }
 
     pub fn is_connecting(&self) -> bool {
@@ -363,7 +401,8 @@ mod tests {
         .unwrap();
         let server_key = connect_token.server_to_client_key;
         let client_key = connect_token.client_to_server_key;
-        let mut client = NetcodeClient::new(Duration::ZERO, connect_token);
+        let authentication = ClientAuthentication::Secure { connect_token };
+        let mut client = NetcodeClient::new(Duration::ZERO, authentication).unwrap();
         let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();

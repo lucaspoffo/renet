@@ -4,41 +4,11 @@ use std::{
     time::Duration,
 };
 
-use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
+use renetcode::{NetcodeServer, ServerConfig, ServerResult, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
 use crate::server::RenetServer;
 
 use super::NetcodeTransportError;
-
-/// Configuration to establish a secure or unsecure connection with the server.
-#[derive(Debug)]
-pub enum ServerAuthentication {
-    /// Establishes a safe connection using a private key for encryption. The private key cannot be
-    /// shared with the client. Connections are stablished using [crate::transport::ConnectToken].
-    ///
-    /// See also [ClientAuthentication::Secure][crate::transport::ClientAuthentication::Secure]
-    Secure { private_key: [u8; NETCODE_KEY_BYTES] },
-    /// Establishes unsafe connections with clients, useful for testing and prototyping.
-    ///
-    /// See also [ClientAuthentication::Unsecure][crate::transport::ClientAuthentication::Unsecure]
-    Unsecure,
-}
-
-/// Configuration options for the server transport.
-#[derive(Debug)]
-pub struct ServerConfig {
-    /// Maximum numbers of clients that can be connected at a time
-    pub max_clients: usize,
-    /// Unique identifier to this game/application
-    /// One could use a hash function with the game current version to generate this value.
-    /// So old version would be unable to connect to newer versions.
-    pub protocol_id: u64,
-    /// Publicly available address that clients will try to connect to. This is
-    /// the address used to generate the ConnectToken when using the secure authentication.
-    pub public_addr: SocketAddr,
-    /// Authentication configuration for the server
-    pub authentication: ServerAuthentication,
-}
 
 #[derive(Debug)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
@@ -49,22 +19,10 @@ pub struct NetcodeServerTransport {
 }
 
 impl NetcodeServerTransport {
-    pub fn new(current_time: Duration, server_config: ServerConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
+    pub fn new(server_config: ServerConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
 
-        // For unsecure connections we use an fixed private key.
-        let private_key = match server_config.authentication {
-            ServerAuthentication::Unsecure => [0; NETCODE_KEY_BYTES],
-            ServerAuthentication::Secure { private_key } => private_key,
-        };
-
-        let netcode_server = NetcodeServer::new(
-            current_time,
-            server_config.max_clients,
-            server_config.protocol_id,
-            server_config.public_addr,
-            private_key,
-        );
+        let netcode_server = NetcodeServer::new(server_config);
 
         Ok(Self {
             socket,
@@ -74,8 +32,8 @@ impl NetcodeServerTransport {
     }
 
     /// Returns the server public address
-    pub fn addr(&self) -> SocketAddr {
-        self.netcode_server.address()
+    pub fn addresses(&self) -> Vec<SocketAddr> {
+        self.netcode_server.addresses()
     }
 
     /// Returns the maximum number of clients that can be connected.
