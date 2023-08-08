@@ -106,8 +106,7 @@ pub struct ServerConfig {
     /// You can use a hash function with the current version of the game to generate this value
     /// so that older versions cannot connect to newer versions.
     pub protocol_id: u64,
-    /// Publicly available address to which clients will attempt to connect. This is
-    /// the address used to generate the ConnectToken.
+    /// Publicly available addresses to which clients will attempt to connect.
     pub public_addresses: Vec<SocketAddr>,
     /// Authentication configuration for the server
     pub authentication: ServerAuthentication,
