@@ -172,6 +172,24 @@ impl RenetServer {
         }
     }
 
+    /// Returns the available memory in bytes of a channel for the given client.
+    /// Returns 0 if the client is not found.
+    pub fn channel_available_memory<I: Into<u8>>(&self, client_id: u64, channel_id: I) -> usize {
+        match self.connections.get(&client_id) {
+            Some(connection) => connection.channel_available_memory(channel_id),
+            None => 0,
+        }
+    }
+
+    /// Checks if can send a message with the given size in bytes over a channel for the given client.
+    /// Returns false if the client is not found.
+    pub fn can_send_message<I: Into<u8>>(&self, client_id: u64, channel_id: I, size_bytes: usize) -> bool {
+        match self.connections.get(&client_id) {
+            Some(connection) => connection.can_send_message(channel_id, size_bytes),
+            None => false,
+        }
+    }
+
     /// Send a message to a client over a channel.
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, client_id: u64, channel_id: I, message: B) {
         match self.connections.get_mut(&client_id) {

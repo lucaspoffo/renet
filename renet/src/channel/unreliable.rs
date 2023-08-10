@@ -41,6 +41,14 @@ impl SendChannelUnreliable {
         }
     }
 
+    pub fn can_send_message(&self, size_bytes: usize) -> bool {
+        size_bytes + self.memory_usage_bytes <= self.max_memory_usage_bytes
+    }
+
+    pub fn available_memory(&self) -> usize {
+        self.max_memory_usage_bytes - self.memory_usage_bytes
+    }
+
     pub fn get_packets_to_send(&mut self, packet_sequence: &mut u64, available_bytes: &mut u64) -> Vec<Packet> {
         let mut packets: Vec<Packet> = vec![];
         let mut small_messages: Vec<Bytes> = vec![];
@@ -109,7 +117,7 @@ impl SendChannelUnreliable {
     }
 
     pub fn send_message(&mut self, message: Bytes) {
-        if self.max_memory_usage_bytes < self.memory_usage_bytes + message.len() {
+        if self.memory_usage_bytes + message.len() > self.max_memory_usage_bytes {
             log::warn!(
                 "dropped unreliable message sent because channel {} is memory limited",
                 self.channel_id
@@ -135,7 +143,7 @@ impl ReceiveChannelUnreliable {
     }
 
     pub fn process_message(&mut self, message: Bytes) {
-        if self.max_memory_usage_bytes < self.memory_usage_bytes + message.len() {
+        if self.memory_usage_bytes + message.len() > self.max_memory_usage_bytes {
             log::warn!(
                 "dropped unreliable message received because channel {} is memory limited",
                 self.channel_id
@@ -150,7 +158,7 @@ impl ReceiveChannelUnreliable {
     pub fn process_slice(&mut self, slice: Slice, current_time: Duration) -> Result<(), ChannelError> {
         if !self.slices.contains_key(&slice.message_id) {
             let message_len = slice.num_slices * SLICE_SIZE;
-            if self.max_memory_usage_bytes < self.memory_usage_bytes + message_len {
+            if self.memory_usage_bytes + message_len > self.max_memory_usage_bytes {
                 log::warn!(
                     "dropped unreliable slice message received because channel {} is memory limited",
                     self.channel_id
