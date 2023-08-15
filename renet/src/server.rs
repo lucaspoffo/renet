@@ -38,6 +38,26 @@ impl Display for NetworkId {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for NetworkId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for NetworkId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        u64::deserialize(deserializer).map(|id| NetworkId(id))
+    }
+}
+
 /// Connection and disconnection events in the server.
 #[derive(Debug)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Event))]
