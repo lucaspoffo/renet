@@ -36,7 +36,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
             let _ = value.close(NetConnectionEnd::AppGeneric, Some("Client was kicked"), flush_last_packets);
         }
-        server.remove_connection(client_id);
+        server.remove_connection(client_id.into());
     }
 
     /// Disconnects all active clients including the host client from the server.
@@ -48,7 +48,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                 Some("Client was kicked"),
                 flush_last_packets,
             );
-            server.remove_connection(client_id);
+            server.remove_connection(client_id.into());
         }
     }
 
@@ -59,14 +59,14 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                 ListenSocketEvent::Connected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
                         let client_id = steam_id.raw();
-                        server.add_connection(client_id);
+                        server.add_connection(client_id.into());
                         self.connections.insert(client_id, event.take_connection());
                     }
                 }
                 ListenSocketEvent::Disconnected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
                         let client_id = steam_id.raw();
-                        server.remove_connection(client_id);
+                        server.remove_connection(client_id.into());
                         self.connections.remove(&client_id);
                     }
                 }
@@ -85,7 +85,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
             let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
             messages.iter().for_each(|message| {
-                if let Err(e) = server.process_packet_from(message.data(), *client_id) {
+                if let Err(e) = server.process_packet_from(message.data(), client_id.into()) {
                     log::error!("Error while processing payload for {}: {}", client_id, e);
                 };
             });
@@ -95,7 +95,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     /// Send packets to connected clients.
     pub fn send_packets(&mut self, server: &mut RenetServer) {
         'clients: for client_id in server.clients_id() {
-            let Some(connection) = self.connections.get(&client_id) else {
+            let Some(connection) = self.connections.get(&client_id.raw()) else {
                 log::error!("Error while sending packet: connection not found");
                 continue;
             };

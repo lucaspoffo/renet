@@ -7,7 +7,10 @@ use bevy_renet::{
     transport::{NetcodeClientPlugin, NetcodeServerPlugin},
     RenetClientPlugin, RenetServerPlugin,
 };
-use renet::transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError};
+use renet::{
+    transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
+    NetworkId,
+};
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -28,12 +31,12 @@ struct PlayerInput {
 
 #[derive(Debug, Component)]
 struct Player {
-    id: u64,
+    id: NetworkId,
 }
 
 #[derive(Debug, Default, Resource)]
 struct Lobby {
-    players: HashMap<u64, Entity>,
+    players: HashMap<NetworkId, Entity>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
@@ -153,13 +156,13 @@ fn server_update_system(
                 // We could send an InitState with all the players id and positions for the client
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
-                    let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
+                    let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id.raw() }).unwrap();
                     server.send_message(*client_id, DefaultChannel::ReliableOrdered, message);
                 }
 
                 lobby.players.insert(*client_id, player_entity);
 
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: client_id.raw() }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
             ServerEvent::ClientDisconnected { client_id, reason } => {
@@ -168,7 +171,7 @@ fn server_update_system(
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: client_id.raw() }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
         }
@@ -187,7 +190,7 @@ fn server_update_system(
 fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(&Transform, &Player)>) {
     let mut players: HashMap<u64, [f32; 3]> = HashMap::new();
     for (transform, player) in query.iter() {
-        players.insert(player.id, transform.translation.into());
+        players.insert(player.id.raw(), transform.translation.into());
     }
 
     let sync_message = bincode::serialize(&players).unwrap();
@@ -215,11 +218,11 @@ fn client_sync_players(
                     })
                     .id();
 
-                lobby.players.insert(id, player_entity);
+                lobby.players.insert(id.into(), player_entity);
             }
             ServerMessages::PlayerDisconnected { id } => {
                 println!("Player {} disconnected.", id);
-                if let Some(player_entity) = lobby.players.remove(&id) {
+                if let Some(player_entity) = lobby.players.remove(&id.into()) {
                     commands.entity(player_entity).despawn();
                 }
             }
@@ -229,7 +232,7 @@ fn client_sync_players(
     while let Some(message) = client.receive_message(DefaultChannel::Unreliable) {
         let players: HashMap<u64, [f32; 3]> = bincode::deserialize(&message).unwrap();
         for (player_id, translation) in players.iter() {
-            if let Some(player_entity) = lobby.players.get(player_id) {
+            if let Some(player_entity) = lobby.players.get(&(*player_id).into()) {
                 let transform = Transform {
                     translation: (*translation).into(),
                     ..Default::default()

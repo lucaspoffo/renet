@@ -7,7 +7,7 @@ use std::{
 
 use renet::{
     transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-    ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
+    ConnectionConfig, DefaultChannel, NetworkId, RenetServer, ServerEvent,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -18,7 +18,7 @@ use log::info;
 pub struct ChatServer {
     pub server: RenetServer,
     pub transport: NetcodeServerTransport,
-    pub usernames: HashMap<u64, String>,
+    pub usernames: HashMap<NetworkId, String>,
     pub messages: Vec<Message>,
     pub visualizer: RenetServerVisualizer<240>,
 }
@@ -40,7 +40,7 @@ impl ChatServer {
         let server: RenetServer = RenetServer::new(ConnectionConfig::default());
 
         let mut usernames = HashMap::new();
-        usernames.insert(1, host_username);
+        usernames.insert(NetworkId::from_raw(1), host_username);
 
         Self {
             server,
@@ -65,11 +65,14 @@ impl ChatServer {
                     let username = Username::from_user_data(&user_data).0;
                     self.usernames.insert(client_id, username.clone());
                     let message = bincode::options()
-                        .serialize(&ServerMessages::ClientConnected { client_id, username })
+                        .serialize(&ServerMessages::ClientConnected {
+                            client_id: client_id.raw(),
+                            username,
+                        })
                         .unwrap();
                     self.server.broadcast_message(DefaultChannel::ReliableOrdered, message);
                     let init_message = ServerMessages::InitClient {
-                        usernames: self.usernames.clone(),
+                        usernames: HashMap::from_iter(self.usernames.iter().map(|(id, username)| (id.raw(), username.clone()))),
                     };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
                     self.server.send_message(client_id, DefaultChannel::ReliableOrdered, init_message);
@@ -78,7 +81,9 @@ impl ChatServer {
                     self.visualizer.remove_client(client_id);
                     self.usernames.remove(&client_id);
                     let message = bincode::options()
-                        .serialize(&ServerMessages::ClientDisconnected { client_id })
+                        .serialize(&ServerMessages::ClientDisconnected {
+                            client_id: client_id.raw(),
+                        })
                         .unwrap();
                     self.server.broadcast_message(DefaultChannel::ReliableOrdered, message);
                 }
@@ -90,7 +95,7 @@ impl ChatServer {
                 if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
-                        ClientMessages::Text(text) => self.receive_message(client_id, text),
+                        ClientMessages::Text(text) => self.receive_message(client_id.raw(), text),
                     }
                 }
             }

@@ -11,6 +11,6 @@ pub mod transport;
 pub use channel::{ChannelConfig, DefaultChannel, SendType};
 pub use error::{ChannelError, ClientNotFound, DisconnectReason};
 pub use remote_connection::{ConnectionConfig, NetworkInfo, RenetClient};
-pub use server::{RenetServer, ServerEvent};
+pub use server::{NetworkId, RenetServer, ServerEvent};
 
 pub use bytes::Bytes;

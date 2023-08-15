@@ -5,7 +5,7 @@ use eframe::{
 };
 use renet::{
     transport::{ClientAuthentication, NetcodeClientTransport},
-    ConnectionConfig, DefaultChannel, RenetClient,
+    ConnectionConfig, DefaultChannel, NetworkId, RenetClient,
 };
 
 use std::{
@@ -138,7 +138,7 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui
     });
 }
 
-pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMap<u64, String>, ctx: &egui::Context) {
+pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMap<NetworkId, String>, ctx: &egui::Context) {
     if ui_state.show_network_info {
         match state {
             AppState::ClientChat { visualizer, .. } => {
@@ -238,7 +238,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                     _ => unreachable!(),
                 };
                 for message in messages.iter() {
-                    let text = if let Some(username) = usernames.get(&message.client_id) {
+                    let text = if let Some(username) = usernames.get(&message.client_id.into()) {
                         format!("{}: {}", username, message.text)
                     } else if message.client_id == 0 {
                         format!("Server: {}", message.text)

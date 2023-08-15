@@ -98,12 +98,12 @@ fn server(public_addr: SocketAddr) {
                 ServerEvent::ClientConnected { client_id } => {
                     let user_data = transport.user_data(client_id).unwrap();
                     let username = Username::from_user_data(&user_data);
-                    usernames.insert(client_id, username.0);
+                    usernames.insert(client_id.raw(), username.0);
                     println!("Client {} connected.", client_id)
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
                     println!("Client {} disconnected: {}", client_id, reason);
-                    usernames.remove_entry(&client_id);
+                    usernames.remove_entry(&client_id.raw());
                 }
             }
         }
@@ -111,7 +111,7 @@ fn server(public_addr: SocketAddr) {
         for client_id in server.clients_id() {
             while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
                 let text = String::from_utf8(message.into()).unwrap();
-                let username = usernames.get(&client_id).unwrap();
+                let username = usernames.get(&client_id.raw()).unwrap();
                 println!("Client {} ({}) sent text: {}", username, client_id, text);
                 let text = format!("{}: {}", username, text);
                 received_messages.push(text);
