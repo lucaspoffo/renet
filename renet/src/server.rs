@@ -7,14 +7,19 @@ use std::time::Duration;
 
 use bytes::Bytes;
 
+/// A unique identifier to identify clients and the server
+///
+/// The server typically has an id of 0
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct NetworkId(u64);
 
 impl NetworkId {
+    /// Creates a [`NetworkId`] from a raw 64 bit value.
     pub fn from_raw(value: u64) -> Self {
         Self(value)
     }
 
+    /// Returns the raw 64 bit value of the [`NetworkId`]
     pub fn raw(&self) -> u64 {
         self.0
     }
