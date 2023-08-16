@@ -215,7 +215,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
             let text = ui_state.text_input.clone();
             match state {
                 AppState::HostChat { chat_server } => {
-                    chat_server.receive_message(1, text);
+                    chat_server.receive_message(1.into(), text);
                 }
                 AppState::ClientChat { client, .. } => {
                     let message = bincode::options().serialize(&ClientMessages::Text(text)).unwrap();
@@ -238,9 +238,9 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                     _ => unreachable!(),
                 };
                 for message in messages.iter() {
-                    let text = if let Some(username) = usernames.get(&message.client_id.into()) {
+                    let text = if let Some(username) = usernames.get(&message.client_id) {
                         format!("{}: {}", username, message.text)
-                    } else if message.client_id == 0 {
+                    } else if message.client_id.raw() == 0 {
                         format!("Server: {}", message.text)
                     } else {
                         format!("unknown: {}", message.text)

@@ -68,8 +68,8 @@ impl NetcodeServerTransport {
 
     /// Returns the duration since the connected client last received a packet.
     /// Usefull to detect users that are timing out.
-    pub fn time_since_last_received_packet(&self, client_id: u64) -> Option<Duration> {
-        self.netcode_server.time_since_last_received_packet(client_id)
+    pub fn time_since_last_received_packet(&self, client_id: NetworkId) -> Option<Duration> {
+        self.netcode_server.time_since_last_received_packet(client_id.raw())
     }
 
     /// Advances the transport by the duration, and receive packets from the network.

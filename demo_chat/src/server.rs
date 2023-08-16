@@ -65,14 +65,11 @@ impl ChatServer {
                     let username = Username::from_user_data(&user_data).0;
                     self.usernames.insert(client_id, username.clone());
                     let message = bincode::options()
-                        .serialize(&ServerMessages::ClientConnected {
-                            client_id: client_id.raw(),
-                            username,
-                        })
+                        .serialize(&ServerMessages::ClientConnected { client_id, username })
                         .unwrap();
                     self.server.broadcast_message(DefaultChannel::ReliableOrdered, message);
                     let init_message = ServerMessages::InitClient {
-                        usernames: HashMap::from_iter(self.usernames.iter().map(|(id, username)| (id.raw(), username.clone()))),
+                        usernames: self.usernames.clone(),
                     };
                     let init_message = bincode::options().serialize(&init_message).unwrap();
                     self.server.send_message(client_id, DefaultChannel::ReliableOrdered, init_message);
@@ -81,9 +78,7 @@ impl ChatServer {
                     self.visualizer.remove_client(client_id);
                     self.usernames.remove(&client_id);
                     let message = bincode::options()
-                        .serialize(&ServerMessages::ClientDisconnected {
-                            client_id: client_id.raw(),
-                        })
+                        .serialize(&ServerMessages::ClientDisconnected { client_id })
                         .unwrap();
                     self.server.broadcast_message(DefaultChannel::ReliableOrdered, message);
                 }
@@ -95,7 +90,7 @@ impl ChatServer {
                 if let Ok(message) = bincode::options().deserialize::<ClientMessages>(&message) {
                     info!("Received message from client {}: {:?}", client_id, message);
                     match message {
-                        ClientMessages::Text(text) => self.receive_message(client_id.raw(), text),
+                        ClientMessages::Text(text) => self.receive_message(client_id, text),
                     }
                 }
             }
@@ -106,7 +101,7 @@ impl ChatServer {
         Ok(())
     }
 
-    pub fn receive_message(&mut self, client_id: u64, text: String) {
+    pub fn receive_message(&mut self, client_id: NetworkId, text: String) {
         let message = Message::new(client_id, text);
         self.messages.push(message.clone());
         let message = bincode::options().serialize(&ServerMessages::ClientMessage(message)).unwrap();

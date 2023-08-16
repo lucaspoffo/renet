@@ -41,8 +41,8 @@ struct Lobby {
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 enum ServerMessages {
-    PlayerConnected { id: u64 },
-    PlayerDisconnected { id: u64 },
+    PlayerConnected { id: NetworkId },
+    PlayerDisconnected { id: NetworkId },
 }
 
 fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
@@ -156,13 +156,13 @@ fn server_update_system(
                 // We could send an InitState with all the players id and positions for the client
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
-                    let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id.raw() }).unwrap();
+                    let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
                     server.send_message(*client_id, DefaultChannel::ReliableOrdered, message);
                 }
 
                 lobby.players.insert(*client_id, player_entity);
 
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: client_id.raw() }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
             ServerEvent::ClientDisconnected { client_id, reason } => {
@@ -171,7 +171,7 @@ fn server_update_system(
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: client_id.raw() }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
         }

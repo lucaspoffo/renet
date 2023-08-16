@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use renet::RenetServer;
+use renet::{NetworkId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
@@ -13,7 +13,7 @@ use super::MAX_MESSAGE_BATCH_SIZE;
 pub struct SteamServerTransport<Manager = ClientManager> {
     listen_socket: ListenSocket<Manager>,
     max_clients: usize,
-    connections: HashMap<u64, NetConnection<Manager>>,
+    connections: HashMap<NetworkId, NetConnection<Manager>>,
 }
 
 impl<T: Manager + 'static> SteamServerTransport<T> {
@@ -32,23 +32,23 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     }
 
     /// Disconnects a client from the server.
-    pub fn disconnect_client(&mut self, client_id: u64, server: &mut RenetServer, flush_last_packets: bool) {
+    pub fn disconnect_client(&mut self, client_id: NetworkId, server: &mut RenetServer, flush_last_packets: bool) {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
             let _ = value.close(NetConnectionEnd::AppGeneric, Some("Client was kicked"), flush_last_packets);
         }
-        server.remove_connection(client_id.into());
+        server.remove_connection(client_id);
     }
 
     /// Disconnects all active clients including the host client from the server.
     pub fn disconnect_all(&mut self, server: &mut RenetServer, flush_last_packets: bool) {
-        let keys = self.connections.keys().cloned().collect::<Vec<u64>>();
+        let keys = self.connections.keys().cloned().collect::<Vec<NetworkId>>();
         for client_id in keys {
             let _ = self.connections.remove_entry(&client_id).unwrap().1.close(
                 NetConnectionEnd::AppGeneric,
                 Some("Client was kicked"),
                 flush_last_packets,
             );
-            server.remove_connection(client_id.into());
+            server.remove_connection(client_id);
         }
     }
 
@@ -58,15 +58,15 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             match event {
                 ListenSocketEvent::Connected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
-                        let client_id = steam_id.raw();
-                        server.add_connection(client_id.into());
+                        let client_id = NetworkId::from_raw(steam_id.raw());
+                        server.add_connection(client_id);
                         self.connections.insert(client_id, event.take_connection());
                     }
                 }
                 ListenSocketEvent::Disconnected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
-                        let client_id = steam_id.raw();
-                        server.remove_connection(client_id.into());
+                        let client_id = NetworkId::from_raw(steam_id.raw());
+                        server.remove_connection(client_id);
                         self.connections.remove(&client_id);
                     }
                 }
@@ -85,7 +85,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
             let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
             messages.iter().for_each(|message| {
-                if let Err(e) = server.process_packet_from(message.data(), client_id.into()) {
+                if let Err(e) = server.process_packet_from(message.data(), *client_id) {
                     log::error!("Error while processing payload for {}: {}", client_id, e);
                 };
             });
@@ -95,7 +95,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     /// Send packets to connected clients.
     pub fn send_packets(&mut self, server: &mut RenetServer) {
         'clients: for client_id in server.clients_id() {
-            let Some(connection) = self.connections.get(&client_id.raw()) else {
+            let Some(connection) = self.connections.get(&client_id) else {
                 log::error!("Error while sending packet: connection not found");
                 continue;
             };

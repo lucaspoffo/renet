@@ -99,19 +99,19 @@ impl ChatApp {
                         let message: ServerMessages = bincode::options().deserialize(&message).unwrap();
                         match message {
                             ServerMessages::ClientConnected { client_id, username } => {
-                                usernames.insert(client_id.into(), username);
+                                usernames.insert(client_id, username);
                             }
                             ServerMessages::ClientDisconnected { client_id } => {
-                                usernames.remove(&client_id.into());
+                                usernames.remove(&client_id);
                                 let text = format!("client {} disconnect", client_id);
-                                messages.push(Message::new(0, text));
+                                messages.push(Message::new(0.into(), text));
                             }
                             ServerMessages::ClientMessage(message) => {
                                 messages.push(message);
                             }
                             ServerMessages::InitClient { usernames: init_usernames } => {
                                 self.ui_state.error = None;
-                                *usernames = HashMap::from_iter(init_usernames.iter().map(|(id, a)| (id.into(), a.clone())));
+                                *usernames = init_usernames;
                             }
                         }
                     }

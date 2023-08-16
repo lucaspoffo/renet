@@ -1,6 +1,6 @@
 use client::ChatApp;
 use eframe::{egui, App};
-use renet::transport::NETCODE_USER_DATA_BYTES;
+use renet::{transport::NETCODE_USER_DATA_BYTES, NetworkId};
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ pub struct Username(pub String);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    client_id: u64,
+    client_id: NetworkId,
     text: String,
 }
 
@@ -27,14 +27,14 @@ enum ClientMessages {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum ServerMessages {
-    ClientConnected { client_id: u64, username: String },
-    ClientDisconnected { client_id: u64 },
+    ClientConnected { client_id: NetworkId, username: String },
+    ClientDisconnected { client_id: NetworkId },
     ClientMessage(Message),
-    InitClient { usernames: HashMap<u64, String> },
+    InitClient { usernames: HashMap<NetworkId, String> },
 }
 
 impl Message {
-    fn new(client_id: u64, text: String) -> Self {
+    fn new(client_id: NetworkId, text: String) -> Self {
         Self { client_id, text }
     }
 }

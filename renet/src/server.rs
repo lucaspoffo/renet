@@ -54,7 +54,7 @@ impl<'de> serde::Deserialize<'de> for NetworkId {
     where
         D: serde::Deserializer<'de>,
     {
-        u64::deserialize(deserializer).map(|id| NetworkId(id))
+        u64::deserialize(deserializer).map(NetworkId::from_raw)
     }
 }
 
