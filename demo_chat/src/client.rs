@@ -1,7 +1,7 @@
 use bincode::Options;
 use eframe::egui;
 use log::error;
-use renet::{transport::NetcodeClientTransport, DefaultChannel, NetworkId, RenetClient};
+use renet::{transport::NetcodeClientTransport, ClientId, DefaultChannel, RenetClient};
 use renet_visualizer::RenetClientVisualizer;
 
 use std::{collections::HashMap, time::Instant};
@@ -26,7 +26,7 @@ pub enum AppState {
     ClientChat {
         client: Box<RenetClient>,
         transport: Box<NetcodeClientTransport>,
-        usernames: HashMap<NetworkId, String>,
+        usernames: HashMap<ClientId, String>,
         messages: Vec<Message>,
         visualizer: Box<RenetClientVisualizer<240>>,
     },

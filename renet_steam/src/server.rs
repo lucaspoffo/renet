@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use renet::{NetworkId, RenetServer};
+use renet::{ClientId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
@@ -13,7 +13,7 @@ use super::MAX_MESSAGE_BATCH_SIZE;
 pub struct SteamServerTransport<Manager = ClientManager> {
     listen_socket: ListenSocket<Manager>,
     max_clients: usize,
-    connections: HashMap<NetworkId, NetConnection<Manager>>,
+    connections: HashMap<ClientId, NetConnection<Manager>>,
 }
 
 impl<T: Manager + 'static> SteamServerTransport<T> {
@@ -32,7 +32,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     }
 
     /// Disconnects a client from the server.
-    pub fn disconnect_client(&mut self, client_id: NetworkId, server: &mut RenetServer, flush_last_packets: bool) {
+    pub fn disconnect_client(&mut self, client_id: ClientId, server: &mut RenetServer, flush_last_packets: bool) {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
             let _ = value.close(NetConnectionEnd::AppGeneric, Some("Client was kicked"), flush_last_packets);
         }
@@ -41,7 +41,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
 
     /// Disconnects all active clients including the host client from the server.
     pub fn disconnect_all(&mut self, server: &mut RenetServer, flush_last_packets: bool) {
-        let keys = self.connections.keys().cloned().collect::<Vec<NetworkId>>();
+        let keys = self.connections.keys().cloned().collect::<Vec<ClientId>>();
         for client_id in keys {
             let _ = self.connections.remove_entry(&client_id).unwrap().1.close(
                 NetConnectionEnd::AppGeneric,
@@ -58,14 +58,14 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             match event {
                 ListenSocketEvent::Connected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
-                        let client_id = NetworkId::from_raw(steam_id.raw());
+                        let client_id = ClientId::from_raw(steam_id.raw());
                         server.add_connection(client_id);
                         self.connections.insert(client_id, event.take_connection());
                     }
                 }
                 ListenSocketEvent::Disconnected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
-                        let client_id = NetworkId::from_raw(steam_id.raw());
+                        let client_id = ClientId::from_raw(steam_id.raw());
                         server.remove_connection(client_id);
                         self.connections.remove(&client_id);
                     }

@@ -5,7 +5,7 @@ use eframe::{
 };
 use renet::{
     transport::{ClientAuthentication, NetcodeClientTransport},
-    ConnectionConfig, DefaultChannel, NetworkId, RenetClient,
+    ClientId, ConnectionConfig, DefaultChannel, RenetClient,
 };
 
 use std::{
@@ -138,7 +138,7 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui
     });
 }
 
-pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMap<NetworkId, String>, ctx: &egui::Context) {
+pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMap<ClientId, String>, ctx: &egui::Context) {
     if ui_state.show_network_info {
         match state {
             AppState::ClientChat { visualizer, .. } => {

@@ -7,7 +7,7 @@ use std::{
 
 use renet::{
     transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-    ConnectionConfig, DefaultChannel, NetworkId, RenetServer, ServerEvent,
+    ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -18,7 +18,7 @@ use log::info;
 pub struct ChatServer {
     pub server: RenetServer,
     pub transport: NetcodeServerTransport,
-    pub usernames: HashMap<NetworkId, String>,
+    pub usernames: HashMap<ClientId, String>,
     pub messages: Vec<Message>,
     pub visualizer: RenetServerVisualizer<240>,
 }
@@ -40,7 +40,7 @@ impl ChatServer {
         let server: RenetServer = RenetServer::new(ConnectionConfig::default());
 
         let mut usernames = HashMap::new();
-        usernames.insert(NetworkId::from_raw(1), host_username);
+        usernames.insert(ClientId::from_raw(1), host_username);
 
         Self {
             server,
@@ -101,7 +101,7 @@ impl ChatServer {
         Ok(())
     }
 
-    pub fn receive_message(&mut self, client_id: NetworkId, text: String) {
+    pub fn receive_message(&mut self, client_id: ClientId, text: String) {
         let message = Message::new(client_id, text);
         self.messages.push(message.clone());
         let message = bincode::options().serialize(&ServerMessages::ClientMessage(message)).unwrap();

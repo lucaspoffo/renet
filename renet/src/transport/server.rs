@@ -6,7 +6,7 @@ use std::{
 
 use renetcode::{NetcodeServer, ServerConfig, ServerResult, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
-use crate::server::{NetworkId, RenetServer};
+use crate::server::{ClientId, RenetServer};
 
 use super::NetcodeTransportError;
 
@@ -47,12 +47,12 @@ impl NetcodeServerTransport {
     }
 
     /// Returns the user data for client if connected.
-    pub fn user_data(&self, client_id: NetworkId) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
+    pub fn user_data(&self, client_id: ClientId) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
         self.netcode_server.user_data(client_id.raw())
     }
 
     /// Returns the client address if connected.
-    pub fn client_addr(&self, client_id: NetworkId) -> Option<SocketAddr> {
+    pub fn client_addr(&self, client_id: ClientId) -> Option<SocketAddr> {
         self.netcode_server.client_addr(client_id.raw())
     }
 
@@ -68,7 +68,7 @@ impl NetcodeServerTransport {
 
     /// Returns the duration since the connected client last received a packet.
     /// Usefull to detect users that are timing out.
-    pub fn time_since_last_received_packet(&self, client_id: NetworkId) -> Option<Duration> {
+    pub fn time_since_last_received_packet(&self, client_id: ClientId) -> Option<Duration> {
         self.netcode_server.time_since_last_received_packet(client_id.raw())
     }
 
@@ -147,7 +147,7 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             addr,
             payload,
         } => {
-            reliable_server.add_connection(NetworkId::from_raw(client_id));
+            reliable_server.add_connection(ClientId::from_raw(client_id));
             send_packet(payload, addr);
         }
         ServerResult::ClientDisconnected { client_id, addr, payload } => {

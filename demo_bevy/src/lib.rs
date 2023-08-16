@@ -2,7 +2,7 @@ use std::{f32::consts::PI, time::Duration};
 
 use bevy::prelude::{shape::Icosphere, *};
 use bevy_rapier3d::prelude::*;
-use bevy_renet::renet::{transport::NETCODE_KEY_BYTES, ChannelConfig, ConnectionConfig, NetworkId, SendType};
+use bevy_renet::renet::{transport::NETCODE_KEY_BYTES, ChannelConfig, ClientId, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
 pub const PRIVATE_KEY: &[u8; NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
@@ -10,7 +10,7 @@ pub const PROTOCOL_ID: u64 = 7;
 
 #[derive(Debug, Component)]
 pub struct Player {
-    pub id: NetworkId,
+    pub id: ClientId,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component, Resource)]

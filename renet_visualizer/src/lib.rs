@@ -5,7 +5,7 @@ use egui::{
     pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText,
 };
 
-use renet::{NetworkId, NetworkInfo, RenetServer};
+use renet::{ClientId, NetworkInfo, RenetServer};
 
 use circular_buffer::CircularBuffer;
 
@@ -33,8 +33,8 @@ pub struct RenetClientVisualizer<const N: usize> {
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetServerVisualizer<const N: usize> {
     show_all_clients: bool,
-    selected_client: Option<NetworkId>,
-    clients: HashMap<NetworkId, RenetClientVisualizer<N>>,
+    selected_client: Option<ClientId>,
+    clients: HashMap<ClientId, RenetClientVisualizer<N>>,
     style: RenetVisualizerStyle,
 }
 
@@ -213,7 +213,7 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///     }
     /// }
     /// ```
-    pub fn add_client(&mut self, client_id: NetworkId) {
+    pub fn add_client(&mut self, client_id: ClientId) {
         self.clients.insert(client_id, RenetClientVisualizer::new(self.style.clone()));
     }
 
@@ -236,11 +236,11 @@ impl<const N: usize> RenetServerVisualizer<N> {
     ///     }
     /// }
     /// ```
-    pub fn remove_client(&mut self, client_id: NetworkId) {
+    pub fn remove_client(&mut self, client_id: ClientId) {
         self.clients.remove(&client_id);
     }
 
-    fn add_network_info(&mut self, client_id: NetworkId, network_info: NetworkInfo) {
+    fn add_network_info(&mut self, client_id: ClientId, network_info: NetworkInfo) {
         if let Some(client) = self.clients.get_mut(&client_id) {
             client.add_network_info(network_info);
         }
@@ -268,7 +268,7 @@ impl<const N: usize> RenetServerVisualizer<N> {
     }
 
     /// Draw all metrics without a window or layout for the specified client.
-    pub fn draw_client_metrics(&self, client_id: NetworkId, ui: &mut egui::Ui) {
+    pub fn draw_client_metrics(&self, client_id: ClientId, ui: &mut egui::Ui) {
         if let Some(client) = self.clients.get(&client_id) {
             client.draw_all(ui);
         }

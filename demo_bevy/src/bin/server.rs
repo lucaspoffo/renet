@@ -9,7 +9,7 @@ use bevy_rapier3d::prelude::*;
 use bevy_renet::{
     renet::{
         transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-        NetworkId, RenetServer, ServerEvent,
+        ClientId, RenetServer, ServerEvent,
     },
     transport::NetcodeServerPlugin,
     RenetServerPlugin,
@@ -22,7 +22,7 @@ use renet_visualizer::RenetServerVisualizer;
 
 #[derive(Debug, Default, Resource)]
 pub struct ServerLobby {
-    pub players: HashMap<NetworkId, Entity>,
+    pub players: HashMap<ClientId, Entity>,
 }
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;

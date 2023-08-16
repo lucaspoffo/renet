@@ -9,7 +9,7 @@ use bevy_renet::{
 };
 use renet::{
     transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
-    NetworkId,
+    ClientId,
 };
 
 use std::time::SystemTime;
@@ -31,18 +31,18 @@ struct PlayerInput {
 
 #[derive(Debug, Component)]
 struct Player {
-    id: NetworkId,
+    id: ClientId,
 }
 
 #[derive(Debug, Default, Resource)]
 struct Lobby {
-    players: HashMap<NetworkId, Entity>,
+    players: HashMap<ClientId, Entity>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 enum ServerMessages {
-    PlayerConnected { id: NetworkId },
-    PlayerDisconnected { id: NetworkId },
+    PlayerConnected { id: ClientId },
+    PlayerDisconnected { id: ClientId },
 }
 
 fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
