@@ -3,7 +3,9 @@ use renet::{
     RenetClient, RenetServer,
 };
 
-use bevy::{app::AppExit, prelude::*};
+use bevy_app::{prelude::*, AppExit};
+use bevy_ecs::prelude::*;
+use bevy_time::prelude::*;
 
 use crate::{RenetClientPlugin, RenetServerPlugin};
 
