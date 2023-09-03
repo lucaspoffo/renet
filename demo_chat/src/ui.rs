@@ -16,7 +16,7 @@ use std::{
 
 use crate::{
     client::{AppState, UiState},
-    server::ChatServer,
+    server::{ChatServer, HOST_CLIENT_ID, SYSTEM_MESSAGE_CLIENT_ID},
 };
 use crate::{ClientMessages, Username, PROTOCOL_ID};
 
@@ -215,7 +215,8 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
             let text = ui_state.text_input.clone();
             match state {
                 AppState::HostChat { chat_server } => {
-                    chat_server.receive_message(1.into(), text);
+                    // Simulate receiving a message sent by the host
+                    chat_server.receive_message(HOST_CLIENT_ID, text);
                 }
                 AppState::ClientChat { client, .. } => {
                     let message = bincode::options().serialize(&ClientMessages::Text(text)).unwrap();
@@ -240,7 +241,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                 for message in messages.iter() {
                     let text = if let Some(username) = usernames.get(&message.client_id) {
                         format!("{}: {}", username, message.text)
-                    } else if message.client_id.raw() == 0 {
+                    } else if message.client_id == SYSTEM_MESSAGE_CLIENT_ID {
                         format!("Server: {}", message.text)
                     } else {
                         format!("unknown: {}", message.text)

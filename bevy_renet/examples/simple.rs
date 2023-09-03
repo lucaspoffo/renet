@@ -188,9 +188,9 @@ fn server_update_system(
 }
 
 fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(&Transform, &Player)>) {
-    let mut players: HashMap<u64, [f32; 3]> = HashMap::new();
+    let mut players: HashMap<ClientId, [f32; 3]> = HashMap::new();
     for (transform, player) in query.iter() {
-        players.insert(player.id.raw(), transform.translation.into());
+        players.insert(player.id, transform.translation.into());
     }
 
     let sync_message = bincode::serialize(&players).unwrap();
@@ -218,11 +218,11 @@ fn client_sync_players(
                     })
                     .id();
 
-                lobby.players.insert(id.into(), player_entity);
+                lobby.players.insert(id, player_entity);
             }
             ServerMessages::PlayerDisconnected { id } => {
                 println!("Player {} disconnected.", id);
-                if let Some(player_entity) = lobby.players.remove(&id.into()) {
+                if let Some(player_entity) = lobby.players.remove(&id) {
                     commands.entity(player_entity).despawn();
                 }
             }
@@ -230,9 +230,9 @@ fn client_sync_players(
     }
 
     while let Some(message) = client.receive_message(DefaultChannel::Unreliable) {
-        let players: HashMap<u64, [f32; 3]> = bincode::deserialize(&message).unwrap();
+        let players: HashMap<ClientId, [f32; 3]> = bincode::deserialize(&message).unwrap();
         for (player_id, translation) in players.iter() {
-            if let Some(player_entity) = lobby.players.get(&(*player_id).into()) {
+            if let Some(player_entity) = lobby.players.get(player_id) {
                 let transform = Transform {
                     translation: (*translation).into(),
                     ..Default::default()

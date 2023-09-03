@@ -117,7 +117,7 @@ fn server_update_system(
                 for (entity, player, transform) in players.iter() {
                     let translation: [f32; 3] = transform.translation.into();
                     let message = bincode::serialize(&ServerMessages::PlayerCreate {
-                        id: player.id.raw(),
+                        id: player.id,
                         entity,
                         translation,
                     })
@@ -146,7 +146,7 @@ fn server_update_system(
 
                 let translation: [f32; 3] = transform.translation.into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {
-                    id: client_id.raw(),
+                    id: *client_id,
                     entity: player_entity,
                     translation,
                 })
@@ -160,7 +160,7 @@ fn server_update_system(
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: client_id.raw() }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *client_id }).unwrap();
                 server.broadcast_message(ServerChannel::ServerMessages, message);
             }
         }
@@ -282,7 +282,7 @@ fn spawn_bot(
     mut commands: Commands,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        let client_id = bot_id.0.into();
+        let client_id = ClientId::from_raw(bot_id.0);
         bot_id.0 += 1;
         // Spawn new player
         let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
@@ -306,7 +306,7 @@ fn spawn_bot(
 
         let translation: [f32; 3] = transform.translation.into();
         let message = bincode::serialize(&ServerMessages::PlayerCreate {
-            id: client_id.raw(),
+            id: client_id,
             entity: player_entity,
             translation,
         })

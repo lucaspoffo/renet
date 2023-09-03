@@ -38,10 +38,21 @@ pub enum ServerChannel {
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 pub enum ServerMessages {
-    PlayerCreate { entity: Entity, id: u64, translation: [f32; 3] },
-    PlayerRemove { id: u64 },
-    SpawnProjectile { entity: Entity, translation: [f32; 3] },
-    DespawnProjectile { entity: Entity },
+    PlayerCreate {
+        entity: Entity,
+        id: ClientId,
+        translation: [f32; 3],
+    },
+    PlayerRemove {
+        id: ClientId,
+    },
+    SpawnProjectile {
+        entity: Entity,
+        translation: [f32; 3],
+    },
+    DespawnProjectile {
+        entity: Entity,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

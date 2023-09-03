@@ -7,7 +7,7 @@ use renet_visualizer::RenetClientVisualizer;
 use std::{collections::HashMap, time::Instant};
 
 use crate::{
-    server::ChatServer,
+    server::{ChatServer, SYSTEM_MESSAGE_CLIENT_ID},
     ui::{draw_chat, draw_loader, draw_main_screen},
     Message, ServerMessages,
 };
@@ -104,7 +104,7 @@ impl ChatApp {
                             ServerMessages::ClientDisconnected { client_id } => {
                                 usernames.remove(&client_id);
                                 let text = format!("client {} disconnect", client_id);
-                                messages.push(Message::new(0.into(), text));
+                                messages.push(Message::new(SYSTEM_MESSAGE_CLIENT_ID, text));
                             }
                             ServerMessages::ClientMessage(message) => {
                                 messages.push(message);

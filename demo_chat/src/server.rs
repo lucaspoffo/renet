@@ -15,6 +15,9 @@ use crate::{ClientMessages, Message, ServerMessages, Username, PROTOCOL_ID};
 use bincode::Options;
 use log::info;
 
+pub const SYSTEM_MESSAGE_CLIENT_ID: ClientId = ClientId::from_raw(0);
+pub const HOST_CLIENT_ID: ClientId = ClientId::from_raw(1);
+
 pub struct ChatServer {
     pub server: RenetServer,
     pub transport: NetcodeServerTransport,
@@ -40,7 +43,7 @@ impl ChatServer {
         let server: RenetServer = RenetServer::new(ConnectionConfig::default());
 
         let mut usernames = HashMap::new();
-        usernames.insert(ClientId::from_raw(1), host_username);
+        usernames.insert(HOST_CLIENT_ID, host_username);
 
         Self {
             server,

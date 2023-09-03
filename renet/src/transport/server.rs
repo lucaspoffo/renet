@@ -6,7 +6,8 @@ use std::{
 
 use renetcode::{NetcodeServer, ServerConfig, ServerResult, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
-use crate::server::{ClientId, RenetServer};
+use crate::ClientId;
+use crate::RenetServer;
 
 use super::NetcodeTransportError;
 
@@ -137,7 +138,8 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             send_packet(payload, addr);
         }
         ServerResult::Payload { client_id, payload } => {
-            if let Err(e) = reliable_server.process_packet_from(payload, client_id.into()) {
+            let client_id = ClientId::from_raw(client_id);
+            if let Err(e) = reliable_server.process_packet_from(payload, client_id) {
                 log::error!("Error while processing payload for {}: {}", client_id, e);
             }
         }
@@ -151,7 +153,7 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             send_packet(payload, addr);
         }
         ServerResult::ClientDisconnected { client_id, addr, payload } => {
-            reliable_server.remove_connection(client_id.into());
+            reliable_server.remove_connection(ClientId::from_raw(client_id));
             if let Some(payload) = payload {
                 send_packet(payload, addr);
             }

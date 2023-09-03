@@ -1,67 +1,11 @@
 use crate::error::{ClientNotFound, DisconnectReason};
 use crate::packet::Payload;
 use crate::remote_connection::{ConnectionConfig, NetworkInfo, RenetClient};
+use crate::ClientId;
 use std::collections::{HashMap, VecDeque};
-use std::fmt::Display;
 use std::time::Duration;
 
 use bytes::Bytes;
-
-/// A unique identifier to identify clients and the server
-///
-/// The server typically has an id of 0
-#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub struct ClientId(u64);
-
-impl ClientId {
-    /// Creates a [`ClientId`] from a raw 64 bit value.
-    pub fn from_raw(value: u64) -> Self {
-        Self(value)
-    }
-
-    /// Returns the raw 64 bit value of the [`ClientId`]
-    pub fn raw(&self) -> u64 {
-        self.0
-    }
-}
-
-impl From<u64> for ClientId {
-    fn from(value: u64) -> Self {
-        Self::from_raw(value)
-    }
-}
-
-impl From<&u64> for ClientId {
-    fn from(value: &u64) -> Self {
-        Self::from_raw(*value)
-    }
-}
-
-impl Display for ClientId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for ClientId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.0.serialize(serializer)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for ClientId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        u64::deserialize(deserializer).map(ClientId::from_raw)
-    }
-}
 
 /// Connection and disconnection events in the server.
 #[derive(Debug)]

@@ -10,7 +10,7 @@ use renet::{
     transport::{
         ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
     },
-    ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
+    ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
 
 // Helper struct to pass an username in the user data
@@ -79,7 +79,7 @@ fn server(public_addr: SocketAddr) {
 
     let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
-    let mut usernames: HashMap<u64, String> = HashMap::new();
+    let mut usernames: HashMap<ClientId, String> = HashMap::new();
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
 
@@ -98,12 +98,12 @@ fn server(public_addr: SocketAddr) {
                 ServerEvent::ClientConnected { client_id } => {
                     let user_data = transport.user_data(client_id).unwrap();
                     let username = Username::from_user_data(&user_data);
-                    usernames.insert(client_id.raw(), username.0);
+                    usernames.insert(client_id, username.0);
                     println!("Client {} connected.", client_id)
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
                     println!("Client {} disconnected: {}", client_id, reason);
-                    usernames.remove_entry(&client_id.raw());
+                    usernames.remove_entry(&client_id);
                 }
             }
         }
@@ -111,7 +111,7 @@ fn server(public_addr: SocketAddr) {
         for client_id in server.clients_id() {
             while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
                 let text = String::from_utf8(message.into()).unwrap();
-                let username = usernames.get(&client_id.raw()).unwrap();
+                let username = usernames.get(&client_id).unwrap();
                 println!("Client {} ({}) sent text: {}", username, client_id, text);
                 let text = format!("{}: {}", username, text);
                 received_messages.push(text);
