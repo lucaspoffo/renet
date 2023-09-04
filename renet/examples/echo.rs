@@ -10,7 +10,7 @@ use renet::{
     transport::{
         ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
     },
-    ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
+    ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
 
 // Helper struct to pass an username in the user data
@@ -79,7 +79,7 @@ fn server(public_addr: SocketAddr) {
 
     let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
-    let mut usernames: HashMap<u64, String> = HashMap::new();
+    let mut usernames: HashMap<ClientId, String> = HashMap::new();
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
 

@@ -9,7 +9,7 @@ use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
     renet::{
         transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError},
-        RenetClient,
+        ClientId, RenetClient,
     },
     transport::NetcodeClientPlugin,
     RenetClientPlugin,
@@ -35,7 +35,7 @@ struct PlayerInfo {
 
 #[derive(Debug, Default, Resource)]
 struct ClientLobby {
-    players: HashMap<u64, PlayerInfo>,
+    players: HashMap<ClientId, PlayerInfo>,
 }
 
 fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
@@ -170,7 +170,7 @@ fn client_sync_players(
                     ..Default::default()
                 });
 
-                if client_id == id {
+                if client_id == id.raw() {
                     client_entity.insert(ControlledPlayer);
                 }
 
