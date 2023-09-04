@@ -7,7 +7,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
-    renet::{RenetServer, ServerEvent, ClientId},
+    renet::{ClientId, RenetServer, ServerEvent},
     RenetServerPlugin,
 };
 use demo_bevy::{
@@ -53,7 +53,7 @@ fn add_netcode_network(app: &mut App) {
         authentication: ServerAuthentication::Unsecure,
     };
 
-    let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
     app.insert_resource(server);
     app.insert_resource(transport);
 }

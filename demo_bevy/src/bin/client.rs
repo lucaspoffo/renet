@@ -7,11 +7,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    renet::{
-        transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError},
-        ClientId, RenetClient,
-    },
-    transport::NetcodeClientPlugin,
+    renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
 use demo_bevy::{

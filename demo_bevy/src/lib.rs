@@ -2,11 +2,12 @@ use std::{f32::consts::PI, time::Duration};
 
 use bevy::prelude::{shape::Icosphere, *};
 use bevy_rapier3d::prelude::*;
-use bevy_renet::renet::{transport::NETCODE_KEY_BYTES, ChannelConfig, ClientId, ConnectionConfig, SendType};
+use bevy_renet::renet::{ChannelConfig, ClientId, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "transport")]
 pub const PRIVATE_KEY: &[u8; bevy_renet::renet::transport::NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
+#[cfg(feature = "transport")]
 pub const PROTOCOL_ID: u64 = 7;
 
 #[derive(Debug, Component)]
