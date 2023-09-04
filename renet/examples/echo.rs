@@ -10,7 +10,7 @@ use renet::{
     transport::{
         ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
     },
-    ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
+    ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
 
 // Helper struct to pass an username in the user data
@@ -41,18 +41,18 @@ impl Username {
 
 fn main() {
     env_logger::init();
-    println!("Usage: server [SERVER_PORT] or client [SERVER_PORT] [USER_NAME]");
+    println!("Usage: server [SERVER_PORT] or client [SERVER_ADDR] [USER_NAME]");
     let args: Vec<String> = std::env::args().collect();
 
     let exec_type = &args[1];
     match exec_type.as_str() {
         "client" => {
-            let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
+            let server_addr: SocketAddr = args[2].parse().unwrap();
             let username = Username(args[3].clone());
             client(server_addr, username);
         }
         "server" => {
-            let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
+            let server_addr: SocketAddr = format!("0.0.0.0:{}", args[2]).parse().unwrap();
             server(server_addr);
         }
         _ => {
@@ -67,17 +67,19 @@ fn server(public_addr: SocketAddr) {
     let connection_config = ConnectionConfig::default();
     let mut server: RenetServer = RenetServer::new(connection_config);
 
-    let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
+    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let server_config = ServerConfig {
+        current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addr,
+        public_addresses: vec![public_addr],
         authentication: ServerAuthentication::Unsecure,
     };
-    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let mut transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+    let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
 
-    let mut usernames: HashMap<u64, String> = HashMap::new();
+    let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+
+    let mut usernames: HashMap<ClientId, String> = HashMap::new();
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
 

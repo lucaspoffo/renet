@@ -1,5 +1,6 @@
 use renetcode::{
-    ConnectToken, NetcodeClient, NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
+    ClientAuthentication, ConnectToken, NetcodeClient, NetcodeServer, ServerAuthentication, ServerConfig, ServerResult, NETCODE_KEY_BYTES,
+    NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};
@@ -12,7 +13,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-// Unique id used for your game
+// Unique id used for a version of your game
 const PROTOCOL_ID: u64 = 123456789;
 
 // Helper struct to pass an username in user data inside the ConnectToken
@@ -65,7 +66,8 @@ fn main() {
                 private_key,
             )
             .unwrap();
-            client(connect_token);
+            let auth = ClientAuthentication::Secure { connect_token };
+            client(auth);
         }
         "server" => {
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
@@ -117,8 +119,15 @@ fn handle_server_result(
 }
 
 fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let mut server: NetcodeServer = NetcodeServer::new(now, 16, PROTOCOL_ID, addr, private_key);
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let config = ServerConfig {
+        current_time,
+        max_clients: 16,
+        protocol_id: PROTOCOL_ID,
+        public_addresses: vec![addr],
+        authentication: ServerAuthentication::Secure { private_key },
+    };
+    let mut server: NetcodeServer = NetcodeServer::new(config);
     let udp_socket = UdpSocket::bind(addr).unwrap();
     udp_socket.set_nonblocking(true).unwrap();
     let mut received_messages = vec![];
@@ -158,11 +167,11 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     }
 }
 
-fn client(connect_token: ConnectToken) {
+fn client(authentication: ClientAuthentication) {
     let udp_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     udp_socket.set_nonblocking(true).unwrap();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let mut client = NetcodeClient::new(now, connect_token);
+    let mut client = NetcodeClient::new(now, authentication).unwrap();
     let stdin_channel = spawn_stdin_channel();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
 

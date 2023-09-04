@@ -13,8 +13,9 @@ fn main() {
     let (steam_client, single) = Client::init_app(480).unwrap();
     steam_client.networking_utils().init_relay_network_access();
 
-    println!("Client: client [SERVER_STEAM_ID] [LOBBY_ID?]");
-    println!("Client: server lobby");
+    println!("Usage:");
+    println!("\tclient [SERVER_STEAM_ID] [LOBBY_ID?]");
+    println!("\tserver [lobby?]");
 
     let args: Vec<String> = std::env::args().collect();
 

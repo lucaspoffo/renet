@@ -4,41 +4,12 @@ use std::{
     time::Duration,
 };
 
-use renetcode::{NetcodeServer, ServerResult, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
+use renetcode::{NetcodeServer, ServerConfig, ServerResult, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
-use crate::server::RenetServer;
+use crate::ClientId;
+use crate::RenetServer;
 
 use super::NetcodeTransportError;
-
-/// Configuration to establish a secure or unsecure connection with the server.
-#[derive(Debug)]
-pub enum ServerAuthentication {
-    /// Establishes a safe connection using a private key for encryption. The private key cannot be
-    /// shared with the client. Connections are stablished using [crate::transport::ConnectToken].
-    ///
-    /// See also [ClientAuthentication::Secure][crate::transport::ClientAuthentication::Secure]
-    Secure { private_key: [u8; NETCODE_KEY_BYTES] },
-    /// Establishes unsafe connections with clients, useful for testing and prototyping.
-    ///
-    /// See also [ClientAuthentication::Unsecure][crate::transport::ClientAuthentication::Unsecure]
-    Unsecure,
-}
-
-/// Configuration options for the server transport.
-#[derive(Debug)]
-pub struct ServerConfig {
-    /// Maximum numbers of clients that can be connected at a time
-    pub max_clients: usize,
-    /// Unique identifier to this game/application
-    /// One could use a hash function with the game current version to generate this value.
-    /// So old version would be unable to connect to newer versions.
-    pub protocol_id: u64,
-    /// Publicly available address that clients will try to connect to. This is
-    /// the address used to generate the ConnectToken when using the secure authentication.
-    pub public_addr: SocketAddr,
-    /// Authentication configuration for the server
-    pub authentication: ServerAuthentication,
-}
 
 #[derive(Debug)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
@@ -49,22 +20,10 @@ pub struct NetcodeServerTransport {
 }
 
 impl NetcodeServerTransport {
-    pub fn new(current_time: Duration, server_config: ServerConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
+    pub fn new(server_config: ServerConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
         socket.set_nonblocking(true)?;
 
-        // For unsecure connections we use an fixed private key.
-        let private_key = match server_config.authentication {
-            ServerAuthentication::Unsecure => [0; NETCODE_KEY_BYTES],
-            ServerAuthentication::Secure { private_key } => private_key,
-        };
-
-        let netcode_server = NetcodeServer::new(
-            current_time,
-            server_config.max_clients,
-            server_config.protocol_id,
-            server_config.public_addr,
-            private_key,
-        );
+        let netcode_server = NetcodeServer::new(server_config);
 
         Ok(Self {
             socket,
@@ -74,8 +33,8 @@ impl NetcodeServerTransport {
     }
 
     /// Returns the server public address
-    pub fn addr(&self) -> SocketAddr {
-        self.netcode_server.address()
+    pub fn addresses(&self) -> Vec<SocketAddr> {
+        self.netcode_server.addresses()
     }
 
     /// Returns the maximum number of clients that can be connected.
@@ -89,13 +48,13 @@ impl NetcodeServerTransport {
     }
 
     /// Returns the user data for client if connected.
-    pub fn user_data(&self, client_id: u64) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
-        self.netcode_server.user_data(client_id)
+    pub fn user_data(&self, client_id: ClientId) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
+        self.netcode_server.user_data(client_id.raw())
     }
 
     /// Returns the client address if connected.
-    pub fn client_addr(&self, client_id: u64) -> Option<SocketAddr> {
-        self.netcode_server.client_addr(client_id)
+    pub fn client_addr(&self, client_id: ClientId) -> Option<SocketAddr> {
+        self.netcode_server.client_addr(client_id.raw())
     }
 
     /// Disconnects all connected clients.
@@ -110,8 +69,8 @@ impl NetcodeServerTransport {
 
     /// Returns the duration since the connected client last received a packet.
     /// Usefull to detect users that are timing out.
-    pub fn time_since_last_received_packet(&self, client_id: u64) -> Option<Duration> {
-        self.netcode_server.time_since_last_received_packet(client_id)
+    pub fn time_since_last_received_packet(&self, client_id: ClientId) -> Option<Duration> {
+        self.netcode_server.time_since_last_received_packet(client_id.raw())
     }
 
     /// Advances the transport by the duration, and receive packets from the network.
@@ -137,7 +96,7 @@ impl NetcodeServerTransport {
         }
 
         for disconnection_id in server.disconnections_id() {
-            let server_result = self.netcode_server.disconnect(disconnection_id);
+            let server_result = self.netcode_server.disconnect(disconnection_id.raw());
             handle_server_result(server_result, &self.socket, server);
         }
 
@@ -149,7 +108,7 @@ impl NetcodeServerTransport {
         'clients: for client_id in server.clients_id() {
             let packets = server.get_packets_to_send(client_id).unwrap();
             for packet in packets {
-                match self.netcode_server.generate_payload_packet(client_id, &packet) {
+                match self.netcode_server.generate_payload_packet(client_id.raw(), &packet) {
                     Ok((addr, payload)) => {
                         if let Err(e) = self.socket.send_to(payload, addr) {
                             log::error!("Failed to send packet to client {client_id} ({addr}): {e}");
@@ -179,6 +138,7 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             send_packet(payload, addr);
         }
         ServerResult::Payload { client_id, payload } => {
+            let client_id = ClientId::from_raw(client_id);
             if let Err(e) = reliable_server.process_packet_from(payload, client_id) {
                 log::error!("Error while processing payload for {}: {}", client_id, e);
             }
@@ -189,11 +149,11 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             addr,
             payload,
         } => {
-            reliable_server.add_connection(client_id);
+            reliable_server.add_connection(ClientId::from_raw(client_id));
             send_packet(payload, addr);
         }
         ServerResult::ClientDisconnected { client_id, addr, payload } => {
-            reliable_server.remove_connection(client_id);
+            reliable_server.remove_connection(ClientId::from_raw(client_id));
             if let Some(payload) = payload {
                 send_packet(payload, addr);
             }

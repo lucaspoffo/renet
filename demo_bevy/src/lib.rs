@@ -2,8 +2,7 @@ use std::{f32::consts::PI, time::Duration};
 
 use bevy::prelude::{shape::Icosphere, *};
 use bevy_rapier3d::prelude::*;
-
-use bevy_renet::renet::{ChannelConfig, ConnectionConfig, SendType};
+use bevy_renet::renet::{transport::NETCODE_KEY_BYTES, ChannelConfig, ClientId, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "transport")]
@@ -12,7 +11,7 @@ pub const PROTOCOL_ID: u64 = 7;
 
 #[derive(Debug, Component)]
 pub struct Player {
-    pub id: u64,
+    pub id: ClientId,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component, Resource)]
@@ -40,10 +39,21 @@ pub enum ServerChannel {
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 pub enum ServerMessages {
-    PlayerCreate { entity: Entity, id: u64, translation: [f32; 3] },
-    PlayerRemove { id: u64 },
-    SpawnProjectile { entity: Entity, translation: [f32; 3] },
-    DespawnProjectile { entity: Entity },
+    PlayerCreate {
+        entity: Entity,
+        id: ClientId,
+        translation: [f32; 3],
+    },
+    PlayerRemove {
+        id: ClientId,
+    },
+    SpawnProjectile {
+        entity: Entity,
+        translation: [f32; 3],
+    },
+    DespawnProjectile {
+        entity: Entity,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

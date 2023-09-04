@@ -4,32 +4,11 @@ use std::{
     time::Duration,
 };
 
-use renetcode::{
-    ConnectToken, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
-};
+use renetcode::{ClientAuthentication, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
 use crate::remote_connection::RenetClient;
 
 use super::NetcodeTransportError;
-
-/// Configuration to establish an secure ou unsecure connection with the server.
-#[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum ClientAuthentication {
-    /// Establishes a safe connection with the server using the [crate::transport::ConnectToken].
-    ///
-    /// See also [crate::transport::ServerAuthentication::Secure]
-    Secure { connect_token: ConnectToken },
-    /// Establishes an unsafe connection with the server, useful for testing and prototyping.
-    ///
-    /// See also [crate::transport::ServerAuthentication::Unsecure]
-    Unsecure {
-        protocol_id: u64,
-        client_id: u64,
-        server_addr: SocketAddr,
-        user_data: Option<[u8; NETCODE_USER_DATA_BYTES]>,
-    },
-}
 
 #[derive(Debug)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
@@ -42,26 +21,7 @@ pub struct NetcodeClientTransport {
 impl NetcodeClientTransport {
     pub fn new(current_time: Duration, authentication: ClientAuthentication, socket: UdpSocket) -> Result<Self, NetcodeError> {
         socket.set_nonblocking(true)?;
-        let connect_token: ConnectToken = match authentication {
-            ClientAuthentication::Unsecure {
-                server_addr,
-                protocol_id,
-                client_id,
-                user_data,
-            } => ConnectToken::generate(
-                current_time,
-                protocol_id,
-                300,
-                client_id,
-                15,
-                vec![server_addr],
-                user_data.as_ref(),
-                &[0; NETCODE_KEY_BYTES],
-            )?,
-            ClientAuthentication::Secure { connect_token } => connect_token,
-        };
-
-        let netcode_client = NetcodeClient::new(current_time, connect_token);
+        let netcode_client = NetcodeClient::new(current_time, authentication)?;
 
         Ok(Self {
             buffer: [0u8; NETCODE_MAX_PACKET_BYTES],

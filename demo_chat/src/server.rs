@@ -7,7 +7,7 @@ use std::{
 
 use renet::{
     transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-    ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
+    ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -15,10 +15,13 @@ use crate::{ClientMessages, Message, ServerMessages, Username, PROTOCOL_ID};
 use bincode::Options;
 use log::info;
 
+pub const SYSTEM_MESSAGE_CLIENT_ID: ClientId = ClientId::from_raw(0);
+pub const HOST_CLIENT_ID: ClientId = ClientId::from_raw(1);
+
 pub struct ChatServer {
     pub server: RenetServer,
     pub transport: NetcodeServerTransport,
-    pub usernames: HashMap<u64, String>,
+    pub usernames: HashMap<ClientId, String>,
     pub messages: Vec<Message>,
     pub visualizer: RenetServerVisualizer<240>,
 }
@@ -26,21 +29,21 @@ pub struct ChatServer {
 impl ChatServer {
     pub fn new(host_username: String) -> Self {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let public_addr = socket.local_addr().unwrap();
+        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
         let server_config = ServerConfig {
+            current_time,
             max_clients: 64,
             protocol_id: PROTOCOL_ID,
-            public_addr,
+            public_addresses: vec![socket.local_addr().unwrap()],
             authentication: ServerAuthentication::Unsecure,
         };
 
-        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+        let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
         let server: RenetServer = RenetServer::new(ConnectionConfig::default());
 
         let mut usernames = HashMap::new();
-        usernames.insert(1, host_username);
+        usernames.insert(HOST_CLIENT_ID, host_username);
 
         Self {
             server,
@@ -101,7 +104,7 @@ impl ChatServer {
         Ok(())
     }
 
-    pub fn receive_message(&mut self, client_id: u64, text: String) {
+    pub fn receive_message(&mut self, client_id: ClientId, text: String) {
         let message = Message::new(client_id, text);
         self.messages.push(message.clone());
         let message = bincode::options().serialize(&ServerMessages::ClientMessage(message)).unwrap();

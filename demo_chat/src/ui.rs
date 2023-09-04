@@ -5,7 +5,7 @@ use eframe::{
 };
 use renet::{
     transport::{ClientAuthentication, NetcodeClientTransport},
-    ConnectionConfig, DefaultChannel, RenetClient,
+    ClientId, ConnectionConfig, DefaultChannel, RenetClient,
 };
 
 use std::{
@@ -16,7 +16,7 @@ use std::{
 
 use crate::{
     client::{AppState, UiState},
-    server::ChatServer,
+    server::{ChatServer, HOST_CLIENT_ID, SYSTEM_MESSAGE_CLIENT_ID},
 };
 use crate::{ClientMessages, Username, PROTOCOL_ID};
 
@@ -51,14 +51,15 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
     });
 
     ui.separator();
-    ui.horizontal(|ui| {
-        let server_addr = chat_server.transport.addr();
-        ui.label(format!("Address: {}", server_addr));
-        let tooltip = "Click to copy the server address";
-        if ui.button("📋").on_hover_text(tooltip).clicked() {
-            ui.output_mut(|output| output.copied_text = server_addr.to_string());
-        }
-    });
+    for server_addr in chat_server.transport.addresses() {
+        ui.horizontal(|ui| {
+            ui.label(format!("Address: {}", server_addr));
+            let tooltip = "Click to copy the server address";
+            if ui.button("📋").on_hover_text(tooltip).clicked() {
+                ui.output_mut(|output| output.copied_text = server_addr.to_string());
+            }
+        });
+    }
 
     ui.separator();
 
@@ -137,7 +138,7 @@ pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui
     });
 }
 
-pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMap<u64, String>, ctx: &egui::Context) {
+pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMap<ClientId, String>, ctx: &egui::Context) {
     if ui_state.show_network_info {
         match state {
             AppState::ClientChat { visualizer, .. } => {
@@ -214,7 +215,8 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
             let text = ui_state.text_input.clone();
             match state {
                 AppState::HostChat { chat_server } => {
-                    chat_server.receive_message(1, text);
+                    // Simulate receiving a message sent by the host
+                    chat_server.receive_message(HOST_CLIENT_ID, text);
                 }
                 AppState::ClientChat { client, .. } => {
                     let message = bincode::options().serialize(&ClientMessages::Text(text)).unwrap();
@@ -239,7 +241,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
                 for message in messages.iter() {
                     let text = if let Some(username) = usernames.get(&message.client_id) {
                         format!("{}: {}", username, message.text)
-                    } else if message.client_id == 0 {
+                    } else if message.client_id == SYSTEM_MESSAGE_CLIENT_ID {
                         format!("Server: {}", message.text)
                     } else {
                         format!("unknown: {}", message.text)

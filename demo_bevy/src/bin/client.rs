@@ -6,8 +6,14 @@ use bevy::{
     window::PrimaryWindow,
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
-use bevy_renet::{renet::RenetClient, RenetClientPlugin};
-
+use bevy_renet::{
+    renet::{
+        transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError},
+        ClientId, RenetClient,
+    },
+    transport::NetcodeClientPlugin,
+    RenetClientPlugin,
+};
 use demo_bevy::{
     connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
 };
@@ -28,7 +34,7 @@ struct PlayerInfo {
 
 #[derive(Debug, Default, Resource)]
 struct ClientLobby {
-    players: HashMap<u64, PlayerInfo>,
+    players: HashMap<ClientId, PlayerInfo>,
 }
 
 #[derive(Debug, Resource)]
@@ -211,7 +217,7 @@ fn client_sync_players(
                     ..Default::default()
                 });
 
-                if client_id == id {
+                if client_id == id.raw() {
                     client_entity.insert(ControlledPlayer);
                 }
 

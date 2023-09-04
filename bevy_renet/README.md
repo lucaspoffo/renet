@@ -23,11 +23,15 @@ app.insert_resource(server);
 app.add_plugin(NetcodeServerPlugin);
 let server_addr = "127.0.0.1:5000".parse().unwrap();
 let socket = UdpSocket::bind(server_addr).unwrap();
-const MAX_CLIENTS: usize = 64;
-const GAME_PROTOCOL_ID: u64 = 0;
-let server_config = ServerConfig::new(MAX_CLIENTS, PROTOCOL_ID, server_addr, ServerAuthentication::Unsecure);
-let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+let server_config = ServerConfig {
+    current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
+    max_clients: 64, 
+    protocol_id: 0,
+    server_addresses: vec![server_addr], 
+    ServerAuthentication::Unsecure,
+    authentication: ServerAuthentication::Unsecure
+};
+let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 app.insert_resource(transport);
 
 app.add_system(send_message_system);
@@ -77,16 +81,17 @@ app.insert_resource(client);
 
 // Setup the transport layer
 app.add_plugin(NetcodeClientPlugin);
-let public_addr = "127.0.0.1:5000".parse().unwrap();
-let socket = UdpSocket::bind(public_addr).unwrap();
-let server_config = ServerConfig {
-    max_clients: 64,
-    protocol_id: PROTOCOL_ID,
-    public_addr,
-    authentication: ServerAuthentication::Unsecure,
+
+let authentication = ClientAuthentication::Unsecure {
+    server_addr: SERVER_ADDR,
+    client_id: 0,
+    user_data: None,
+    protocol_id: 0,
 };
+let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
+let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+
 app.insert_resource(transport);
 
 app.add_system(send_message_system);

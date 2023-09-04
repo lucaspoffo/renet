@@ -83,6 +83,14 @@ impl SendChannelReliable {
         }
     }
 
+    pub fn available_memory(&self) -> usize {
+        self.max_memory_usage_bytes - self.memory_usage_bytes
+    }
+
+    pub fn can_send_message(&self, size_bytes: usize) -> bool {
+        size_bytes + self.memory_usage_bytes <= self.max_memory_usage_bytes
+    }
+
     pub fn get_packets_to_send(&mut self, packet_sequence: &mut u64, available_bytes: &mut u64, current_time: Duration) -> Vec<Packet> {
         if self.unacked_messages.is_empty() {
             return vec![];
@@ -272,10 +280,10 @@ impl ReceiveChannelReliable {
         match &mut self.reliable_order {
             ReliableOrder::Ordered => {
                 if let btree_map::Entry::Vacant(entry) = self.messages.entry(message_id) {
-                    self.memory_usage_bytes += message.len();
-                    if self.max_memory_usage_bytes < self.memory_usage_bytes {
+                    if self.memory_usage_bytes + message.len() > self.max_memory_usage_bytes {
                         return Err(ChannelError::ReliableChannelMaxMemoryReached);
                     }
+                    self.memory_usage_bytes += message.len();
 
                     entry.insert(message);
                 }
@@ -289,10 +297,10 @@ impl ReceiveChannelReliable {
                 }
 
                 if !received_messages.contains(&message_id) {
-                    self.memory_usage_bytes += message.len();
-                    if self.max_memory_usage_bytes < self.memory_usage_bytes {
+                    if self.memory_usage_bytes + message.len() > self.max_memory_usage_bytes {
                         return Err(ChannelError::ReliableChannelMaxMemoryReached);
                     }
+                    self.memory_usage_bytes += message.len();
 
                     received_messages.insert(message_id);
                     self.messages.insert(message_id, message);
@@ -310,10 +318,11 @@ impl ReceiveChannelReliable {
         }
 
         if !self.slices.contains_key(&slice.message_id) {
-            self.memory_usage_bytes += slice.num_slices * SLICE_SIZE;
-            if self.max_memory_usage_bytes < self.memory_usage_bytes {
+            let message_len = slice.num_slices * SLICE_SIZE;
+            if self.memory_usage_bytes + message_len > self.max_memory_usage_bytes {
                 return Err(ChannelError::ReliableChannelMaxMemoryReached);
             }
+            self.memory_usage_bytes += message_len;
         }
 
         let slice_constructor = self

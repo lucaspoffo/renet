@@ -251,6 +251,30 @@ impl RenetClient {
         self.disconnect_reason = Some(DisconnectReason::Transport);
     }
 
+    /// Returns the available memory in bytes for the given channel.
+    pub fn channel_available_memory<I: Into<u8>>(&self, channel_id: I) -> usize {
+        let channel_id = channel_id.into();
+        if let Some(reliable_channel) = self.send_reliable_channels.get(&channel_id) {
+            reliable_channel.available_memory()
+        } else if let Some(unreliable_channel) = self.send_unreliable_channels.get(&channel_id) {
+            unreliable_channel.available_memory()
+        } else {
+            panic!("Called 'channel_available_memory' with invalid channel {channel_id}");
+        }
+    }
+
+    /// Checks if the channel can send a message with the given size in bytes.
+    pub fn can_send_message<I: Into<u8>>(&self, channel_id: I, size_bytes: usize) -> bool {
+        let channel_id = channel_id.into();
+        if let Some(reliable_channel) = self.send_reliable_channels.get(&channel_id) {
+            reliable_channel.can_send_message(size_bytes)
+        } else if let Some(unreliable_channel) = self.send_unreliable_channels.get(&channel_id) {
+            unreliable_channel.can_send_message(size_bytes)
+        } else {
+            panic!("Called 'can_send_message' with invalid channel {channel_id}");
+        }
+    }
+
     /// Send a message to the server over a channel.
     pub fn send_message<I: Into<u8>, B: Into<Bytes>>(&mut self, channel_id: I, message: B) {
         if self.is_disconnected() {
@@ -265,7 +289,7 @@ impl RenetClient {
         } else if let Some(unreliable_channel) = self.send_unreliable_channels.get_mut(&channel_id) {
             unreliable_channel.send_message(message.into());
         } else {
-            panic!("Tried to send message to invalid channel {channel_id}");
+            panic!("Called 'send_message' with invalid channel {channel_id}");
         }
     }
 
@@ -281,7 +305,7 @@ impl RenetClient {
         } else if let Some(unreliable_channel) = self.receive_unreliable_channels.get_mut(&channel_id) {
             unreliable_channel.receive_message()
         } else {
-            panic!("Tried to receive message from invalid channel {channel_id}");
+            panic!("Called 'receive_message' with invalid channel {channel_id}");
         }
     }
 

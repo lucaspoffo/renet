@@ -7,7 +7,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_renet::{
-    renet::{RenetServer, ServerEvent},
+    renet::{RenetServer, ServerEvent, ClientId},
     RenetServerPlugin,
 };
 use demo_bevy::{
@@ -18,7 +18,7 @@ use renet_visualizer::RenetServerVisualizer;
 
 #[derive(Debug, Default, Resource)]
 pub struct ServerLobby {
-    pub players: HashMap<u64, Entity>,
+    pub players: HashMap<ClientId, Entity>,
 }
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
@@ -44,13 +44,14 @@ fn add_netcode_network(app: &mut App) {
 
     let public_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(public_addr).unwrap();
+    let current_time: std::time::Duration = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let server_config = ServerConfig {
+        current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addr,
+        public_addresses: vec![public_addr],
         authentication: ServerAuthentication::Unsecure,
     };
-    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
     let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
     app.insert_resource(server);
@@ -314,7 +315,7 @@ fn spawn_bot(
     mut commands: Commands,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        let client_id = bot_id.0;
+        let client_id = ClientId::from_raw(bot_id.0);
         bot_id.0 += 1;
         // Spawn new player
         let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
