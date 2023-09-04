@@ -1,0 +1,43 @@
+[package]
+name = "renet_webtransport"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+renet = { path = "../renet" }
+bevy_ecs = { version = "0.11", optional = true }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "WebTransport", 
+    "WebTransportBidirectionalStream",
+    "WebTransportCloseInfo",
+    "WebTransportCongestionControl",
+    "WebTransportDatagramDuplexStream",
+    "WebTransportError",
+    "WebTransportErrorOptions",
+    "WebTransportErrorSource",
+    "WebTransportHash",
+    "WebTransportOptions",
+    "WebTransportReceiveStream",
+    "ReadableStream",
+    "WritableStream",
+    "ReadableStreamDefaultReader",
+    "WritableStreamDefaultWriter",
+]
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[features]
+bevy = ["dep:bevy_ecs"]
