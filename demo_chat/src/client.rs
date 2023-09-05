@@ -1,13 +1,13 @@
 use bincode::Options;
 use eframe::egui;
 use log::error;
-use renet::{transport::NetcodeClientTransport, DefaultChannel, RenetClient};
+use renet::{transport::NetcodeClientTransport, ClientId, DefaultChannel, RenetClient};
 use renet_visualizer::RenetClientVisualizer;
 
 use std::{collections::HashMap, time::Instant};
 
 use crate::{
-    server::ChatServer,
+    server::{ChatServer, SYSTEM_MESSAGE_CLIENT_ID},
     ui::{draw_chat, draw_loader, draw_main_screen},
     Message, ServerMessages,
 };
@@ -26,7 +26,7 @@ pub enum AppState {
     ClientChat {
         client: Box<RenetClient>,
         transport: Box<NetcodeClientTransport>,
-        usernames: HashMap<u64, String>,
+        usernames: HashMap<ClientId, String>,
         messages: Vec<Message>,
         visualizer: Box<RenetClientVisualizer<240>>,
     },
@@ -104,7 +104,7 @@ impl ChatApp {
                             ServerMessages::ClientDisconnected { client_id } => {
                                 usernames.remove(&client_id);
                                 let text = format!("client {} disconnect", client_id);
-                                messages.push(Message::new(0, text));
+                                messages.push(Message::new(SYSTEM_MESSAGE_CLIENT_ID, text));
                             }
                             ServerMessages::ClientMessage(message) => {
                                 messages.push(message);

@@ -12,7 +12,12 @@ version = "0.0.9"
 
 [features]
 default = ["transport"]
+serde = ["renet/serde"]
 transport = ["renet/transport"]
+
+[[example]]
+name = "simple"
+required-features = ["serde", "transport"]
 
 [dependencies]
 bevy = {version = "0.11", default-features = false}

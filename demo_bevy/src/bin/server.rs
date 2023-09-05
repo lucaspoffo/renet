@@ -9,7 +9,7 @@ use bevy_rapier3d::prelude::*;
 use bevy_renet::{
     renet::{
         transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-        RenetServer, ServerEvent,
+        ClientId, RenetServer, ServerEvent,
     },
     transport::NetcodeServerPlugin,
     RenetServerPlugin,
@@ -22,7 +22,7 @@ use renet_visualizer::RenetServerVisualizer;
 
 #[derive(Debug, Default, Resource)]
 pub struct ServerLobby {
-    pub players: HashMap<u64, Entity>,
+    pub players: HashMap<ClientId, Entity>,
 }
 
 const PLAYER_MOVE_SPEED: f32 = 5.0;
@@ -282,7 +282,7 @@ fn spawn_bot(
     mut commands: Commands,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        let client_id = bot_id.0;
+        let client_id = ClientId::from_raw(bot_id.0);
         bot_id.0 += 1;
         // Spawn new player
         let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);

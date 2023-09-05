@@ -7,7 +7,10 @@ use bevy_renet::{
     transport::{NetcodeClientPlugin, NetcodeServerPlugin},
     RenetClientPlugin, RenetServerPlugin,
 };
-use renet::transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError};
+use renet::{
+    transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
+    ClientId,
+};
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -28,18 +31,18 @@ struct PlayerInput {
 
 #[derive(Debug, Component)]
 struct Player {
-    id: u64,
+    id: ClientId,
 }
 
 #[derive(Debug, Default, Resource)]
 struct Lobby {
-    players: HashMap<u64, Entity>,
+    players: HashMap<ClientId, Entity>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 enum ServerMessages {
-    PlayerConnected { id: u64 },
-    PlayerDisconnected { id: u64 },
+    PlayerConnected { id: ClientId },
+    PlayerDisconnected { id: ClientId },
 }
 
 fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
@@ -185,7 +188,7 @@ fn server_update_system(
 }
 
 fn server_sync_players(mut server: ResMut<RenetServer>, query: Query<(&Transform, &Player)>) {
-    let mut players: HashMap<u64, [f32; 3]> = HashMap::new();
+    let mut players: HashMap<ClientId, [f32; 3]> = HashMap::new();
     for (transform, player) in query.iter() {
         players.insert(player.id, transform.translation.into());
     }
@@ -227,7 +230,7 @@ fn client_sync_players(
     }
 
     while let Some(message) = client.receive_message(DefaultChannel::Unreliable) {
-        let players: HashMap<u64, [f32; 3]> = bincode::deserialize(&message).unwrap();
+        let players: HashMap<ClientId, [f32; 3]> = bincode::deserialize(&message).unwrap();
         for (player_id, translation) in players.iter() {
             if let Some(player_entity) = lobby.players.get(player_id) {
                 let transform = Transform {
