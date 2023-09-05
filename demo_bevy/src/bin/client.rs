@@ -73,12 +73,13 @@ fn add_netcode_network(app: &mut App) {
             panic!("{}", e);
         }
     }
+
     app.add_systems(Update, panic_on_error_system);
 }
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport};
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
     use steamworks::{SingleClient, SteamId};
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
@@ -105,6 +106,15 @@ fn add_steam_network(app: &mut App) {
     }
 
     app.add_systems(PreUpdate, steam_callbacks);
+
+    // If any error is found we just panic
+    fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
+        for e in renet_error.iter() {
+            panic!("{}", e);
+        }
+    }
+
+    app.add_systems(Update, panic_on_error_system);
 }
 
 fn main() {

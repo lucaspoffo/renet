@@ -11,7 +11,13 @@ pub struct SteamServerPlugin;
 pub struct SteamClientPlugin;
 
 #[derive(Debug, Event)]
-pub struct SteamNetError(pub SteamError);
+pub struct SteamTransportError(pub SteamError);
+
+impl std::fmt::Display for SteamTransportError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.0)
+    }
+}
 
 impl Plugin for SteamServerPlugin {
     fn build(&self, app: &mut App) {
@@ -57,7 +63,7 @@ impl SteamServerPlugin {
 
 impl Plugin for SteamClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<SteamNetError>();
+        app.add_event::<SteamTransportError>();
 
         app.add_systems(
             PreUpdate,
@@ -83,10 +89,10 @@ impl SteamClientPlugin {
     pub fn send_packets(
         mut transport: ResMut<SteamClientTransport>,
         mut client: ResMut<RenetClient>,
-        mut transport_errors: EventWriter<SteamNetError>,
+        mut transport_errors: EventWriter<SteamTransportError>,
     ) {
         if let Err(e) = transport.send_packets(&mut client) {
-            transport_errors.send(SteamNetError(e));
+            transport_errors.send(SteamTransportError(e));
         }
     }
 
