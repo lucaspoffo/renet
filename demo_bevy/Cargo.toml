@@ -26,4 +26,4 @@ renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
 smooth-bevy-cameras = { git = "https://github.com/bonsairobo/smooth-bevy-cameras.git", rev = "ed8ba36d3b202bc87bbae963670e1b9419804cd0" }
 fastrand = "2.0.0"
 
-steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "2c77327", optional = true }
+steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "a4dfe2a", optional = true }

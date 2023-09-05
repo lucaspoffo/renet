@@ -4,7 +4,7 @@ use renet::{ClientId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
-    Client, ClientManager, LobbyId, Manager, Matchmaking, SteamId,
+    Client, ClientManager, FriendFlags, Friends, LobbyId, Manager, Matchmaking, SteamId,
 };
 
 use super::MAX_MESSAGE_BATCH_SIZE;
@@ -14,9 +14,8 @@ pub enum AccessPermission {
     Public,
     /// No one can connect
     Private,
-    // steamworks-rs friends API does not have the necessary function to check this
-    // We need to wait for this PR: https://github.com/Noxime/steamworks-rs/pull/135
-    // FriendsOnly,
+    /// Only friends from the host can connect
+    FriendsOnly,
     /// Only user from this list can connect
     InList(HashSet<SteamId>),
     /// Users that are in the lobby can connect
@@ -32,6 +31,7 @@ pub struct SteamServerConfig {
 pub struct SteamServerTransport<Manager = ClientManager> {
     listen_socket: ListenSocket<Manager>,
     matchmaking: Matchmaking<Manager>,
+    friends: Friends<Manager>,
     max_clients: usize,
     access_permission: AccessPermission,
     connections: HashMap<ClientId, NetConnection<Manager>>,
@@ -42,9 +42,12 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
         let matchmaking = client.matchmaking();
+        let friends = client.friends();
+
         Ok(Self {
             listen_socket,
             matchmaking,
+            friends,
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
@@ -108,6 +111,10 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                     let permitted = match &self.access_permission {
                         AccessPermission::Public => true,
                         AccessPermission::Private => false,
+                        AccessPermission::FriendsOnly => {
+                            let friend = self.friends.get_friend(steam_id);
+                            friend.has_friend(FriendFlags::IMMEDIATE)
+                        }
                         AccessPermission::InList(list) => list.contains(&steam_id),
                         AccessPermission::InLobby(lobby) => {
                             let users_in_lobby = self.matchmaking.lobby_members(*lobby);
