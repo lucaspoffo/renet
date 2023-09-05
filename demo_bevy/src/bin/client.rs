@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::UdpSocket, time::SystemTime};
+use std::collections::HashMap;
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -7,16 +7,11 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    renet::{
-        transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError},
-        ClientId, RenetClient,
-    },
-    transport::NetcodeClientPlugin,
+    renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
 use demo_bevy::{
     connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-    PROTOCOL_ID,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -38,7 +33,21 @@ struct ClientLobby {
     players: HashMap<ClientId, PlayerInfo>,
 }
 
-fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
+#[derive(Debug, Resource)]
+struct CurrentClientId(u64);
+
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Connected;
+
+#[cfg(feature = "transport")]
+fn add_netcode_network(app: &mut App) {
+    use bevy_renet::renet::transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError};
+    use demo_bevy::PROTOCOL_ID;
+    use std::{net::UdpSocket, time::SystemTime};
+
+    app.add_plugins(bevy_renet::transport::NetcodeClientPlugin);
+    app.configure_set(Update, Connected.run_if(bevy_renet::transport::client_connected()));
+
     let client = RenetClient::new(connection_config());
 
     let server_addr = "127.0.0.1:5000".parse().unwrap();
@@ -54,49 +63,93 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
 
     let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
-    (client, transport)
+    app.insert_resource(client);
+    app.insert_resource(transport);
+    app.insert_resource(CurrentClientId(client_id));
+
+    // If any error is found we just panic
+    fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
+        for e in renet_error.iter() {
+            panic!("{}", e);
+        }
+    }
+
+    app.add_systems(Update, panic_on_error_system);
+}
+
+#[cfg(feature = "steam")]
+fn add_steam_network(app: &mut App) {
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use steamworks::{SingleClient, SteamId};
+
+    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+
+    steam_client.networking_utils().init_relay_network_access();
+
+    let args: Vec<String> = std::env::args().collect();
+    let server_steam_id: u64 = args[1].parse().unwrap();
+    let server_steam_id = SteamId::from_raw(server_steam_id);
+
+    let client = RenetClient::new(connection_config());
+    let transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
+
+    app.add_plugins(SteamClientPlugin);
+    app.insert_resource(client);
+    app.insert_resource(transport);
+    app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
+
+    app.configure_set(Update, Connected.run_if(bevy_renet::steam::client_connected()));
+
+    app.insert_non_send_resource(single);
+    fn steam_callbacks(client: NonSend<SingleClient>) {
+        client.run_callbacks();
+    }
+
+    app.add_systems(PreUpdate, steam_callbacks);
+
+    // If any error is found we just panic
+    fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
+        for e in renet_error.iter() {
+            panic!("{}", e);
+        }
+    }
+
+    app.add_systems(Update, panic_on_error_system);
 }
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_plugins(RenetClientPlugin);
-    app.add_plugins(NetcodeClientPlugin);
     app.add_plugins(LookTransformPlugin);
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
 
+    #[cfg(feature = "transport")]
+    add_netcode_network(&mut app);
+
+    #[cfg(feature = "steam")]
+    add_steam_network(&mut app);
+
     app.add_event::<PlayerCommand>();
 
     app.insert_resource(ClientLobby::default());
     app.insert_resource(PlayerInput::default());
-    let (client, transport) = new_renet_client();
-    app.insert_resource(client);
-    app.insert_resource(transport);
-
     app.insert_resource(NetworkMapping::default());
 
     app.add_systems(Update, (player_input, camera_follow, update_target_system));
     app.add_systems(
         Update,
-        (client_send_input, client_send_player_commands, client_sync_players).run_if(bevy_renet::transport::client_connected()),
+        (client_send_input, client_send_player_commands, client_sync_players).in_set(Connected),
     );
 
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
 
     app.add_systems(Startup, (setup_level, setup_camera, setup_target));
     app.add_systems(Update, update_visulizer_system);
-    app.add_systems(Update, panic_on_error_system);
 
     app.run();
-}
-
-// If any error is found we just panic
-fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
-    for e in renet_error.iter() {
-        panic!("{}", e);
-    }
 }
 
 fn update_visulizer_system(
@@ -153,11 +206,11 @@ fn client_sync_players(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut client: ResMut<RenetClient>,
-    transport: Res<NetcodeClientTransport>,
+    client_id: Res<CurrentClientId>,
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
 ) {
-    let client_id = transport.client_id();
+    let client_id = client_id.0;
     while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {

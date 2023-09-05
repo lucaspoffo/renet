@@ -10,10 +10,14 @@ license = "MIT OR Apache-2.0"
 name = "server"
 path = "src/bin/server.rs"
 
+[features]
+transport = ["bevy_renet/transport"]
+steam = ["bevy_renet/steam", "steamworks"]
+
 [dependencies]
 bevy_rapier3d = "0.22.0"
 bevy = {version = "0.11", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd"]}
-bevy_renet = { path = "../bevy_renet", features = ["transport", "serde"] }
+bevy_renet = { path = "../bevy_renet", features = ["serde"] }
 serde = { version = "1.0", features = [ "derive" ] }
 bincode = "1.3.1"
 # Use version directly when egui is updated to 0.22
@@ -21,3 +25,5 @@ bevy_egui = "0.21.0"
 renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
 smooth-bevy-cameras = { git = "https://github.com/bonsairobo/smooth-bevy-cameras.git", rev = "ed8ba36d3b202bc87bbae963670e1b9419804cd0" }
 fastrand = "2.0.0"
+
+steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "a4dfe2a", optional = true }

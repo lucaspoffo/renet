@@ -14,6 +14,7 @@ version = "0.0.9"
 default = ["transport"]
 serde = ["renet/serde"]
 transport = ["renet/transport"]
+steam = ["renet_steam"]
 
 [[example]]
 name = "simple"
@@ -22,6 +23,7 @@ required-features = ["serde", "transport"]
 [dependencies]
 bevy = {version = "0.11", default-features = false}
 renet = {path = "../renet", version = "0.0.13", features = ["bevy"]}
+renet_steam = { path = "../renet_steam", version = "0.0.1", features = [ "bevy" ], optional = true }
 
 [dev-dependencies]
 bevy = {version = "0.11", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd"]}

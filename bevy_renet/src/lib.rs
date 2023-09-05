@@ -6,6 +6,10 @@ use renet::{RenetClient, RenetServer, ServerEvent};
 
 #[cfg(feature = "transport")]
 pub mod transport;
+
+#[cfg(feature = "steam")]
+pub mod steam;
+
 pub struct RenetServerPlugin;
 
 pub struct RenetClientPlugin;
