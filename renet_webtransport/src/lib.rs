@@ -79,3 +79,9 @@ impl Client {
     }
     
 }
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.web_transport.close();
+    }
+}
