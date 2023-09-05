@@ -58,6 +58,12 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         self.max_clients
     }
 
+    /// Update the access permission to the server,
+    /// this change only applies to new connections.
+    pub fn set_access_permissions(&mut self, access_permission: AccessPermission) {
+        self.access_permission = access_permission;
+    }
+
     /// Disconnects a client from the server.
     pub fn disconnect_client(&mut self, client_id: ClientId, server: &mut RenetServer, flush_last_packets: bool) {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
