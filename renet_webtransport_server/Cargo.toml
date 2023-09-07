@@ -20,12 +20,15 @@ tokio = { version = "1.32", features = ["full"] }
 log = "0.4.19"
 http = "0.2"
 renet = { path = "../renet" }
-
+futures = "0.3"
 
 [dependencies.h3]
 version = "0.0.2"
 git = "https://github.com/hyperium/h3"
 features = ["i-implement-a-third-party-backend-and-opt-into-breaking-changes"]
+
+[dev-dependencies]
+env_logger = "0.10.0"
 
 [features]
 bevy = ["dep:bevy_ecs"]
