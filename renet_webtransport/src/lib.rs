@@ -2,8 +2,8 @@ use js_sys::Uint8Array;
 use renet::RenetClient;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{ReadableStreamDefaultReader, WebTransport, WebTransportError, WebTransportOptions};
-
+pub use web_sys::WebTransportOptions;
+use web_sys::{ReadableStreamDefaultReader, WebTransport, WebTransportError};
 /// This is a wrapper for ['WebTransportCloseInfo']. Because it doesn't expose the fields.
 ///
 ///
@@ -14,11 +14,11 @@ pub struct WebTransportCloseError {
 }
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
-pub struct Client {
+pub struct WebTransportClient {
     web_transport: WebTransport,
 }
 
-impl Client {
+impl WebTransportClient {
     pub async fn new(url: &str, options: Option<WebTransportOptions>) -> Result<Self, WebTransportError> {
         let web_transport = Self::init_web_transport(url, options).await?;
         Ok(Self { web_transport })
@@ -77,21 +77,17 @@ impl Client {
     }
 
     async fn init_web_transport(url: &str, options: Option<WebTransportOptions>) -> Result<WebTransport, WebTransportError> {
-        let init_result = match options {
+        let web_transport = match options {
             Some(options) => WebTransport::new_with_options(&url, &options),
             None => WebTransport::new(&url),
-        };
-        if init_result.is_err() {
-            return Err(init_result.unwrap_err().into());
-        }
-        let web_transport = init_result.unwrap();
+        }?;
         // returns undefined, once it fullies, webtransport will be ready to use.
-        let _ = JsFuture::from(web_transport.ready()).await;
+        let ready = JsFuture::from(web_transport.ready()).await;
         Ok(web_transport)
     }
 }
 
-impl Drop for Client {
+impl Drop for WebTransportClient {
     fn drop(&mut self) {
         self.web_transport.close();
     }

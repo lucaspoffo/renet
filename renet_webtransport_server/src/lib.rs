@@ -46,6 +46,7 @@ impl WebTransportServer {
     pub async fn update(&mut self, renet_server: &mut RenetServer) {
         // new clients
         let mut new_clients = Vec::new();
+        debug!("Waiting for new connections");
         while let Some(new_conn) = self.endpoint.accept().await {
             debug!("New connection being attempted");
             let join_handle: JoinHandle<Option<WebTransportSession<h3_quinn::Connection, Bytes>>> = tokio::spawn(async move {
@@ -83,6 +84,7 @@ impl WebTransportServer {
             new_clients.push(join_handle);
         }
         // join threads and get the sessions
+        debug!("Joining threads");
         for new_client in new_clients {
             if let Some(session) = new_client.await.unwrap() {
                 renet_server.add_connection(ClientId::from_raw(self.client_iterator));
@@ -90,6 +92,7 @@ impl WebTransportServer {
                 self.client_iterator += 1;
             }
         }
+        debug!("Finished joining threads");
         // recieve packets
         for (client_id, session) in self.clients.iter_mut() {
             loop {

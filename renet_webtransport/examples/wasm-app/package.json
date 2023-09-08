@@ -8,8 +8,10 @@
     "start": "webpack-dev-server"
   },
   "license": "(MIT OR Apache-2.0)",
+  "dependencies": {
+    "renet_webtransport_example": "file:../pkg"
+  },
   "devDependencies": {
-    "hello-wasm-pack": "^0.1.0",
     "webpack": "^4.29.3",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.5",

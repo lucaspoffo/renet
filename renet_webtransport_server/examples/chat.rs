@@ -13,7 +13,7 @@ use renet_webtransport_server::{WebTransportConfig, WebTransportServer};
 async fn main() {
     env_logger::builder().filter_level(log::LevelFilter::Debug).init();
     println!("Usage: server [SERVER_PORT]");
-    let future = server(format!("127.0.0.1:{}", 4443).parse().unwrap());
+    let future = server("0.0.0.0:4433".parse().unwrap());
     block_on(future);
 }
 
@@ -28,17 +28,19 @@ async fn server(public_addr: SocketAddr) {
     debug!("cert path: {:?}", server_config.cert.as_path());
 
     let mut transport = WebTransportServer::new(server_config).unwrap();
-
+    debug!("transport created");
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
 
     loop {
+        debug!("server tick");
         let now = Instant::now();
         let duration = now - last_updated;
         last_updated = now;
 
         server.update(duration);
         transport.update(&mut server).await;
+        debug!("server update");
 
         received_messages.clear();
 
