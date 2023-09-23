@@ -11,3 +11,4 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 renet = { path = "../../renet" }
 renet_webtransport ={ path = "../../renet_webtransport" }
+console_error_panic_hook = "0.1"

@@ -14,6 +14,7 @@ pub struct ChatApplication {
 #[wasm_bindgen]
 impl ChatApplication {
     pub async fn new() -> Option<ChatApplication> {
+        console_error_panic_hook::set_once();
         let connection_config = ConnectionConfig::default();
         let client = RenetClient::new(connection_config);
 
@@ -30,10 +31,18 @@ impl ChatApplication {
         self.duration += 0.016;
         self.renet_client.update(Duration::from_secs_f64(self.duration));
         self.web_transport_client.update(&mut self.renet_client).await;
+        self.renet_client.receive_message(1).map(|message| {
+            let message = String::from_utf8(message.into()).unwrap();
+            self.messages.push(message);
+        });
     }
 
     pub async fn send_packets(&mut self) {
         self.web_transport_client.send_packets(&mut self.renet_client).await;
+    }
+
+    pub fn send_message(&mut self, message: &str) {
+        self.renet_client.send_message(1, message.as_bytes().to_vec());
     }
 
     pub async fn disconnect(&mut self) {

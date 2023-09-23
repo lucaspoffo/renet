@@ -12,14 +12,13 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 renet = { path = "../renet" }
 bevy_ecs = { version = "0.11", optional = true }
+futures-channel = "0.3"
 
 [dependencies.web-sys]
 version = "0.3"
 features = [
     "WebTransport", 
-    "WebTransportBidirectionalStream",
     "WebTransportCloseInfo",
-    "WebTransportCongestionControl",
     "WebTransportDatagramDuplexStream",
     "WebTransportError",
     "WebTransportErrorOptions",
@@ -31,6 +30,9 @@ features = [
     "WritableStream",
     "ReadableStreamDefaultReader",
     "WritableStreamDefaultWriter",
+    "console",
+    "Worker",
+    "MessageEvent"
 ]
 [dependencies.getrandom]
 version = "0.2"

@@ -6,14 +6,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::debug;
+use log::{debug, info};
 use renet::{ConnectionConfig, DefaultChannel, RenetServer, ServerEvent};
 use renet_webtransport_server::{WebTransportConfig, WebTransportServer};
 #[tokio::main]
 async fn main() {
-    env_logger::builder().filter_level(log::LevelFilter::Debug).init();
-    println!("Usage: server [SERVER_PORT]");
-    let future = server("0.0.0.0:4433".parse().unwrap());
+    env_logger::builder().filter_level(log::LevelFilter::Info).init();
+    for addr in tokio::net::lookup_host("localhost:4433").await.unwrap() {
+        println!("socket address is {}", addr);
+    }
+    let future = server("127.0.0.1:4433".parse().unwrap());
     block_on(future);
 }
 
@@ -47,10 +49,11 @@ async fn server(public_addr: SocketAddr) {
         while let Some(event) = server.get_event() {
             match event {
                 ServerEvent::ClientConnected { client_id } => {
-                    println!("Client {} connected.", client_id)
+                    info!("Client {} connected.", client_id);
+                    server.send_message(client_id, DefaultChannel::ReliableOrdered, b"Welcome to the server!".to_vec());
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
-                    println!("Client {} disconnected: {}", client_id, reason);
+                    info!("Client {} disconnected: {}", client_id, reason);
                 }
             }
         }
@@ -61,7 +64,7 @@ async fn server(public_addr: SocketAddr) {
                 let split = message.split_once(":").unwrap();
                 let text = split.1;
                 let username = split.0;
-                println!("Client {} ({}) sent text: {}", username, client_id, text);
+                info!("Client {} ({}) sent text: {}", username, client_id, text);
                 let text = format!("{}: {}", username, text);
                 received_messages.push(text);
             }
