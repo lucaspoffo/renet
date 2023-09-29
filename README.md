@@ -62,7 +62,7 @@ const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0,
 let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
 let server_config = ServerConfig {
     current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
-    max_clients: 64
+    max_clients: 64,
     protocol_id: 0,
     public_addresses: vec![SERVER_ADDR],
     authentication: ServerAuthentication::Unsecure
