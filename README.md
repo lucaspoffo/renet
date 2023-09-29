@@ -89,7 +89,7 @@ loop {
     }
 
     // Receive message from channel
-    for client_id in server.connections_id() {
+    for client_id in server.clients_id() {
         // The enum DefaultChannel describe the channels used by the default configuration
         while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             // Handle received message
