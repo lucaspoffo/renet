@@ -58,7 +58,7 @@ Renet aims to have a simple API that is easy to integrate with any code base. Po
 let mut server = RenetServer::new(ConnectionConfig::default());
 
 // Setup transport layer
-const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5000);
 let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
 let server_config = ServerConfig {
     current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
