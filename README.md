@@ -114,7 +114,7 @@ loop {
 let mut client = RenetClient::new(ConnectionConfig::default());
 
 // Setup transport layer
-const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5000);
 let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 let client_id: u64 = 0;
@@ -134,7 +134,7 @@ loop {
     client.update(delta_time)?;
     transport.update(delta_time, &mut client).unwrap();
     
-    if client.is_connected() {
+    if transport.is_connected() {
         // Receive message from server
         while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
             // Handle received message
