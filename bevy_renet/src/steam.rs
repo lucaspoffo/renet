@@ -110,7 +110,7 @@ pub fn client_connected() -> impl FnMut(Option<Res<SteamClientTransport>>) -> bo
     }
 }
 
-pub fn client_diconnected() -> impl FnMut(Option<Res<SteamClientTransport>>) -> bool {
+pub fn client_disconnected() -> impl FnMut(Option<Res<SteamClientTransport>>) -> bool {
     |transport| match transport {
         Some(transport) => transport.is_disconnected(),
         None => true,
@@ -133,7 +133,7 @@ pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<SteamClient
     }
 }
 
-pub fn client_just_diconnected() -> impl FnMut(Local<bool>, Option<Res<SteamClientTransport>>) -> bool {
+pub fn client_just_disconnected() -> impl FnMut(Local<bool>, Option<Res<SteamClientTransport>>) -> bool {
     |mut last_connected: Local<bool>, transport| {
         let disconnected = transport.map(|transport| transport.is_disconnected()).unwrap_or(true);
 
