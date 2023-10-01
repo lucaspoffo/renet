@@ -41,16 +41,14 @@ async fn server(public_addr: SocketAddr) {
         last_updated = now;
 
         server.update(duration);
-        transport.update(&mut server).await;
+        transport.update(&mut server);
         debug!("server update");
-
-        received_messages.clear();
 
         while let Some(event) = server.get_event() {
             match event {
                 ServerEvent::ClientConnected { client_id } => {
                     info!("Client {} connected.", client_id);
-                    server.send_message(client_id, DefaultChannel::ReliableOrdered, b"Welcome to the server!".to_vec());
+                    server.send_message(client_id, DefaultChannel::Unreliable, b"Welcome to the server!".to_vec());
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
                     info!("Client {} disconnected: {}", client_id, reason);
@@ -59,7 +57,7 @@ async fn server(public_addr: SocketAddr) {
         }
 
         for client_id in server.clients_id() {
-            while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
+            while let Some(message) = server.receive_message(client_id, DefaultChannel::Unreliable) {
                 let message = String::from_utf8(message.into()).unwrap();
                 let split = message.split_once(":").unwrap();
                 let text = split.1;
@@ -70,8 +68,8 @@ async fn server(public_addr: SocketAddr) {
             }
         }
 
-        for text in received_messages.iter() {
-            server.broadcast_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec());
+        for text in received_messages.drain(..).into_iter() {
+            server.broadcast_message(DefaultChannel::Unreliable, text.as_bytes().to_vec());
         }
 
         transport.send_packets(&mut server);

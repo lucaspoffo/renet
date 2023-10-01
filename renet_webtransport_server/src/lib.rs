@@ -2,10 +2,17 @@ use bytes::Bytes;
 use h3::{error::ErrorLevel, ext::Protocol, server::Connection};
 use h3_webtransport::server::WebTransportSession;
 use http::Method;
-use log::{error, info};
+use log::{error, info, debug};
 use renet::{ClientId, RenetServer};
 use rustls::{Certificate, PrivateKey};
-use std::{collections::HashMap, io::Error, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    io::Error,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{sync::mpsc, task::AbortHandle};
 
 pub struct WebTransportConfig {
@@ -24,11 +31,13 @@ pub struct WebTransportConfig {
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct WebTransportServer {
     endpoint: quinn::Endpoint,
-    clients: HashMap<ClientId, WebTransportSession<h3_quinn::Connection, Bytes>>,
+    clients: HashMap<ClientId, Arc<WebTransportSession<h3_quinn::Connection, bytes::Bytes>>>,
     lost_clients: Vec<ClientId>,
     client_iterator: u64,
     connection_receiver: mpsc::Receiver<WebTransportSession<h3_quinn::Connection, Bytes>>,
     connection_abort_handle: AbortHandle,
+    reader_recievers: HashMap<ClientId, mpsc::Receiver<Bytes>>,
+    reader_threads: HashMap<ClientId, tokio::task::JoinHandle<()>>,
 }
 
 impl WebTransportServer {
@@ -47,66 +56,63 @@ impl WebTransportServer {
             lost_clients: Vec::new(),
             connection_receiver: receiver,
             connection_abort_handle: abort_handle,
+            reader_recievers: HashMap::new(),
+            reader_threads: HashMap::new(),
         })
     }
 
-    pub async fn update(&mut self, renet_server: &mut RenetServer) {       
-        // join threads and get the sessions
+    pub fn update(&mut self, renet_server: &mut RenetServer) {
         if let Ok(session) = self.connection_receiver.try_recv() {
-            info!("Recieving new connection");
+            debug!("Recieving new connection");
+            let shared_session = Arc::new(session);
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
-            self.clients.insert(ClientId::from_raw(self.client_iterator), session);
+            let (sender, reciever) = mpsc::channel::<Bytes>(256);
+            self.reader_recievers.insert(ClientId::from_raw(self.client_iterator), reciever);
+            let thread = Self::reading_thread(ClientId::from_raw(self.client_iterator), Arc::clone(&shared_session), sender);
+            self.clients.insert(ClientId::from_raw(self.client_iterator), shared_session);
+            self.reader_threads.insert(ClientId::from_raw(self.client_iterator), thread);
             self.client_iterator += 1;
-            info!("Finished new connection handling");
-
+            debug!("Finished new connection handling");
         }
         // recieve packets
-        for (client_id, session) in self.clients.iter_mut() {
-            // TODO this must be also in a thead..
-            loop {
-                info!("Recieving packets from client {}", client_id);
-                let datagram: h3_webtransport::server::ReadDatagram<'_, h3_quinn::Connection, Bytes> = session.accept_datagram();
-                let result = datagram.await;
+        for (client_id, _) in self.clients.iter_mut() {
+            let reader = self.reader_recievers.get_mut(client_id).unwrap();
+            while let Ok(packet) = reader.try_recv() {
+                debug!("Recieving packet from client {}", client_id);
+                let result= renet_server.process_packet_from(&packet, *client_id);
                 if result.is_err() {
+                    info!("Client {} not found {}", client_id, result.err().unwrap());
                     self.lost_clients.push(*client_id);
-                    info!("Client {} disconnected with error {}", client_id, result.err().unwrap());
                     break;
-                } 
-                match result.unwrap() {
-                    Some((_, datagram_bytes)) => {
-                        let result = renet_server.process_packet_from(&datagram_bytes, *client_id);
-                        match result {
-                            Ok(_) => {
-                                info!("Processed packet from client {}", client_id)
-                            }
-                            Err(err) => {
-                                error!("Failed to process packet from client {}: {}", client_id, err);
-                            }
-                        }
-                    }
-                    None => break,
                 }
-                info!("Finished recieving packets from client {}", client_id);
-                break; // TODO remove this break after testing
             }
+        }
+        for (client_id, thread) in self.reader_threads.iter()  {
+            if thread.is_finished() {
+                debug!("Client {} thread died", client_id);
+                self.lost_clients.push(*client_id);
+            }
+            
         }
         // remove lost clients
         for client_id in self.lost_clients.iter() {
             self.clients.remove(client_id);
             renet_server.remove_connection(*client_id);
+            self.reader_recievers.remove(client_id);
+            self.reader_threads.remove(client_id);
         }
     }
 
     pub fn send_packets(&mut self, renet_server: &mut RenetServer) {
-        for (client_id, session) in self.clients.iter_mut() {
+        for (client_id, session) in self.clients.iter() {
             if let Ok(packets) = renet_server.get_packets_to_send(*client_id) {
                 for packet in packets {
-                    info!("Sending packet to client {}", client_id);
+                    debug!("Sending packet to client {}", client_id);
                     let data = Bytes::copy_from_slice(&packet);
                     if let Err(err) = session.send_datagram(data) {
                         match err.get_error_level() {
                             ErrorLevel::ConnectionError => {
-                                info!("connection error for {}", client_id);
+                                debug!("connection error for {}", client_id);
                                 self.lost_clients.push(*client_id);
                                 break;
                             }
@@ -230,5 +236,36 @@ impl WebTransportServer {
                 Err(err)
             }
         }
+    }
+
+    fn reading_thread(
+        client_id: ClientId,
+        read_datagram: Arc<WebTransportSession<h3_quinn::Connection, bytes::Bytes>>,
+        sender: mpsc::Sender<Bytes>,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                let datagram = read_datagram.accept_datagram();
+                let result = datagram.await;
+                info!("Recieving packets from client {}", client_id);
+                if result.is_err() {
+                    //self.lost_clients.push(*client_id);
+                    info!("Client {} disconnected with error {}", client_id, result.err().unwrap());
+                    break;
+                }
+                match result.unwrap() {
+                    Some((_, datagram_bytes)) => match sender.try_send(datagram_bytes) {
+                        Ok(_) => {
+                            info!("Sent packet from client {}", client_id)
+                        }
+                        Err(err) => {
+                            error!("Failed to send packet from client {}: {}", client_id, err);
+                        }
+                    },
+                    None => break,
+                }
+                info!("Finished recieving packets from client {}", client_id);
+            }
+        })
     }
 }

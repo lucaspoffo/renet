@@ -1,24 +1,87 @@
 import * as wasm from 'renet_webtransport_example';
 
+/**
+ * @type {wasm.ChatApplication}
+ */
 let app;
-wasm.ChatApplication.new().then((_app) => {
-  app = _app;
-  console.log("App created!");
+
+init();
+
+/**
+ * 
+ * @param {HTMLDivElement} output 
+ */
+async function update(output) {
   if (app) {
-    app.send_message("Hello from JS!");
-    console.log("Message sent!");
+    app.update();
+    let messages = app.get_messages();
+    app.clear_messages();
+    // console.log(messages);
+    if (output) {
+      for (let message of messages.split('\n')) {
+        output.innerHTML += '<p>' + message + '</p>';
+      }
+    }
   }
-  app.send_packets().then(() => {
-    console.log("Packets sent!");
-    app.update().then(() => {
-      console.log("App updated!");
-      let messages = app.get_messages();
-      console.log(messages);
-    }).catch((err) => {
-      console.error("App update error:", err);
-    });
+}
+
+async function send_packets() {
+  if (app) {
+    await app.send_packets();
+    // console.log('Packets sent!');
+  }
+}
+
+function init() {
+  // get the chat elements
+  const chat = document.getElementById('chat-input');
+  const username = document.getElementById('name-input');
+  const send = document.getElementById('chat-send');
+  const output = document.getElementById('chat-output');
+
+  // send message when button is clicked
+  send.addEventListener('click', () => {
+    if (app) {
+      app.send_message(username.value + ': ' + chat.value);
+      chat.value = '';
+    }
   });
-});
+
+  // send message when enter is pressed
+  chat.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') {
+      send.click();
+    }
+  });
+
+  wasm.ChatApplication.new().then(async (_app) => {
+    app = _app;
+    console.log('App created!');
+    while (true) {
+      await send_packets();
+      await update(output);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // // example for using WebTransport in js
 // const url = 'https://127.0.0.1:4433';
 // const transport = new WebTransport(url);

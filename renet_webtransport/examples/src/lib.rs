@@ -1,4 +1,4 @@
-use renet::{ConnectionConfig, RenetClient};
+use renet::{ConnectionConfig, RenetClient, DefaultChannel};
 use renet_webtransport::WebTransportClient;
 use std::time::Duration;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -27,11 +27,11 @@ impl ChatApplication {
         })
     }
 
-    pub async fn update(&mut self) {
+    pub fn update(&mut self) {
         self.duration += 0.016;
         self.renet_client.update(Duration::from_secs_f64(self.duration));
-        self.web_transport_client.update(&mut self.renet_client).await;
-        self.renet_client.receive_message(1).map(|message| {
+        self.web_transport_client.update(&mut self.renet_client);
+        self.renet_client.receive_message(DefaultChannel::Unreliable).map(|message| {
             let message = String::from_utf8(message.into()).unwrap();
             self.messages.push(message);
         });
@@ -42,7 +42,7 @@ impl ChatApplication {
     }
 
     pub fn send_message(&mut self, message: &str) {
-        self.renet_client.send_message(1, message.as_bytes().to_vec());
+        self.renet_client.send_message(DefaultChannel::Unreliable, message.as_bytes().to_vec());
     }
 
     pub async fn disconnect(&mut self) {
@@ -51,5 +51,9 @@ impl ChatApplication {
 
     pub fn get_messages(&self) -> String {
         self.messages.join("\n")
+    }
+
+    pub fn clear_messages(&mut self) {
+        self.messages.clear();
     }
 }
