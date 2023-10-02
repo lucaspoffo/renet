@@ -76,7 +76,7 @@ impl WebTransportClient {
         worker.post_message_with_transfer(&web_transport.datagrams().readable(), &transfer_array)?;
         let (sender, reciever) = futures_channel::mpsc::unbounded::<Vec<u8>>();
         let persistent_callback_handle = Self::get_on_msg_callback(sender);
-        worker.set_onmessage(Some(&persistent_callback_handle.as_ref().unchecked_ref()));
+        worker.set_onmessage(Some(persistent_callback_handle.as_ref().unchecked_ref()));
 
         let writer = web_transport.datagrams().writable().get_writer()?;
 
@@ -131,8 +131,8 @@ impl WebTransportClient {
 
     async fn init_web_transport(url: &str, options: Option<WebTransportOptions>) -> Result<WebTransport, WebTransportError> {
         let web_transport = match options {
-            Some(options) => WebTransport::new_with_options(&url, &options),
-            None => WebTransport::new(&url),
+            Some(options) => WebTransport::new_with_options(url, &options),
+            None => WebTransport::new(url),
         }?;
         // returns undefined, once it fullies, webtransport will be ready to use.
         let _ = JsFuture::from(web_transport.ready()).await;
