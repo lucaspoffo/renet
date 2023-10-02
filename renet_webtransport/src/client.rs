@@ -154,3 +154,6 @@ impl Drop for WebTransportClient {
         self.worker.terminate();
     }
 }
+
+unsafe impl Sync for WebTransportClient {}
+unsafe impl Send for WebTransportClient {}
