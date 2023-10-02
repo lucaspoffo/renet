@@ -70,11 +70,9 @@ function init() {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
       console.log('App disconnected!');
-      console.log(app.is_disconnected());
     })
     .catch((err) => {
       console.error(err);
-      console.log(app.is_disconnected());
     });
 }
 
