@@ -31,10 +31,10 @@ impl ChatApplication {
         self.duration += 0.016;
         self.renet_client.update(Duration::from_secs_f64(self.duration));
         self.web_transport_client.update(&mut self.renet_client);
-        self.renet_client.receive_message(DefaultChannel::Unreliable).map(|message| {
+        if let Some(message) = self.renet_client.receive_message(DefaultChannel::Unreliable) {
             let message = String::from_utf8(message.into()).unwrap();
             self.messages.push(message);
-        });
+        };
     }
 
     pub async fn send_packets(&mut self) {
