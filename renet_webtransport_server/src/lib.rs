@@ -51,7 +51,7 @@ impl WebTransportServer {
         let server_config = Self::create_server_config(config)?;
         let endpoint = quinn::Endpoint::server(server_config, addr)?;
         let (sender, receiver) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
-        let current_clients = Arc::new(Mutex::new(0 as usize));
+        let current_clients = Arc::new(Mutex::new(0_usize));
         let abort_handle = tokio::spawn(Self::accept_connection(
             sender,
             endpoint.clone(),

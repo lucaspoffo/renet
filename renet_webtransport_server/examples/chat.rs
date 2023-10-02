@@ -60,7 +60,7 @@ async fn server(public_addr: SocketAddr) {
         for client_id in server.clients_id() {
             while let Some(message) = server.receive_message(client_id, DefaultChannel::Unreliable) {
                 let message = String::from_utf8(message.into()).unwrap();
-                let split = message.split_once(":").unwrap();
+                let split = message.split_once(':').unwrap();
                 let text = split.1;
                 let username = split.0;
                 info!("Client {} ({}) sent text: {}", username, client_id, text);
@@ -69,7 +69,7 @@ async fn server(public_addr: SocketAddr) {
             }
         }
 
-        for text in received_messages.drain(..).into_iter() {
+        for text in received_messages.drain(..) {
             server.broadcast_message(DefaultChannel::Unreliable, text.as_bytes().to_vec());
         }
 
