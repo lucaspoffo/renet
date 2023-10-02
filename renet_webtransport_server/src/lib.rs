@@ -4,7 +4,7 @@ use h3::{error::ErrorLevel, ext::Protocol, server::Connection};
 use h3_quinn::Connection as H3QuinnConnection;
 use h3_webtransport::server::WebTransportSession;
 use http::Method;
-use log::{debug, error, info};
+use log::error;
 use renet::{ClientId, RenetServer};
 use rustls::{Certificate, PrivateKey};
 use std::{
@@ -13,6 +13,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
+    vec,
 };
 use tokio::{sync::mpsc, task::AbortHandle};
 
@@ -81,7 +82,7 @@ impl WebTransportServer {
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
             let (sender, reciever) = mpsc::channel::<Bytes>(256);
             self.reader_recievers.insert(ClientId::from_raw(self.client_iterator), reciever);
-            let thread = Self::reading_thread(ClientId::from_raw(self.client_iterator), Arc::clone(&shared_session), sender);
+            let thread = Self::reading_thread(Arc::clone(&shared_session), sender);
             self.clients.insert(ClientId::from_raw(self.client_iterator), shared_session);
             self.reader_threads.insert(ClientId::from_raw(self.client_iterator), thread);
             self.client_iterator += 1;
@@ -128,7 +129,6 @@ impl WebTransportServer {
         for (client_id, session) in self.clients.iter() {
             if let Ok(packets) = renet_server.get_packets_to_send(*client_id) {
                 for packet in packets {
-                    debug!("Sending packet to client {}", client_id);
                     let data = Bytes::copy_from_slice(&packet);
                     if let Err(err) = session.send_datagram(data) {
                         match err.get_error_level() {
@@ -230,7 +230,6 @@ impl WebTransportServer {
     ) -> Result<Option<WebTransportSession<H3QuinnConnection, Bytes>>, h3::Error> {
         match conn.accept().await {
             Ok(Some((req, stream))) => {
-                info!("new request: {:#?}", req);
                 let ext = req.extensions();
                 match req.method() {
                     &Method::CONNECT if ext.get::<Protocol>() == Some(&Protocol::WEB_TRANSPORT) => {
@@ -249,7 +248,6 @@ impl WebTransportServer {
     }
 
     fn reading_thread(
-        client_id: ClientId,
         read_datagram: Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>,
         sender: mpsc::Sender<Bytes>,
     ) -> tokio::task::JoinHandle<()> {
@@ -257,24 +255,19 @@ impl WebTransportServer {
             loop {
                 let datagram = read_datagram.accept_datagram();
                 let result = datagram.await;
-                info!("Recieving packets from client {}", client_id);
                 if result.is_err() {
-                    //self.lost_clients.push(*client_id);
-                    info!("Client {} disconnected with error {}", client_id, result.err().unwrap());
                     break;
                 }
                 match result.unwrap() {
                     Some((_, datagram_bytes)) => match sender.try_send(datagram_bytes) {
-                        Ok(_) => {
-                            info!("Sent packet from client {}", client_id)
-                        }
-                        Err(err) => {
-                            error!("Failed to send packet from client {}: {}", client_id, err);
-                        }
+                        Ok(_) => {}
+                        Err(err) => match err {
+                            mpsc::error::TrySendError::Closed(_) => break,
+                            _ => {}
+                        },
                     },
                     None => break,
                 }
-                info!("Finished recieving packets from client {}", client_id);
             }
         })
     }
