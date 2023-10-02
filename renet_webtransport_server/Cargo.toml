@@ -2,10 +2,16 @@
 name = "renet_webtransport_server"
 version = "0.1.0"
 edition = "2021"
+keywords = ["gamedev", "networking", "transport"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/lucaspoffo/renet"
+description = "Server transport for WebTransport"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0"
 bytes = "1"
 rustls = "0.21"
 quinn = { version = "0.10", default-features = false, features = [

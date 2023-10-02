@@ -26,6 +26,7 @@ async fn server(public_addr: SocketAddr) {
         listen: public_addr,
         cert: PathBuf::from("renet_webtransport_server\\examples\\localhost.der"),
         key: PathBuf::from("renet_webtransport_server\\examples\\localhost_key.der"),
+        max_clients: 10,
     };
     debug!("cert path: {:?}", server_config.cert.as_path());
 

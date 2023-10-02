@@ -1,16 +1,17 @@
+use anyhow::Error;
 use bytes::Bytes;
 use h3::{error::ErrorLevel, ext::Protocol, server::Connection};
+use h3_quinn::Connection as H3QuinnConnection;
 use h3_webtransport::server::WebTransportSession;
 use http::Method;
-use log::{error, info, debug};
+use log::{debug, error, info};
 use renet::{ClientId, RenetServer};
 use rustls::{Certificate, PrivateKey};
 use std::{
     collections::HashMap,
-    io::Error,
     net::SocketAddr,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tokio::{sync::mpsc, task::AbortHandle};
@@ -26,28 +27,38 @@ pub struct WebTransportConfig {
     /// Info:
     /// Platform defaults for dual-stack sockets vary. For example, any socket bound to a wildcard IPv6 address on Windows will not by default be able to communicate with IPv4 addresses. Portable applications should bind an address that matches the family they wish to communicate within.
     pub listen: SocketAddr,
+    /// Maximum number of active clients
+    pub max_clients: usize,
 }
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct WebTransportServer {
     endpoint: quinn::Endpoint,
-    clients: HashMap<ClientId, Arc<WebTransportSession<h3_quinn::Connection, bytes::Bytes>>>,
+    clients: HashMap<ClientId, Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>>,
     lost_clients: Vec<ClientId>,
     client_iterator: u64,
-    connection_receiver: mpsc::Receiver<WebTransportSession<h3_quinn::Connection, Bytes>>,
+    connection_receiver: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
     connection_abort_handle: AbortHandle,
     reader_recievers: HashMap<ClientId, mpsc::Receiver<Bytes>>,
     reader_threads: HashMap<ClientId, tokio::task::JoinHandle<()>>,
+    current_clients: Arc<Mutex<usize>>,
 }
 
 impl WebTransportServer {
     pub fn new(config: WebTransportConfig) -> Result<Self, Error> {
         let addr = config.listen;
+        let max_clients = config.max_clients;
         let server_config = Self::create_server_config(config)?;
         let endpoint = quinn::Endpoint::server(server_config, addr)?;
-        let (sender, receiver) = mpsc::channel::<WebTransportSession<h3_quinn::Connection, Bytes>>(32);
-        let handle = tokio::spawn(Self::accept_connection(sender, endpoint.clone()));
-        let abort_handle = handle.abort_handle();
+        let (sender, receiver) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
+        let current_clients = Arc::new(Mutex::new(0 as usize));
+        let abort_handle = tokio::spawn(Self::accept_connection(
+            sender,
+            endpoint.clone(),
+            Arc::clone(&current_clients),
+            max_clients,
+        ))
+        .abort_handle();
 
         Ok(Self {
             endpoint,
@@ -58,12 +69,14 @@ impl WebTransportServer {
             connection_abort_handle: abort_handle,
             reader_recievers: HashMap::new(),
             reader_threads: HashMap::new(),
+            current_clients,
         })
     }
 
     pub fn update(&mut self, renet_server: &mut RenetServer) {
+        let mut clients_added = 0;
+
         if let Ok(session) = self.connection_receiver.try_recv() {
-            debug!("Recieving new connection");
             let shared_session = Arc::new(session);
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
             let (sender, reciever) = mpsc::channel::<Bytes>(256);
@@ -72,29 +85,37 @@ impl WebTransportServer {
             self.clients.insert(ClientId::from_raw(self.client_iterator), shared_session);
             self.reader_threads.insert(ClientId::from_raw(self.client_iterator), thread);
             self.client_iterator += 1;
-            debug!("Finished new connection handling");
+            clients_added += 1;
         }
+
+        {
+            let mut current_clients = self.current_clients.lock().unwrap();
+            *current_clients += clients_added;
+        }
+
         // recieve packets
         for (client_id, _) in self.clients.iter_mut() {
             let reader = self.reader_recievers.get_mut(client_id).unwrap();
             while let Ok(packet) = reader.try_recv() {
-                debug!("Recieving packet from client {}", client_id);
-                let result= renet_server.process_packet_from(&packet, *client_id);
-                if result.is_err() {
-                    info!("Client {} not found {}", client_id, result.err().unwrap());
-                    self.lost_clients.push(*client_id);
-                    break;
+                if let Err(e) = renet_server.process_packet_from(&packet, *client_id) {
+                    error!("Error while processing payload for {}: {}", client_id, e);
                 }
             }
         }
-        for (client_id, thread) in self.reader_threads.iter()  {
+
+        for (client_id, thread) in self.reader_threads.iter() {
             if thread.is_finished() {
-                debug!("Client {} thread died", client_id);
                 self.lost_clients.push(*client_id);
             }
-            
         }
+
         // remove lost clients
+        let removed_clients = self.lost_clients.len();
+        {
+            let mut current_clients = self.current_clients.lock().unwrap();
+            *current_clients -= removed_clients;
+        }
+
         for client_id in self.lost_clients.iter() {
             self.clients.remove(client_id);
             renet_server.remove_connection(*client_id);
@@ -112,7 +133,6 @@ impl WebTransportServer {
                     if let Err(err) = session.send_datagram(data) {
                         match err.get_error_level() {
                             ErrorLevel::ConnectionError => {
-                                debug!("connection error for {}", client_id);
                                 self.lost_clients.push(*client_id);
                                 break;
                             }
@@ -124,31 +144,43 @@ impl WebTransportServer {
         }
     }
 
-    async fn accept_connection(sender: mpsc::Sender<WebTransportSession<h3_quinn::Connection, Bytes>>, endpoint: quinn::Endpoint) {
+    async fn accept_connection(
+        sender: mpsc::Sender<WebTransportSession<H3QuinnConnection, Bytes>>,
+        endpoint: quinn::Endpoint,
+        current_clients: Arc<Mutex<usize>>,
+        max_clients: usize,
+    ) {
         while let Some(new_conn) = endpoint.accept().await {
-            info!("New connection being attempted");
             match new_conn.await {
                 Ok(conn) => {
-                    info!("new http3 established");
-                    let h3_conn = h3::server::builder()
+                    let is_full = {
+                        let current_clients = current_clients.lock().unwrap();
+                        *current_clients >= max_clients
+                    };
+                    if is_full {
+                        conn.close(0u32.into(), b"Server full");
+                        continue;
+                    }
+                    if let Ok(h3_conn) = h3::server::builder()
                         .enable_webtransport(true)
                         .enable_connect(true)
                         .enable_datagram(true)
                         .max_webtransport_sessions(1)
                         .send_grease(true)
-                        .build(h3_quinn::Connection::new(conn))
+                        .build(H3QuinnConnection::new(conn))
                         .await
-                        .unwrap();
-
-                    match Self::handle_connection(h3_conn).await {
-                        Ok(web_transport_option) => {
-                            if let Some(session) = web_transport_option {
-                                info!("WebTransport session established");
-                                let result = sender.send(session).await; // TODO handle the error case somehow
+                    {
+                        match Self::handle_connection(h3_conn).await {
+                            Ok(web_transport_option) => {
+                                if let Some(session) = web_transport_option {
+                                    if let Err(e) = sender.try_send(session) {
+                                        error!("Failed to send session to main thread: {}", e);
+                                    }
+                                }
                             }
-                        }
-                        Err(err) => {
-                            error!("Failed to handle connection: {err:?}");
+                            Err(err) => {
+                                error!("Failed to handle connection: {err:?}");
+                            }
                         }
                     }
                 }
@@ -164,7 +196,7 @@ impl WebTransportServer {
         self.connection_abort_handle.abort();
     }
 
-    fn create_server_config(config: WebTransportConfig) -> Result<quinn::ServerConfig, std::io::Error> {
+    fn create_server_config(config: WebTransportConfig) -> Result<quinn::ServerConfig, Error> {
         let cert = Certificate(std::fs::read(config.cert)?);
         let key = PrivateKey(std::fs::read(config.key)?);
 
@@ -174,8 +206,7 @@ impl WebTransportServer {
             .with_protocol_versions(&[&rustls::version::TLS13])
             .unwrap()
             .with_no_client_auth()
-            .with_single_cert(vec![cert], key)
-            .unwrap(); // TODO handle Errorcase
+            .with_single_cert(vec![cert], key)?;
 
         tls_config.max_early_data_size = u32::MAX;
         let alpn: Vec<Vec<u8>> = vec![
@@ -195,52 +226,31 @@ impl WebTransportServer {
     }
 
     async fn handle_connection(
-        mut conn: Connection<h3_quinn::Connection, Bytes>,
-    ) -> Result<Option<WebTransportSession<h3_quinn::Connection, Bytes>>, h3::Error> {
+        mut conn: Connection<H3QuinnConnection, Bytes>,
+    ) -> Result<Option<WebTransportSession<H3QuinnConnection, Bytes>>, h3::Error> {
         match conn.accept().await {
             Ok(Some((req, stream))) => {
                 info!("new request: {:#?}", req);
                 let ext = req.extensions();
                 match req.method() {
                     &Method::CONNECT if ext.get::<Protocol>() == Some(&Protocol::WEB_TRANSPORT) => {
-                        info!("Peer wants to initiate a webtransport session");
-
-                        info!("Handing over connection to WebTransport");
-                        let session: WebTransportSession<h3_quinn::Connection, Bytes> =
-                            WebTransportSession::accept(req, stream, conn).await?;
-                        info!("Established webtransport session");
-                        // 4. Get datagrams and wait for client requests here.
-                        // h3_conn needs to handover the datagrams to the webtransport session.
-                        //let datagram: h3_webtransport::server::ReadDatagram<'_, h3_quinn::Connection, Bytes> = session.accept_datagram();
+                        let session: WebTransportSession<H3QuinnConnection, Bytes> = WebTransportSession::accept(req, stream, conn).await?;
                         Ok(Some(session))
                     }
-                    _ => {
-                        info!("Peer wants to initiate a http3 session");
-                        Ok(None)
-                    }
+                    _ => Ok(None),
                 }
             }
 
             // indicating no more streams to be received
-            Ok(None) => {
-                info!("No more streams to be received");
-                Ok(None)
-            }
+            Ok(None) => Ok(None),
 
-            Err(err) => {
-                error!("Error on accept {}", err);
-                match err.get_error_level() {
-                    ErrorLevel::ConnectionError => error!("Connection error: {err}"),
-                    ErrorLevel::StreamError => error!("Stream error: {err}"),
-                }
-                Err(err)
-            }
+            Err(err) => Err(err),
         }
     }
 
     fn reading_thread(
         client_id: ClientId,
-        read_datagram: Arc<WebTransportSession<h3_quinn::Connection, bytes::Bytes>>,
+        read_datagram: Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>,
         sender: mpsc::Sender<Bytes>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {

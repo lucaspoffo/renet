@@ -1,5 +1,5 @@
-use renet::{ConnectionConfig, RenetClient, DefaultChannel};
-use renet_webtransport::WebTransportClient;
+use renet::{ConnectionConfig, DefaultChannel, RenetClient};
+use renet_webtransport::prelude::*;
 use std::time::Duration;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -42,7 +42,8 @@ impl ChatApplication {
     }
 
     pub fn send_message(&mut self, message: &str) {
-        self.renet_client.send_message(DefaultChannel::Unreliable, message.as_bytes().to_vec());
+        self.renet_client
+            .send_message(DefaultChannel::Unreliable, message.as_bytes().to_vec());
     }
 
     pub async fn disconnect(&mut self) {

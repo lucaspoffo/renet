@@ -67,21 +67,6 @@ function init() {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // // example for using WebTransport in js
 // const url = 'https://127.0.0.1:4433';
 // const transport = new WebTransport(url);
