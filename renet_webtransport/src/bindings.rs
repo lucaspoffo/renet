@@ -53,7 +53,6 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebTransportError)"]
     pub type WebTransportError;
-    #[cfg(feature = "WebTransportErrorSource")]
     # [wasm_bindgen (structural , method , getter , js_class = "WebTransportError" , js_name = source)]
     #[doc = "Getter for the `source` field of this object."]
     #[doc = ""]
@@ -64,22 +63,14 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebTransportError/streamErrorCode)"]
     pub fn stream_error_code(this: &WebTransportError) -> Option<u8>;
-    #[wasm_bindgen(catch, constructor, js_class = "WebTransportError")]
-    #[doc = "The `new WebTransportError(..)` constructor, creating a new instance of `WebTransportError`."]
-    #[doc = ""]
-    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebTransportError/WebTransportError)"]
-    pub fn new() -> Result<WebTransportError, JsValue>;
-    #[wasm_bindgen(catch, constructor, js_class = "WebTransportError")]
-    #[doc = "The `new WebTransportError(..)` constructor, creating a new instance of `WebTransportError`."]
-    #[doc = ""]
-    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebTransportError/WebTransportError)"]
-    pub fn new_with_message(message: &str) -> Result<WebTransportError, JsValue>;
-    #[cfg(feature = "WebTransportErrorOptions")]
-    #[wasm_bindgen(catch, constructor, js_class = "WebTransportError")]
-    #[doc = "The `new WebTransportError(..)` constructor, creating a new instance of `WebTransportError`."]
-    #[doc = ""]
-    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebTransportError/WebTransportError)"]
-    pub fn new_with_message_and_options(message: &str, options: &WebTransportErrorOptions) -> Result<WebTransportError, JsValue>;
+}
+
+#[wasm_bindgen]
+#[doc = "The `WebTransportErrorSource` enum."]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebTransportErrorSource {
+    Stream = "stream",
+    Session = "session",
 }
 
 #[wasm_bindgen]
@@ -89,7 +80,7 @@ extern "C" {
     #[doc = "The `WebTransportOptions` dictionary."]
     pub type WebTransportOptions;
 }
-#[cfg(web_sys_unstable_apis)]
+
 impl WebTransportOptions {
     #[doc = "Construct a new `WebTransportOptions`."]
     pub fn new() -> Self {
@@ -121,7 +112,7 @@ impl WebTransportOptions {
         self
     }
 }
-#[cfg(web_sys_unstable_apis)]
+
 impl Default for WebTransportOptions {
     fn default() -> Self {
         Self::new()
