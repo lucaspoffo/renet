@@ -261,10 +261,11 @@ impl WebTransportServer {
                 match result.unwrap() {
                     Some((_, datagram_bytes)) => match sender.try_send(datagram_bytes) {
                         Ok(_) => {}
-                        Err(err) => match err {
-                            mpsc::error::TrySendError::Closed(_) => break,
-                            _ => {}
-                        },
+                        Err(err) => {
+                            if let mpsc::error::TrySendError::Closed(_) = err {
+                                break;
+                            }
+                        }
                     },
                     None => break,
                 }
