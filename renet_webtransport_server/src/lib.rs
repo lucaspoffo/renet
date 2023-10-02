@@ -8,7 +8,7 @@ use log::error;
 use renet::{ClientId, RenetServer};
 use rustls::{Certificate, PrivateKey};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::SocketAddr,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -36,7 +36,7 @@ pub struct WebTransportConfig {
 pub struct WebTransportServer {
     endpoint: quinn::Endpoint,
     clients: HashMap<ClientId, Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>>,
-    lost_clients: Vec<ClientId>,
+    lost_clients: HashSet<ClientId>,
     client_iterator: u64,
     connection_receiver: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
     connection_abort_handle: AbortHandle,
@@ -65,7 +65,7 @@ impl WebTransportServer {
             endpoint,
             clients: HashMap::new(),
             client_iterator: 0,
-            lost_clients: Vec::new(),
+            lost_clients: HashSet::new(),
             connection_receiver: receiver,
             connection_abort_handle: abort_handle,
             reader_recievers: HashMap::new(),
@@ -106,7 +106,7 @@ impl WebTransportServer {
 
         for (client_id, thread) in self.reader_threads.iter() {
             if thread.is_finished() {
-                self.lost_clients.push(*client_id);
+                self.lost_clients.insert(*client_id);
             }
         }
 
@@ -117,11 +117,11 @@ impl WebTransportServer {
             *current_clients -= removed_clients;
         }
 
-        for client_id in self.lost_clients.iter() {
-            self.clients.remove(client_id);
-            renet_server.remove_connection(*client_id);
-            self.reader_recievers.remove(client_id);
-            self.reader_threads.remove(client_id);
+        for client_id in self.lost_clients.drain() {
+            self.clients.remove(&client_id);
+            renet_server.remove_connection(client_id);
+            self.reader_recievers.remove(&client_id);
+            self.reader_threads.remove(&client_id);
         }
     }
 
@@ -133,7 +133,7 @@ impl WebTransportServer {
                     if let Err(err) = session.send_datagram(data) {
                         match err.get_error_level() {
                             ErrorLevel::ConnectionError => {
-                                self.lost_clients.push(*client_id);
+                                self.lost_clients.insert(*client_id);
                                 break;
                             }
                             ErrorLevel::StreamError => error!("Stream error: {err}"),

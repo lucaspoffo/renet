@@ -1,6 +1,7 @@
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use js_sys::{Array, Uint8Array};
+use js_sys::{Array, Promise, Uint8Array};
 use renet::RenetClient;
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
@@ -8,23 +9,19 @@ use crate::bindings::WebTransportOptions;
 
 use super::bindings::{WebTransport, WebTransportError};
 use web_sys::{Blob, BlobPropertyBag, MessageEvent, Url, Worker, WritableStreamDefaultWriter};
-/// This is a wrapper for ['WebTransportCloseInfo']. Because it doesn't expose the fields.
-///
-///
-/// ['WebTransportCloseInfo']: web_sys::WebTransportCloseInfo
-pub struct WebTransportCloseError {
-    pub code: f64,
-    pub reason: String,
-}
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct WebTransportClient {
     web_transport: WebTransport,
     #[allow(dead_code)]
     persistent_callback_handle: Closure<dyn FnMut(MessageEvent)>,
+    #[allow(dead_code)]
+    close_callback_handle: Closure<dyn FnMut(JsValue)>,
     reciever: UnboundedReceiver<Vec<u8>>,
+    close_reciever: UnboundedReceiver<bool>,
     worker: Worker,
     writer: WritableStreamDefaultWriter,
+    is_disconnected: bool,
 }
 
 impl WebTransportClient {
@@ -46,24 +43,21 @@ impl WebTransportClient {
           }
         };
 
-        async function start() {
+        async function read() {
             while (true) {
                 if(reader) {
-                    // console.log('reading');
                     const { value, done } = await reader.read();
                     if (done) {
-                        // console.log('done');
                         break;
                     }
-                    // console.log(value);
                     self.postMessage(value);
                 } else {
-                    // don't block this thread, otherwise it cannot recive messages from the main thread.
                     await timer(100);
                 }
             }
         }
-        start();
+
+        read();
         "
             .into(),
         );
@@ -80,16 +74,29 @@ impl WebTransportClient {
 
         let writer = web_transport.datagrams().writable().get_writer()?;
 
+        let (close_sender, close_reciever) = futures_channel::mpsc::unbounded::<bool>();
+        let close_callback_handle: Closure<dyn FnMut(JsValue)> = Self::get_close_callback(close_sender);
+        let _ = web_transport.closed().then(&close_callback_handle).catch(&close_callback_handle);
+
         Ok(Self {
             web_transport,
             persistent_callback_handle,
             reciever,
             worker,
             writer,
+            close_reciever,
+            close_callback_handle,
+            is_disconnected: false,
         })
     }
 
     pub fn update(&mut self, renet_client: &mut RenetClient) {
+        if self.is_disconnected {
+            return;
+        }
+        if let Ok(response) = self.close_reciever.try_next() {
+            self.is_disconnected = response.is_some();
+        }
         while let Ok(packet) = self.reciever.try_next() {
             if let Some(packet) = packet {
                 renet_client.process_packet(&packet);
@@ -99,34 +106,27 @@ impl WebTransportClient {
         }
     }
 
-    pub async fn send_packets(&mut self, renet_client: &mut RenetClient) {
-        let packets = renet_client.get_packets_to_send();
+    pub fn send_packets(&mut self, renet_client: &mut RenetClient) {
+        if self.is_disconnected {
+            return;
+        }
 
+        let packets = renet_client.get_packets_to_send();
         for packet in packets {
             let data = Uint8Array::new_with_length(packet.len() as u32);
             data.copy_from(&packet);
-            let _ = JsFuture::from(self.writer.write_with_chunk(&data.into())).await;
+            handle_promise(self.writer.write_with_chunk(&data.into()));
         }
     }
 
-    pub async fn disconnect(&mut self) -> Result<(), WebTransportCloseError> {
+    pub fn disconnect(self) {
+        handle_promise(self.writer.close());
         self.web_transport.close();
         self.worker.terminate();
-        // once it fullies, webtransport will be closed.
-        let close_result = JsFuture::from(self.web_transport.closed()).await;
-        if close_result.is_err() {
-            let closed_js_value = close_result.unwrap_err();
-            let code = js_sys::Reflect::get(&closed_js_value, &JsValue::from_str("code"))
-                .unwrap()
-                .as_f64()
-                .unwrap();
-            let reason = js_sys::Reflect::get(&closed_js_value, &JsValue::from_str("reason"))
-                .unwrap()
-                .as_string()
-                .unwrap();
-            return Err(WebTransportCloseError { code, reason });
-        }
-        Ok(())
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        self.is_disconnected
     }
 
     async fn init_web_transport(url: &str, options: Option<WebTransportOptions>) -> Result<WebTransport, WebTransportError> {
@@ -135,7 +135,7 @@ impl WebTransportClient {
             None => WebTransport::new(url),
         }?;
         // returns undefined, once it fullies, webtransport will be ready to use.
-        let _ = JsFuture::from(web_transport.ready()).await;
+        JsFuture::from(web_transport.ready()).await?;
         Ok(web_transport)
     }
 
@@ -146,10 +146,18 @@ impl WebTransportClient {
             sender.unbounded_send(<JsValue as Into<Uint8Array>>::into(data).to_vec()).unwrap();
         })
     }
+
+    /// Creates a closure to act on the close event
+    fn get_close_callback(sender: UnboundedSender<bool>) -> Closure<dyn FnMut(JsValue)> {
+        Closure::new(move |_| {
+            sender.unbounded_send(true).unwrap();
+        })
+    }
 }
 
 impl Drop for WebTransportClient {
     fn drop(&mut self) {
+        handle_promise(self.writer.close());
         self.web_transport.close();
         self.worker.terminate();
     }
@@ -157,3 +165,22 @@ impl Drop for WebTransportClient {
 
 unsafe impl Sync for WebTransportClient {}
 unsafe impl Send for WebTransportClient {}
+
+/// Properly handles a promise.
+///
+/// A promise runs in the background, but it can have side effect when not handled correctly see https://github.com/typescript-eslint/typescript-eslint/blob/main/packages/eslint-plugin/docs/rules/no-floating-promises.md
+pub(crate) fn handle_promise(promise: Promise) {
+    type OptionalCallback = Option<SendWrapper<Closure<dyn FnMut(JsValue)>>>;
+    static mut GET_NOTHING_CALLBACK_HANDLE: OptionalCallback = None;
+
+    let nothing_callback_handle = unsafe {
+        if GET_NOTHING_CALLBACK_HANDLE.is_none() {
+            let cached_callback = Closure::new(|_| {});
+            GET_NOTHING_CALLBACK_HANDLE = Some(SendWrapper::new(cached_callback));
+        }
+
+        GET_NOTHING_CALLBACK_HANDLE.as_deref().unwrap()
+    };
+
+    let _ = promise.catch(nothing_callback_handle);
+}

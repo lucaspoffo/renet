@@ -1,7 +1,7 @@
 use renet::{ConnectionConfig, DefaultChannel, RenetClient};
 use renet_webtransport::prelude::*;
 use std::time::Duration;
-use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
 #[wasm_bindgen]
 pub struct ChatApplication {
@@ -13,13 +13,14 @@ pub struct ChatApplication {
 
 #[wasm_bindgen]
 impl ChatApplication {
-    pub async fn new() -> Option<ChatApplication> {
+    pub async fn new() -> Result<ChatApplication, JsValue> {
         console_error_panic_hook::set_once();
         let connection_config = ConnectionConfig::default();
         let client = RenetClient::new(connection_config);
 
-        let transport: WebTransportClient = WebTransportClient::new("https://127.0.0.1:4433", None).await.unwrap();
-        Some(Self {
+        let transport: WebTransportClient = WebTransportClient::new("https://127.0.0.1:4433", None).await?;
+
+        Ok(Self {
             renet_client: client,
             web_transport_client: transport,
             duration: 0.0,
@@ -37,8 +38,12 @@ impl ChatApplication {
         };
     }
 
-    pub async fn send_packets(&mut self) {
-        self.web_transport_client.send_packets(&mut self.renet_client).await;
+    pub fn is_disconnected(&self) -> bool {
+        self.web_transport_client.is_disconnected()
+    }
+
+    pub fn send_packets(&mut self) {
+        self.web_transport_client.send_packets(&mut self.renet_client);
     }
 
     pub fn send_message(&mut self, message: &str) {
@@ -46,8 +51,8 @@ impl ChatApplication {
             .send_message(DefaultChannel::Unreliable, message.as_bytes().to_vec());
     }
 
-    pub async fn disconnect(&mut self) {
-        let _ = self.web_transport_client.disconnect().await;
+    pub fn disconnect(self) {
+        self.web_transport_client.disconnect();
     }
 
     pub fn get_messages(&self) -> String {

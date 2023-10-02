@@ -19,6 +19,8 @@ js-sys = "0.3"
 renet = { path = "../renet" }
 bevy_ecs = { version = "0.11", optional = true }
 futures-channel = "0.3"
+send_wrapper = { version = "0.6.0", features = ["futures"] }
+
 
 [dependencies.web-sys]
 version = "0.3"
@@ -32,7 +34,7 @@ features = [
     "MessageEvent",
     "Blob",
     "BlobPropertyBag",
-    "Url"
+    "Url",
 ]
 [dependencies.getrandom]
 version = "0.2"
