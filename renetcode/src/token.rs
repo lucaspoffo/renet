@@ -23,17 +23,17 @@ pub struct ConnectToken {
     // NOTE: On the netcode standard the client id is not available in the public part of the
     // ConnectToken. But having it acessible here makes it easier to consume the token, and the
     // server still uses the client_id from the private part.
-    pub(crate) client_id: u64,
-    pub(crate) version_info: [u8; 13],
-    pub(crate) protocol_id: u64,
-    pub(crate) create_timestamp: u64,
-    pub(crate) expire_timestamp: u64,
-    pub(crate) xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
-    pub(crate) server_addresses: [Option<SocketAddr>; 32],
-    pub(crate) client_to_server_key: [u8; NETCODE_KEY_BYTES],
-    pub(crate) server_to_client_key: [u8; NETCODE_KEY_BYTES],
-    pub(crate) private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
-    pub(crate) timeout_seconds: i32,
+    pub client_id: u64,
+    pub version_info: [u8; 13],
+    pub protocol_id: u64,
+    pub create_timestamp: u64,
+    pub expire_timestamp: u64,
+    pub xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
+    pub server_addresses: [Option<SocketAddr>; 32],
+    pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
+    pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
+    pub private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES],
+    pub timeout_seconds: i32,
 }
 
 #[derive(Debug, PartialEq, Eq)]
