@@ -15,9 +15,9 @@ default = ["transport"]
 transport = ["renet/transport"]
 
 [dependencies]
-bevy_app = "0.11.0"
-bevy_ecs = "0.11.0"
-bevy_time = "0.11.0"
+bevy_app = "0.11"
+bevy_ecs = "0.11"
+bevy_time = "0.11"
 renet = {path = "../renet", version = "0.0.13", features = ["bevy"]}
 
 [dev-dependencies]
