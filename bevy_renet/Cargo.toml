@@ -21,7 +21,9 @@ name = "simple"
 required-features = ["serde", "transport"]
 
 [dependencies]
-bevy = {version = "0.11", default-features = false}
+bevy_app = "0.11"
+bevy_ecs = "0.11"
+bevy_time = "0.11"
 renet = {path = "../renet", version = "0.0.13", features = ["bevy"]}
 renet_steam = { path = "../renet_steam", version = "0.0.1", features = [ "bevy" ], optional = true }
 
