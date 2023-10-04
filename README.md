@@ -58,11 +58,11 @@ Renet aims to have a simple API that is easy to integrate with any code base. Po
 let mut server = RenetServer::new(ConnectionConfig::default());
 
 // Setup transport layer
-const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5000);
 let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
 let server_config = ServerConfig {
     current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
-    max_clients: 64
+    max_clients: 64,
     protocol_id: 0,
     public_addresses: vec![SERVER_ADDR],
     authentication: ServerAuthentication::Unsecure
@@ -89,7 +89,7 @@ loop {
     }
 
     // Receive message from channel
-    for client_id in server.connections_id() {
+    for client_id in server.clients_id() {
         // The enum DefaultChannel describe the channels used by the default configuration
         while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             // Handle received message
@@ -114,7 +114,7 @@ loop {
 let mut client = RenetClient::new(ConnectionConfig::default());
 
 // Setup transport layer
-const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1), 5000));
+const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5000);
 let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 let client_id: u64 = 0;
@@ -134,7 +134,7 @@ loop {
     client.update(delta_time)?;
     transport.update(delta_time, &mut client).unwrap();
     
-    if client.is_connected() {
+    if transport.is_connected() {
         // Receive message from server
         while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
             // Handle received message
