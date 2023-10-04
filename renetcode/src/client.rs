@@ -25,8 +25,8 @@ enum ClientState {
     Connected,
 }
 
-/// Configuration to establish an secure ou unsecure connection with the server.
-#[derive(Debug)]
+/// Configuration to establish a secure or unsecure connection with the server.
+#[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientAuthentication {
     /// Establishes a safe connection with the server using the [crate::ConnectToken].
