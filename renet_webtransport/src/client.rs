@@ -134,7 +134,7 @@ impl WebTransportClient {
             Some(options) => WebTransport::new_with_options(url, &options),
             None => WebTransport::new(url),
         }?;
-        // returns undefined, once it fullies, webtransport will be ready to use.
+        // the Promise value is undefined and discarded, but once it completes the webtransport will be ready to use.
         JsFuture::from(web_transport.ready()).await?;
         Ok(web_transport)
     }

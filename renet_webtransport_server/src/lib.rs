@@ -4,14 +4,17 @@ use h3::{error::ErrorLevel, ext::Protocol, server::Connection};
 use h3_quinn::Connection as H3QuinnConnection;
 use h3_webtransport::server::WebTransportSession;
 use http::Method;
-use log::error;
+use log::{error, trace};
 use renet::{ClientId, RenetServer};
 use rustls::{Certificate, PrivateKey};
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::Duration,
     vec,
 };
@@ -32,17 +35,21 @@ pub struct WebTransportConfig {
     pub max_clients: usize,
 }
 
+struct WebTransportServerClients {
+    session: Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>,
+    reader_reciever: mpsc::Receiver<Bytes>,
+    reader_thread: tokio::task::JoinHandle<()>,
+}
+
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct WebTransportServer {
     endpoint: quinn::Endpoint,
-    clients: HashMap<ClientId, Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>>,
+    clients: HashMap<ClientId, WebTransportServerClients>,
     lost_clients: HashSet<ClientId>,
     client_iterator: u64,
     connection_receiver: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
     connection_abort_handle: AbortHandle,
-    reader_recievers: HashMap<ClientId, mpsc::Receiver<Bytes>>,
-    reader_threads: HashMap<ClientId, tokio::task::JoinHandle<()>>,
-    current_clients: Arc<Mutex<usize>>,
+    current_clients: Arc<AtomicUsize>,
 }
 
 impl WebTransportServer {
@@ -52,7 +59,7 @@ impl WebTransportServer {
         let server_config = Self::create_server_config(config)?;
         let endpoint = quinn::Endpoint::server(server_config, addr)?;
         let (sender, receiver) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
-        let current_clients = Arc::new(Mutex::new(0_usize));
+        let current_clients = Arc::new(AtomicUsize::new(0));
         let abort_handle = tokio::spawn(Self::accept_connection(
             sender,
             endpoint.clone(),
@@ -68,8 +75,6 @@ impl WebTransportServer {
             lost_clients: HashSet::new(),
             connection_receiver: receiver,
             connection_abort_handle: abort_handle,
-            reader_recievers: HashMap::new(),
-            reader_threads: HashMap::new(),
             current_clients,
         })
     }
@@ -81,22 +86,28 @@ impl WebTransportServer {
             let shared_session = Arc::new(session);
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
             let (sender, reciever) = mpsc::channel::<Bytes>(256);
-            self.reader_recievers.insert(ClientId::from_raw(self.client_iterator), reciever);
             let thread = Self::reading_thread(Arc::clone(&shared_session), sender);
-            self.clients.insert(ClientId::from_raw(self.client_iterator), shared_session);
-            self.reader_threads.insert(ClientId::from_raw(self.client_iterator), thread);
+            self.clients.insert(
+                ClientId::from_raw(self.client_iterator),
+                WebTransportServerClients {
+                    session: shared_session,
+                    reader_reciever: reciever,
+                    reader_thread: thread,
+                },
+            );
             self.client_iterator += 1;
             clients_added += 1;
         }
 
         {
-            let mut current_clients = self.current_clients.lock().unwrap();
-            *current_clients += clients_added;
+            let mut current_clients = self.current_clients.load(Ordering::Relaxed);
+            current_clients += clients_added;
+            self.current_clients.store(current_clients, Ordering::Relaxed);
         }
 
         // recieve packets
-        for (client_id, _) in self.clients.iter_mut() {
-            let reader = self.reader_recievers.get_mut(client_id).unwrap();
+        for (client_id, client_data) in self.clients.iter_mut() {
+            let reader = &mut client_data.reader_reciever;
             while let Ok(packet) = reader.try_recv() {
                 if let Err(e) = renet_server.process_packet_from(&packet, *client_id) {
                     error!("Error while processing payload for {}: {}", client_id, e);
@@ -104,8 +115,8 @@ impl WebTransportServer {
             }
         }
 
-        for (client_id, thread) in self.reader_threads.iter() {
-            if thread.is_finished() {
+        for (client_id, client_data) in self.clients.iter() {
+            if client_data.reader_thread.is_finished() {
                 self.lost_clients.insert(*client_id);
             }
         }
@@ -113,24 +124,23 @@ impl WebTransportServer {
         // remove lost clients
         let removed_clients = self.lost_clients.len();
         {
-            let mut current_clients = self.current_clients.lock().unwrap();
-            *current_clients -= removed_clients;
+            let mut current_clients = self.current_clients.load(Ordering::Relaxed);
+            current_clients -= removed_clients;
+            self.current_clients.store(current_clients, Ordering::Relaxed);
         }
 
         for client_id in self.lost_clients.drain() {
             self.clients.remove(&client_id);
             renet_server.remove_connection(client_id);
-            self.reader_recievers.remove(&client_id);
-            self.reader_threads.remove(&client_id);
         }
     }
 
     pub fn send_packets(&mut self, renet_server: &mut RenetServer) {
-        for (client_id, session) in self.clients.iter() {
+        for (client_id, client_data) in self.clients.iter() {
             if let Ok(packets) = renet_server.get_packets_to_send(*client_id) {
                 for packet in packets {
                     let data = Bytes::copy_from_slice(&packet);
-                    if let Err(err) = session.send_datagram(data) {
+                    if let Err(err) = client_data.session.send_datagram(data) {
                         match err.get_error_level() {
                             ErrorLevel::ConnectionError => {
                                 self.lost_clients.insert(*client_id);
@@ -147,47 +157,51 @@ impl WebTransportServer {
     async fn accept_connection(
         sender: mpsc::Sender<WebTransportSession<H3QuinnConnection, Bytes>>,
         endpoint: quinn::Endpoint,
-        current_clients: Arc<Mutex<usize>>,
+        current_clients: Arc<AtomicUsize>,
         max_clients: usize,
     ) {
         while let Some(new_conn) = endpoint.accept().await {
-            match new_conn.await {
-                Ok(conn) => {
-                    let is_full = {
-                        let current_clients = current_clients.lock().unwrap();
-                        *current_clients >= max_clients
-                    };
-                    if is_full {
-                        conn.close(0u32.into(), b"Server full");
-                        continue;
-                    }
-                    if let Ok(h3_conn) = h3::server::builder()
-                        .enable_webtransport(true)
-                        .enable_connect(true)
-                        .enable_datagram(true)
-                        .max_webtransport_sessions(1)
-                        .send_grease(true)
-                        .build(H3QuinnConnection::new(conn))
-                        .await
-                    {
-                        match Self::handle_connection(h3_conn).await {
-                            Ok(web_transport_option) => {
-                                if let Some(session) = web_transport_option {
-                                    if let Err(e) = sender.try_send(session) {
-                                        error!("Failed to send session to main thread: {}", e);
+            let sender = sender.clone();
+            let current_clients = Arc::clone(&current_clients);
+            tokio::spawn(async move {
+                match new_conn.await {
+                    Ok(conn) => {
+                        let is_full = {
+                            let current_clients = current_clients.load(Ordering::Relaxed);
+                            current_clients >= max_clients
+                        };
+                        if is_full {
+                            conn.close(0u32.into(), b"Server full");
+                            return;
+                        }
+                        if let Ok(h3_conn) = h3::server::builder()
+                            .enable_webtransport(true)
+                            .enable_connect(true)
+                            .enable_datagram(true)
+                            .max_webtransport_sessions(1)
+                            .send_grease(true)
+                            .build(H3QuinnConnection::new(conn))
+                            .await
+                        {
+                            match Self::handle_connection(h3_conn).await {
+                                Ok(web_transport_option) => {
+                                    if let Some(session) = web_transport_option {
+                                        if let Err(e) = sender.try_send(session) {
+                                            error!("Failed to send session to main thread: {}", e);
+                                        }
                                     }
                                 }
-                            }
-                            Err(err) => {
-                                error!("Failed to handle connection: {err:?}");
+                                Err(err) => {
+                                    error!("Failed to handle connection: {err:?}");
+                                }
                             }
                         }
                     }
+                    Err(err) => {
+                        error!("accepting connection failed: {:?}", err);
+                    }
                 }
-                Err(err) => {
-                    error!("accepting connection failed: {:?}", err);
-                }
-            }
+            });
         }
     }
 
@@ -209,6 +223,7 @@ impl WebTransportServer {
             .with_single_cert(vec![cert], key)?;
 
         tls_config.max_early_data_size = u32::MAX;
+        // We set the ALPN protocols to h3 as first, so that the browser will use the newest HTTP/3 draft and as fallback we use older versions of HTTP/3 draft
         let alpn: Vec<Vec<u8>> = vec![
             b"h3".to_vec(),
             b"h3-32".to_vec(),
@@ -265,6 +280,7 @@ impl WebTransportServer {
                             if let mpsc::error::TrySendError::Closed(_) = err {
                                 break;
                             }
+                            trace!("The reading data could not be sent because the channel is currently full and sending would require blocking.");
                         }
                     },
                     None => break,
