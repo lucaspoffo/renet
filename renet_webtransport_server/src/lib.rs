@@ -35,7 +35,7 @@ pub struct WebTransportConfig {
     pub max_clients: usize,
 }
 
-struct WebTransportServerClients {
+struct WebTransportServerClient {
     session: Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>,
     reader_reciever: mpsc::Receiver<Bytes>,
     reader_thread: tokio::task::JoinHandle<()>,
@@ -44,7 +44,7 @@ struct WebTransportServerClients {
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct WebTransportServer {
     endpoint: quinn::Endpoint,
-    clients: HashMap<ClientId, WebTransportServerClients>,
+    clients: HashMap<ClientId, WebTransportServerClient>,
     lost_clients: HashSet<ClientId>,
     client_iterator: u64,
     connection_receiver: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
@@ -89,7 +89,7 @@ impl WebTransportServer {
             let thread = Self::reading_thread(Arc::clone(&shared_session), sender);
             self.clients.insert(
                 ClientId::from_raw(self.client_iterator),
-                WebTransportServerClients {
+                WebTransportServerClient {
                     session: shared_session,
                     reader_reciever: reciever,
                     reader_thread: thread,
@@ -99,11 +99,7 @@ impl WebTransportServer {
             clients_added += 1;
         }
 
-        {
-            let mut current_clients = self.current_clients.load(Ordering::Relaxed);
-            current_clients += clients_added;
-            self.current_clients.store(current_clients, Ordering::Relaxed);
-        }
+        self.current_clients.fetch_add(clients_added, Ordering::Release);
 
         // recieve packets
         for (client_id, client_data) in self.clients.iter_mut() {
@@ -122,12 +118,7 @@ impl WebTransportServer {
         }
 
         // remove lost clients
-        let removed_clients = self.lost_clients.len();
-        {
-            let mut current_clients = self.current_clients.load(Ordering::Relaxed);
-            current_clients -= removed_clients;
-            self.current_clients.store(current_clients, Ordering::Relaxed);
-        }
+        self.current_clients.fetch_sub(self.lost_clients.len(), Ordering::Release);
 
         for client_id in self.lost_clients.drain() {
             self.clients.remove(&client_id);
@@ -162,7 +153,7 @@ impl WebTransportServer {
     ) {
         while let Some(new_conn) = endpoint.accept().await {
             let sender = sender.clone();
-            let current_clients = Arc::clone(&current_clients);
+            let current_clients = current_clients.clone();
             tokio::spawn(async move {
                 match new_conn.await {
                     Ok(conn) => {
