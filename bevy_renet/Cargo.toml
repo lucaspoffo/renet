@@ -11,7 +11,7 @@ version = "0.0.10"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["transport", "channel"]
+default = ["transport"]
 serde = ["renet/serde"]
 transport = ["renet/transport"]
 steam = ["renet_steam"]
