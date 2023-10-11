@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::mem;
-use std::sync::mpsc::{self, TryRecvError};
 
+use crossbeam::channel::{unbounded, TryRecvError};
 use renet::{ClientId, RenetServer};
 
 use crate::client::ChannelClientTransport;
@@ -16,8 +15,8 @@ pub struct ChannelServerTransport {
 
 impl ChannelServerTransport {
     pub fn create_client(&mut self) -> ChannelClientTransport {
-        let (send_to_client, receive_from_server) = mpsc::channel::<Vec<u8>>();
-        let (send_to_server, receive_from_client) = mpsc::channel::<Vec<u8>>();
+        let (send_to_client, receive_from_server) = unbounded::<Vec<u8>>();
+        let (send_to_server, receive_from_client) = unbounded::<Vec<u8>>();
 
         let client_id = ClientId::from_raw(self.next_client_id);
         self.next_client_id += 1;
@@ -25,14 +24,14 @@ impl ChannelServerTransport {
         let connection = Connection::new(send_to_client, receive_from_client);
         self.connections.insert(client_id, connection);
 
-        ChannelClientTransport::new(receive_from_server, send_to_server)
+        ChannelClientTransport::new(client_id, receive_from_server, send_to_server)
     }
 
     pub fn update(&mut self, server: &mut RenetServer) {
         for (&client_id, connection) in self.connections.iter_mut() {
             server.add_connection(client_id);
 
-            match connection.receiver().try_recv() {
+            match connection.receiver.try_recv() {
                 Ok(packet) => server.process_packet_from(&packet, client_id).unwrap(),
                 Err(TryRecvError::Empty) => (),
                 Err(TryRecvError::Disconnected) => {
@@ -50,7 +49,7 @@ impl ChannelServerTransport {
             let packets = server.get_packets_to_send(client_id).unwrap();
 
             for packet in packets {
-                if connection.sender().send(packet).is_err() {
+                if connection.sender.send(packet).is_err() {
                     self.disconnect_client(client_id, server);
                     break;
                 }
@@ -64,7 +63,7 @@ impl ChannelServerTransport {
     }
 
     pub fn disconnect_all(&mut self, server: &mut RenetServer) {
-        mem::take(&mut self.connections);
+        self.connections = HashMap::new();
         server.disconnect_all();
     }
 }

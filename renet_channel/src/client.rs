@@ -1,17 +1,18 @@
-use std::sync::mpsc::{Receiver, Sender, TryRecvError};
-
-use renet::RenetClient;
+use crossbeam::channel::{Receiver, Sender, TryRecvError};
+use renet::{ClientId, RenetClient};
 
 use crate::Connection;
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct ChannelClientTransport {
+    client_id: ClientId,
     connection: Option<Connection>,
 }
 
 impl ChannelClientTransport {
-    pub(crate) fn new(receiver: Receiver<Vec<u8>>, sender: Sender<Vec<u8>>) -> Self {
+    pub(crate) fn new(client_id: ClientId, receiver: Receiver<Vec<u8>>, sender: Sender<Vec<u8>>) -> Self {
         Self {
+            client_id,
             connection: Some(Connection::new(sender, receiver)),
         }
     }
@@ -20,7 +21,7 @@ impl ChannelClientTransport {
         let Some(ref mut connection) = self.connection else { return };
 
         loop {
-            match connection.receiver().try_recv() {
+            match connection.receiver.try_recv() {
                 Ok(packet) => {
                     client.process_packet(&packet);
                     continue;
@@ -38,7 +39,7 @@ impl ChannelClientTransport {
         for packet in packets {
             let Some(ref mut connection) = self.connection else { continue };
 
-            if connection.sender().send(packet).is_err() {
+            if connection.sender.send(packet).is_err() {
                 self.disconnect(client);
                 break;
             }
@@ -52,5 +53,9 @@ impl ChannelClientTransport {
 
     pub fn is_connected(&self) -> bool {
         self.connection.is_some()
+    }
+
+    pub fn client_id(&self) -> ClientId {
+        self.client_id
     }
 }
