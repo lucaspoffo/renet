@@ -47,7 +47,7 @@ pub struct WebTransportServer {
     clients: HashMap<ClientId, WebTransportServerClient>,
     lost_clients: HashSet<ClientId>,
     client_iterator: u64,
-    connection_receiver: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
+    connection_reciever: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
     connection_abort_handle: AbortHandle,
     current_clients: Arc<AtomicUsize>,
 }
@@ -58,7 +58,7 @@ impl WebTransportServer {
         let max_clients = config.max_clients;
         let server_config = Self::create_server_config(config)?;
         let endpoint = quinn::Endpoint::server(server_config, addr)?;
-        let (sender, receiver) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
+        let (sender, reciever) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
         let current_clients = Arc::new(AtomicUsize::new(0));
         let abort_handle = tokio::spawn(Self::accept_connection(
             sender,
@@ -73,7 +73,7 @@ impl WebTransportServer {
             clients: HashMap::new(),
             client_iterator: 0,
             lost_clients: HashSet::new(),
-            connection_receiver: receiver,
+            connection_reciever: reciever,
             connection_abort_handle: abort_handle,
             current_clients,
         })
@@ -82,7 +82,7 @@ impl WebTransportServer {
     pub fn update(&mut self, renet_server: &mut RenetServer) {
         let mut clients_added = 0;
 
-        if let Ok(session) = self.connection_receiver.try_recv() {
+        if let Ok(session) = self.connection_reciever.try_recv() {
             let shared_session = Arc::new(session);
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
             let (sender, reciever) = mpsc::channel::<Bytes>(256);
@@ -246,7 +246,7 @@ impl WebTransportServer {
                 }
             }
 
-            // indicating no more streams to be received
+            // indicating no more streams to be recieved
             Ok(None) => Ok(None),
 
             Err(err) => Err(err),

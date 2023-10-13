@@ -12,6 +12,7 @@ use web_sys::{ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
 #[cfg(feature = "worker")]
 use crate::bindings::WebTransportOptions;
+#[cfg(not(feature = "worker"))]
 use crate::bindings::{ReadableStreamDefaultReadResult, WebTransportOptions};
 
 use super::bindings::{WebTransport, WebTransportError};
