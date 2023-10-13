@@ -30,11 +30,6 @@ features = [
     "WritableStream",
     "ReadableStreamDefaultReader",
     "WritableStreamDefaultWriter",
-    "Worker",
-    "MessageEvent",
-    "Blob",
-    "BlobPropertyBag",
-    "Url",
 ]
 [dependencies.getrandom]
 version = "0.2"
@@ -45,3 +40,4 @@ wasm-bindgen-test = "0.3"
 
 [features]
 bevy = ["dep:bevy_ecs"]
+worker = ["web-sys/Worker", "web-sys/MessageEvent", "web-sys/Url", "web-sys/Blob", "web-sys/BlobPropertyBag"]

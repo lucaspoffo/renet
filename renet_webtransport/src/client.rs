@@ -1,15 +1,25 @@
-use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use js_sys::{Array, Promise, Uint8Array};
+use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+#[cfg(not(feature = "worker"))]
+use js_sys::{Promise, Uint8Array};
 use renet::RenetClient;
 use send_wrapper::SendWrapper;
-use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
-use wasm_bindgen_futures::JsFuture;
+#[cfg(not(feature = "worker"))]
+use wasm_bindgen::{prelude::Closure, JsValue};
+use wasm_bindgen_futures::{spawn_local, JsFuture};
+#[cfg(not(feature = "worker"))]
+use web_sys::WritableStreamDefaultWriter;
 
-use crate::bindings::WebTransportOptions;
+use crate::bindings::{ReadableStreamDefaultReadResult, ReadableStreamDefaultReader, WebTransportOptions};
 
 use super::bindings::{WebTransport, WebTransportError};
-use web_sys::{Blob, BlobPropertyBag, MessageEvent, Url, Worker, WritableStreamDefaultWriter};
+#[cfg(feature = "worker")]
+use js_sys::{Array, Promise, Uint8Array};
+#[cfg(feature = "worker")]
+use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
+#[cfg(feature = "worker")]
+use web_sys::{Blob, BlobPropertyBag, MessageEvent, ReadableStream, Url, Worker, WritableStreamDefaultWriter};
 
+#[cfg(feature = "worker")]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct WebTransportClient {
     web_transport: WebTransport,
@@ -24,7 +34,20 @@ pub struct WebTransportClient {
     is_disconnected: bool,
 }
 
+#[cfg(not(feature = "worker"))]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
+pub struct WebTransportClient {
+    web_transport: WebTransport,
+    #[allow(dead_code)]
+    close_callback_handle: Closure<dyn FnMut(JsValue)>,
+    reciever: UnboundedReceiver<Vec<u8>>,
+    close_reciever: UnboundedReceiver<bool>,
+    writer: WritableStreamDefaultWriter,
+    is_disconnected: bool,
+}
+
 impl WebTransportClient {
+    #[cfg(feature = "worker")]
     pub async fn new(url: &str, options: Option<WebTransportOptions>) -> Result<Self, JsValue> {
         let web_transport = Self::init_web_transport(url, options).await?;
 
@@ -68,9 +91,23 @@ impl WebTransportClient {
         let transfer_array = Array::new_with_length(1);
         transfer_array.set(0, web_transport.datagrams().readable().into());
         worker.post_message_with_transfer(&web_transport.datagrams().readable(), &transfer_array)?;
-        let (sender, reciever) = futures_channel::mpsc::unbounded::<Vec<u8>>();
+        let (sender, reciever) = unbounded::<Vec<u8>>();
         let persistent_callback_handle = Self::get_on_msg_callback(sender);
         worker.set_onmessage(Some(persistent_callback_handle.as_ref().unchecked_ref()));
+
+        let reader_value = web_transport.datagrams().readable();
+        spawn_local(async move {
+            let reader: ReadableStreamDefaultReader = reader_value.get_reader().into();
+            loop {
+                let value = JsFuture::from(reader.read()).await?;
+                let result: ReadableStreamDefaultReadResult = value.into();
+                if (value.is_done()) {
+                    break;
+                }
+                let data: Uint8Array = result.value().into();
+                sender.unbounded_send(data.to_vec())?;
+            }
+        });
 
         let writer = web_transport.datagrams().writable().get_writer()?;
 
@@ -83,6 +120,45 @@ impl WebTransportClient {
             persistent_callback_handle,
             reciever,
             worker,
+            writer,
+            close_reciever,
+            close_callback_handle,
+            is_disconnected: false,
+        })
+    }
+
+    #[cfg(not(feature = "worker"))]
+    pub async fn new(url: &str, options: Option<WebTransportOptions>) -> Result<Self, JsValue> {
+        let web_transport = Self::init_web_transport(url, options).await?;
+
+        let (sender, reciever) = unbounded::<Vec<u8>>();
+
+        let reader_value = web_transport.datagrams().readable();
+        spawn_local(async move {
+            let reader: ReadableStreamDefaultReader = JsValue::from(reader_value.get_reader()).into();
+            loop {
+                let value = JsFuture::from(reader.read()).await;
+                if value.is_err() {
+                    break;
+                }
+                let result: ReadableStreamDefaultReadResult = value.unwrap().into();
+                if result.is_done() {
+                    break;
+                }
+                let data: Uint8Array = result.value().into();
+                let _ = sender.unbounded_send(data.to_vec());
+            }
+        });
+
+        let writer = web_transport.datagrams().writable().get_writer()?;
+
+        let (close_sender, close_reciever) = futures_channel::mpsc::unbounded::<bool>();
+        let close_callback_handle: Closure<dyn FnMut(JsValue)> = Self::get_close_callback(close_sender);
+        let _ = web_transport.closed().then(&close_callback_handle).catch(&close_callback_handle);
+
+        Ok(Self {
+            web_transport,
+            reciever,
             writer,
             close_reciever,
             close_callback_handle,
@@ -122,6 +198,7 @@ impl WebTransportClient {
     pub fn disconnect(self) {
         handle_promise(self.writer.close());
         self.web_transport.close();
+        #[cfg(feature = "worker")]
         self.worker.terminate();
     }
 
@@ -139,6 +216,7 @@ impl WebTransportClient {
         Ok(web_transport)
     }
 
+    #[cfg(feature = "worker")]
     /// Create a closure to act on the message returned by the worker
     fn get_on_msg_callback(sender: UnboundedSender<Vec<u8>>) -> Closure<dyn FnMut(MessageEvent)> {
         Closure::new(move |event: MessageEvent| {
@@ -159,6 +237,7 @@ impl Drop for WebTransportClient {
     fn drop(&mut self) {
         handle_promise(self.writer.close());
         self.web_transport.close();
+        #[cfg(feature = "worker")]
         self.worker.terminate();
     }
 }

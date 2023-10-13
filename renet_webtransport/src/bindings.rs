@@ -1,3 +1,4 @@
+use js_sys::Promise;
 /// This module contains the bindings to the WebTransport API.
 /// This is a temporary solution until the bindings are stable in the web_sys crate.
 /// It was copied over from web_sys and modified so that it only contains the bindings which are used in this library.
@@ -162,4 +163,27 @@ impl Default for WebTransportCloseInfo {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    /// A raw [`ReadableStreamDefaultReader`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultReader).
+    #[derive(Clone, Debug)]
+    pub type ReadableStreamDefaultReader;
+
+    #[wasm_bindgen(method, js_name = read)]
+    pub fn read(this: &ReadableStreamDefaultReader) -> Promise;
+}
+
+#[wasm_bindgen]
+extern "C" {
+    /// A result returned by [`ReadableStreamDefaultReader.read`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultReader/read).
+    #[derive(Clone, Debug)]
+    pub type ReadableStreamDefaultReadResult;
+
+    #[wasm_bindgen(method, getter, js_name = done)]
+    pub fn is_done(this: &ReadableStreamDefaultReadResult) -> bool;
+
+    #[wasm_bindgen(method, getter, js_name = value)]
+    pub fn value(this: &ReadableStreamDefaultReadResult) -> JsValue;
 }
