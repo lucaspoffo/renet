@@ -5,6 +5,7 @@ use renet::RenetClient;
 use send_wrapper::SendWrapper;
 #[cfg(not(feature = "worker"))]
 use wasm_bindgen::{prelude::Closure, JsValue};
+#[cfg(not(feature = "worker"))]
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 #[cfg(not(feature = "worker"))]
 use web_sys::WritableStreamDefaultWriter;
@@ -16,6 +17,8 @@ use super::bindings::{WebTransport, WebTransportError};
 use js_sys::{Array, Promise, Uint8Array};
 #[cfg(feature = "worker")]
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
+#[cfg(feature = "worker")]
+use wasm_bindgen_futures::JsFuture;
 #[cfg(feature = "worker")]
 use web_sys::{Blob, BlobPropertyBag, MessageEvent, ReadableStream, Url, Worker, WritableStreamDefaultWriter};
 
