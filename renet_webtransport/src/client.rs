@@ -10,6 +10,8 @@ use wasm_bindgen_futures::{spawn_local, JsFuture};
 #[cfg(not(feature = "worker"))]
 use web_sys::{ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
+#[cfg(feature = "worker")]
+use crate::bindings::WebTransportOptions;
 use crate::bindings::{ReadableStreamDefaultReadResult, WebTransportOptions};
 
 use super::bindings::{WebTransport, WebTransportError};
@@ -20,7 +22,7 @@ use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 #[cfg(feature = "worker")]
 use wasm_bindgen_futures::JsFuture;
 #[cfg(feature = "worker")]
-use web_sys::{Blob, BlobPropertyBag, MessageEvent, ReadableStreamDefaultReader, Url, Worker, WritableStreamDefaultWriter};
+use web_sys::{Blob, BlobPropertyBag, MessageEvent, Url, Worker, WritableStreamDefaultWriter};
 
 #[cfg(feature = "worker")]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
