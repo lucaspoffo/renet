@@ -8,9 +8,9 @@ use wasm_bindgen::{prelude::Closure, JsValue};
 #[cfg(not(feature = "worker"))]
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 #[cfg(not(feature = "worker"))]
-use web_sys::WritableStreamDefaultWriter;
+use web_sys::{ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
-use crate::bindings::{ReadableStreamDefaultReadResult, ReadableStreamDefaultReader, WebTransportOptions};
+use crate::bindings::{ReadableStreamDefaultReadResult, WebTransportOptions};
 
 use super::bindings::{WebTransport, WebTransportError};
 #[cfg(feature = "worker")]
@@ -20,7 +20,7 @@ use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 #[cfg(feature = "worker")]
 use wasm_bindgen_futures::JsFuture;
 #[cfg(feature = "worker")]
-use web_sys::{Blob, BlobPropertyBag, MessageEvent, ReadableStream, Url, Worker, WritableStreamDefaultWriter};
+use web_sys::{Blob, BlobPropertyBag, MessageEvent, ReadableStreamDefaultReader, Url, Worker, WritableStreamDefaultWriter};
 
 #[cfg(feature = "worker")]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
@@ -97,20 +97,6 @@ impl WebTransportClient {
         let (sender, reciever) = unbounded::<Vec<u8>>();
         let persistent_callback_handle = Self::get_on_msg_callback(sender);
         worker.set_onmessage(Some(persistent_callback_handle.as_ref().unchecked_ref()));
-
-        let reader_value = web_transport.datagrams().readable();
-        spawn_local(async move {
-            let reader: ReadableStreamDefaultReader = reader_value.get_reader().into();
-            loop {
-                let value = JsFuture::from(reader.read()).await?;
-                let result: ReadableStreamDefaultReadResult = value.into();
-                if (value.is_done()) {
-                    break;
-                }
-                let data: Uint8Array = result.value().into();
-                sender.unbounded_send(data.to_vec())?;
-            }
-        });
 
         let writer = web_transport.datagrams().writable().get_writer()?;
 
