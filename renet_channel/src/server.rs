@@ -27,6 +27,20 @@ impl ChannelServerTransport {
         ChannelClientTransport::new(client_id, receive_from_server, send_to_server)
     }
 
+    pub fn create_client_with_id(&mut self, client_id: ClientId) -> Option<ChannelClientTransport> {
+        if self.connections.contains_key(&client_id) {
+            return None;
+        }
+
+        let (send_to_client, receive_from_server) = unbounded::<Vec<u8>>();
+        let (send_to_server, receive_from_client) = unbounded::<Vec<u8>>();
+
+        let connection = Connection::new(send_to_client, receive_from_client);
+        self.connections.insert(client_id, connection);
+
+        Some(ChannelClientTransport::new(client_id, receive_from_server, send_to_server))
+    }
+
     pub fn update(&mut self, server: &mut RenetServer) {
         for (&client_id, connection) in self.connections.iter_mut() {
             server.add_connection(client_id);

@@ -339,4 +339,48 @@ mod tests {
         server.update();
         client.update();
     }
+
+    #[test]
+    fn specific_client_id() {
+        let specific_id = ClientId::from_raw(4);
+
+        let mut server = create_server_app();
+        let mut client = {
+            let mut server_transport = server.world.resource_mut::<ChannelServerTransport>();
+            let client_transport = server_transport.create_client_with_id(specific_id).unwrap();
+            let renet_client = RenetClient::new(ConnectionConfig::default());
+
+            let mut client = App::new();
+            client
+                .add_plugins((MinimalPlugins, RenetClientPlugin, ChannelClientPlugin))
+                .insert_resource(renet_client)
+                .insert_resource(client_transport)
+                .init_resource::<ClientReceived>()
+                .add_systems(Update, |mut client: ResMut<RenetClient>, mut received: ResMut<ClientReceived>| {
+                    while let Some(packet) = client.receive_message(DefaultChannel::ReliableOrdered) {
+                        received.push(packet.to_vec());
+                    }
+                });
+
+            client
+        };
+
+        assert!(server
+            .world
+            .resource_mut::<ChannelServerTransport>()
+            .create_client_with_id(specific_id)
+            .is_none());
+
+        client.add_systems(Update, |mut client: ResMut<RenetClient>| {
+            client.send_message(DefaultChannel::ReliableOrdered, vec![0])
+        });
+
+        server.update();
+        client.update();
+        server.update();
+
+        assert_eq!(client.world.resource::<ChannelClientTransport>().client_id(), specific_id);
+        assert_eq!(server.world.resource::<RenetServer>().clients_id(), [specific_id]);
+        assert_eq!(server_received(&server), [(specific_id.raw(), vec![0])]);
+    }
 }
