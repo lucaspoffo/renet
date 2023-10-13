@@ -37,7 +37,7 @@ pub struct WebTransportConfig {
 
 struct WebTransportServerClient {
     session: Arc<WebTransportSession<H3QuinnConnection, bytes::Bytes>>,
-    reader_reciever: mpsc::Receiver<Bytes>,
+    reader_receiver: mpsc::Receiver<Bytes>,
     reader_thread: tokio::task::JoinHandle<()>,
 }
 
@@ -47,7 +47,7 @@ pub struct WebTransportServer {
     clients: HashMap<ClientId, WebTransportServerClient>,
     lost_clients: HashSet<ClientId>,
     client_iterator: u64,
-    connection_reciever: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
+    connection_receiver: mpsc::Receiver<WebTransportSession<H3QuinnConnection, Bytes>>,
     connection_abort_handle: AbortHandle,
     current_clients: Arc<AtomicUsize>,
 }
@@ -58,7 +58,7 @@ impl WebTransportServer {
         let max_clients = config.max_clients;
         let server_config = Self::create_server_config(config)?;
         let endpoint = quinn::Endpoint::server(server_config, addr)?;
-        let (sender, reciever) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
+        let (sender, receiver) = mpsc::channel::<WebTransportSession<H3QuinnConnection, Bytes>>(max_clients);
         let current_clients = Arc::new(AtomicUsize::new(0));
         let abort_handle = tokio::spawn(Self::accept_connection(
             sender,
@@ -73,7 +73,7 @@ impl WebTransportServer {
             clients: HashMap::new(),
             client_iterator: 0,
             lost_clients: HashSet::new(),
-            connection_reciever: reciever,
+            connection_receiver: receiver,
             connection_abort_handle: abort_handle,
             current_clients,
         })
@@ -82,16 +82,16 @@ impl WebTransportServer {
     pub fn update(&mut self, renet_server: &mut RenetServer) {
         let mut clients_added = 0;
 
-        if let Ok(session) = self.connection_reciever.try_recv() {
+        if let Ok(session) = self.connection_receiver.try_recv() {
             let shared_session = Arc::new(session);
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
-            let (sender, reciever) = mpsc::channel::<Bytes>(256);
+            let (sender, receiver) = mpsc::channel::<Bytes>(256);
             let thread = Self::reading_thread(Arc::clone(&shared_session), sender);
             self.clients.insert(
                 ClientId::from_raw(self.client_iterator),
                 WebTransportServerClient {
                     session: shared_session,
-                    reader_reciever: reciever,
+                    reader_receiver: receiver,
                     reader_thread: thread,
                 },
             );
@@ -101,9 +101,9 @@ impl WebTransportServer {
 
         self.current_clients.fetch_add(clients_added, Ordering::Release);
 
-        // recieve packets
+        // receive packets
         for (client_id, client_data) in self.clients.iter_mut() {
-            let reader = &mut client_data.reader_reciever;
+            let reader = &mut client_data.reader_receiver;
             while let Ok(packet) = reader.try_recv() {
                 if let Err(e) = renet_server.process_packet_from(&packet, *client_id) {
                     error!("Error while processing payload for {}: {}", client_id, e);
@@ -246,7 +246,7 @@ impl WebTransportServer {
                 }
             }
 
-            // indicating no more streams to be recieved
+            // indicating no more streams to be received
             Ok(None) => Ok(None),
 
             Err(err) => Err(err),

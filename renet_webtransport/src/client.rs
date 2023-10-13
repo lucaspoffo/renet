@@ -33,8 +33,8 @@ pub struct WebTransportClient {
     persistent_callback_handle: Closure<dyn FnMut(MessageEvent)>,
     #[allow(dead_code)]
     close_callback_handle: Closure<dyn FnMut(JsValue)>,
-    reciever: UnboundedReceiver<Vec<u8>>,
-    close_reciever: UnboundedReceiver<bool>,
+    receiver: UnboundedReceiver<Vec<u8>>,
+    close_receiver: UnboundedReceiver<bool>,
     worker: Worker,
     writer: WritableStreamDefaultWriter,
     is_disconnected: bool,
@@ -46,8 +46,8 @@ pub struct WebTransportClient {
     web_transport: WebTransport,
     #[allow(dead_code)]
     close_callback_handle: Closure<dyn FnMut(JsValue)>,
-    reciever: UnboundedReceiver<Vec<u8>>,
-    close_reciever: UnboundedReceiver<bool>,
+    receiver: UnboundedReceiver<Vec<u8>>,
+    close_receiver: UnboundedReceiver<bool>,
     writer: WritableStreamDefaultWriter,
     is_disconnected: bool,
 }
@@ -97,23 +97,23 @@ impl WebTransportClient {
         let transfer_array = Array::new_with_length(1);
         transfer_array.set(0, web_transport.datagrams().readable().into());
         worker.post_message_with_transfer(&web_transport.datagrams().readable(), &transfer_array)?;
-        let (sender, reciever) = unbounded::<Vec<u8>>();
+        let (sender, receiver) = unbounded::<Vec<u8>>();
         let persistent_callback_handle = Self::get_on_msg_callback(sender);
         worker.set_onmessage(Some(persistent_callback_handle.as_ref().unchecked_ref()));
 
         let writer = web_transport.datagrams().writable().get_writer()?;
 
-        let (close_sender, close_reciever) = futures_channel::mpsc::unbounded::<bool>();
+        let (close_sender, close_receiver) = futures_channel::mpsc::unbounded::<bool>();
         let close_callback_handle: Closure<dyn FnMut(JsValue)> = Self::get_close_callback(close_sender);
         let _ = web_transport.closed().then(&close_callback_handle).catch(&close_callback_handle);
 
         Ok(Self {
             web_transport,
             persistent_callback_handle,
-            reciever,
+            receiver,
             worker,
             writer,
-            close_reciever,
+            close_receiver,
             close_callback_handle,
             is_disconnected: false,
         })
@@ -123,7 +123,7 @@ impl WebTransportClient {
     pub async fn new(url: &str, options: Option<WebTransportOptions>) -> Result<Self, JsValue> {
         let web_transport = Self::init_web_transport(url, options).await?;
 
-        let (sender, reciever) = unbounded::<Vec<u8>>();
+        let (sender, receiver) = unbounded::<Vec<u8>>();
 
         let reader_value = web_transport.datagrams().readable();
         spawn_local(async move {
@@ -144,15 +144,15 @@ impl WebTransportClient {
 
         let writer = web_transport.datagrams().writable().get_writer()?;
 
-        let (close_sender, close_reciever) = futures_channel::mpsc::unbounded::<bool>();
+        let (close_sender, close_receiver) = futures_channel::mpsc::unbounded::<bool>();
         let close_callback_handle: Closure<dyn FnMut(JsValue)> = Self::get_close_callback(close_sender);
         let _ = web_transport.closed().then(&close_callback_handle).catch(&close_callback_handle);
 
         Ok(Self {
             web_transport,
-            reciever,
+            receiver,
             writer,
-            close_reciever,
+            close_receiver,
             close_callback_handle,
             is_disconnected: false,
         })
@@ -162,10 +162,10 @@ impl WebTransportClient {
         if self.is_disconnected {
             return;
         }
-        if let Ok(response) = self.close_reciever.try_next() {
+        if let Ok(response) = self.close_receiver.try_next() {
             self.is_disconnected = response.is_some();
         }
-        while let Ok(packet) = self.reciever.try_next() {
+        while let Ok(packet) = self.receiver.try_next() {
             if let Some(packet) = packet {
                 renet_client.process_packet(&packet);
             } else {
