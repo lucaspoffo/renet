@@ -5,7 +5,7 @@ use bevy_renet::{
         ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
     },
     transport::{NetcodeClientPlugin, NetcodeServerPlugin},
-    RenetClientPlugin, RenetServerPlugin,
+    RenetClientPlugin, RenetServerPlugin, client_connected,
 };
 use renet::{
     transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
@@ -118,7 +118,7 @@ fn main() {
 
         app.add_systems(
             Update,
-            (player_input, client_send_input, client_sync_players).run_if(bevy_renet::transport::client_connected()),
+            (player_input, client_send_input, client_sync_players).run_if(client_connected()),
         );
     }
 

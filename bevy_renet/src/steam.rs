@@ -2,7 +2,7 @@ use bevy::{app::AppExit, prelude::*};
 use renet::{RenetClient, RenetServer};
 use renet_steam::steamworks::SteamError;
 
-use crate::{RenetClientPlugin, RenetServerPlugin};
+use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
 pub use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
 
@@ -24,25 +24,26 @@ impl Plugin for SteamServerPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<RenetServer>())
                 .after(RenetServerPlugin::update_system),
         );
 
         app.add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit).run_if(resource_exists::<RenetServer>()),
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit).run_if(resource_exists::<RenetServer>()),
         );
     }
 }
 
 impl SteamServerPlugin {
-    pub fn update_system(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
+    fn update_system(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
         if let Some(transport) = transport.as_mut() {
             transport.update(&mut server);
         }
     }
 
-    pub fn send_packets(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
+    fn send_packets(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
         if let Some(transport) = transport.as_mut() {
             transport.send_packets(&mut server);
         }
@@ -97,48 +98,8 @@ impl SteamClientPlugin {
     }
 
     fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<SteamClientTransport>) {
-        if !exit.is_empty() && !transport.is_disconnected() {
+        if !exit.is_empty() {
             transport.disconnect();
         }
-    }
-}
-
-pub fn client_connected() -> impl FnMut(Option<Res<SteamClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_connected(),
-        None => false,
-    }
-}
-
-pub fn client_disconnected() -> impl FnMut(Option<Res<SteamClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_disconnected(),
-        None => true,
-    }
-}
-
-pub fn client_connecting() -> impl FnMut(Option<Res<SteamClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_connecting(),
-        None => false,
-    }
-}
-
-pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<SteamClientTransport>>) -> bool {
-    |mut last_connected: Local<bool>, transport| {
-        let connected = transport.map(|transport| transport.is_connected()).unwrap_or(false);
-        let just_connected = !*last_connected && connected;
-        *last_connected = connected;
-        just_connected
-    }
-}
-
-pub fn client_just_disconnected() -> impl FnMut(Local<bool>, Option<Res<SteamClientTransport>>) -> bool {
-    |mut last_connected: Local<bool>, transport| {
-        let disconnected = transport.map(|transport| transport.is_disconnected()).unwrap_or(true);
-
-        let just_disconnected = *last_connected && disconnected;
-        *last_connected = !disconnected;
-        just_disconnected
     }
 }
