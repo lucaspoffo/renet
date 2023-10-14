@@ -196,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_messages() {
+    fn multiple_messages_server() {
         let mut server = create_server_app();
         let mut client = create_client_app(&mut server);
 
@@ -219,6 +219,42 @@ mod tests {
             [vec![1, 2], vec![3], vec![1, 2], vec![3], vec![1, 2], vec![3]]
         );
         assert_eq!(server_received(&server), []);
+    }
+
+    #[test]
+    fn multiple_messages_client() {
+        let mut server = create_server_app();
+        let mut client = create_client_app(&mut server);
+
+        client.add_systems(Update, |mut client: ResMut<RenetClient>| {
+            client.send_message(DefaultChannel::ReliableOrdered, vec![1, 2]);
+            client.send_message(DefaultChannel::ReliableOrdered, vec![3]);
+        });
+        client.update();
+        client.update();
+        server.update();
+
+        assert!(client_received(&client).is_empty());
+        assert_eq!(
+            server_received(&server),
+            [(0, vec![1, 2]), (0, vec![3]), (0, vec![1, 2]), (0, vec![3])]
+        );
+
+        client.update();
+        server.update();
+
+        assert!(client_received(&client).is_empty());
+        assert_eq!(
+            server_received(&server),
+            [
+                (0, vec![1, 2]),
+                (0, vec![3]),
+                (0, vec![1, 2]),
+                (0, vec![3]),
+                (0, vec![1, 2]),
+                (0, vec![3])
+            ]
+        );
     }
 
     #[test]

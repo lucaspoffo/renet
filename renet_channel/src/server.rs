@@ -42,17 +42,28 @@ impl ChannelServerTransport {
     }
 
     pub fn update(&mut self, server: &mut RenetServer) {
+        let mut clients_to_disconnect = vec![];
+
         for (&client_id, connection) in self.connections.iter_mut() {
             server.add_connection(client_id);
 
-            match connection.receiver.try_recv() {
-                Ok(packet) => server.process_packet_from(&packet, client_id).unwrap(),
-                Err(TryRecvError::Empty) => (),
-                Err(TryRecvError::Disconnected) => {
-                    self.disconnect_client(client_id, server);
-                    break;
+            loop {
+                match connection.receiver.try_recv() {
+                    Ok(packet) => {
+                        server.process_packet_from(&packet, client_id).unwrap();
+                        continue;
+                    }
+                    Err(TryRecvError::Empty) => (),
+                    Err(TryRecvError::Disconnected) => {
+                        clients_to_disconnect.push(client_id);
+                    }
                 }
+                break;
             }
+        }
+
+        for client_id in clients_to_disconnect {
+            self.disconnect_client(client_id, server);
         }
     }
 
