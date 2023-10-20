@@ -70,7 +70,7 @@ pub struct NetworkInfo {
     pub bytes_received_per_second: f64,
 }
 
-/// The connection status of a [`RenetClient`]
+/// The connection status of a [`RenetClient`].
 #[derive(Debug)]
 pub enum RenetConnectionStatus {
     Connected,
@@ -252,7 +252,9 @@ impl RenetClient {
         }
     }
 
-    /// Set the client connection status to connecting.
+    /// Set the client connection status to connected.
+    ///
+    /// Does nothing if the client is disconnected. A disconnected client must be reconstructed.
     ///
     /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
     /// <strong>Note:</strong> This should only be called by the transport layer.
@@ -265,6 +267,8 @@ impl RenetClient {
 
     /// Set the client connection status to connecting.
     ///
+    /// Does nothing if the client is disconnected. A disconnected client must be reconstructed.
+    ///
     /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
     /// <strong>Note:</strong> This should only be called by the transport layer.
     /// </p>
@@ -275,12 +279,14 @@ impl RenetClient {
     }
 
     /// Disconnect the client.
+    ///
     /// If the client is already disconnected, it does nothing.
     pub fn disconnect(&mut self) {
         self.disconnect_with_reason(DisconnectReason::DisconnectedByClient);
     }
 
     /// Disconnect the client because an error occurred in the transport layer.
+    ///
     /// If the client is already disconnected, it does nothing.
     /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
     /// <strong>Note:</strong> This should only be called by the transport layer.

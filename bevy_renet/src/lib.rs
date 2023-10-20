@@ -15,7 +15,7 @@ pub mod steam;
 /// If you want to ensure data has arrived in the [`RenetClient`] or [`RenetServer`], then schedule your
 /// system after this set.
 ///
-/// This system set runs in PreUpdate
+/// This system set runs in PreUpdate.
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RenetReceive;
 
@@ -24,7 +24,7 @@ pub struct RenetReceive;
 /// If you want to ensure your packets have been registered by the [`RenetClient`] or [`RenetServer`], then
 /// schedule your system before this set.
 ///
-/// This system set runs in PostUpdate
+/// This system set runs in PostUpdate.
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RenetSend;
 

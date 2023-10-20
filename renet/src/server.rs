@@ -133,7 +133,7 @@ impl RenetServer {
         }
     }
 
-    /// Disconnects a client, it does nothing if the client does not exits.
+    /// Disconnects a client, it does nothing if the client does not exist.
     pub fn disconnect(&mut self, client_id: ClientId) {
         if let Some(connection) = self.connections.get_mut(&client_id) {
             connection.disconnect_with_reason(DisconnectReason::DisconnectedByServer)
