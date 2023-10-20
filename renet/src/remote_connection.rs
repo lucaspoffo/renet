@@ -222,21 +222,21 @@ impl RenetClient {
         }
     }
 
-    /// Returns if the client is connected.
+    /// Returns whether the client is connected.
     ///
     #[inline]
     pub fn is_connected(&self) -> bool {
         matches!(self.connection_status, RenetConnectionStatus::Connected)
     }
 
-    /// Returns if the client is connecting.
+    /// Returns whether the client is connecting.
     ///
     #[inline]
     pub fn is_connecting(&self) -> bool {
         matches!(self.connection_status, RenetConnectionStatus::Connecting)
     }
 
-    /// Returns if the client is disconnected.
+    /// Returns whether the client is disconnected.
     ///
     #[inline]
     pub fn is_disconnected(&self) -> bool {
