@@ -364,12 +364,12 @@ fn show_graph(
         let text_pos = rect.right_center() + vec2(spacing_x / 2.0, -galley.size().y / 2.);
         galley.paint_with_fallback_color(&ui.painter().with_clip_rect(outer_rect), text_pos, style.text_color);
 
-        let body = Shape::Rect(RectShape {
+        let body = Shape::Rect(RectShape::new(
             rect,
-            rounding: Rounding::none(),
-            fill: Rgba::TRANSPARENT.into(),
-            stroke: style.rectangle_stroke,
-        });
+            Rounding::ZERO,
+            Color32::TRANSPARENT,
+            style.rectangle_stroke,
+        ));
         ui.painter().add(body);
         let init_point = rect.left_bottom();
 

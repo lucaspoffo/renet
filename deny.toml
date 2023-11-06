@@ -32,7 +32,7 @@ unknown-registry = "deny"
 unknown-git = "deny"
 
 allow-git = [
-    # Used in Demo Bevy, remove when new version supports bevy 0.11
+    # Used in Demo Bevy, remove when new version supports bevy 0.12
     "https://github.com/bonsairobo/smooth-bevy-cameras.git",
     # Unreleased version for steamworks, need release with PR https://github.com/Noxime/steamworks-rs/pull/134
     "https://github.com/Noxime/steamworks-rs"

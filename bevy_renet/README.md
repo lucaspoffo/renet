@@ -125,6 +125,7 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 
 |bevy|bevy_renet|
 |---|---|
+|0.12|0.0.10|
 |0.11|0.0.9|
 |0.10|0.0.8|
 |0.9|0.0.6|

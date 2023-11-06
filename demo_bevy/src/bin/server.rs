@@ -297,7 +297,7 @@ fn despawn_projectile_system(
 }
 
 fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_projectiles: RemovedComponents<Projectile>) {
-    for entity in &mut removed_projectiles {
+    for entity in removed_projectiles.read() {
         let message = ServerMessages::DespawnProjectile { entity };
         let message = bincode::serialize(&message).unwrap();
 
