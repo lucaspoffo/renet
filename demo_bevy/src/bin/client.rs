@@ -47,7 +47,8 @@ fn add_netcode_network(app: &mut App) {
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(bevy_renet::transport::NetcodeClientPlugin);
-    app.configure_set(Update, Connected.run_if(client_connected()));
+
+    app.configure_sets(Update, Connected.run_if(client_connected()));
 
     let client = RenetClient::new(connection_config());
 
@@ -70,7 +71,7 @@ fn add_netcode_network(app: &mut App) {
 
     // If any error is found we just panic
     fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
-        for e in renet_error.iter() {
+        for e in renet_error.read() {
             panic!("{}", e);
         }
     }
@@ -99,7 +100,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(transport);
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
 
-    app.configure_set(Update, Connected.run_if(client_connected()));
+    app.configure_sets(Update, Connected.run_if(client_connected()));
 
     app.insert_non_send_resource(single);
     fn steam_callbacks(client: NonSend<SingleClient>) {
@@ -110,7 +111,7 @@ fn add_steam_network(app: &mut App) {
 
     // If any error is found we just panic
     fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
-        for e in renet_error.iter() {
+        for e in renet_error.read() {
             panic!("{}", e);
         }
     }
@@ -196,7 +197,7 @@ fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetCli
 }
 
 fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
-    for command in player_commands.iter() {
+    for command in player_commands.read() {
         let command_message = bincode::serialize(command).unwrap();
         client.send_message(ClientChannel::Command, command_message);
     }

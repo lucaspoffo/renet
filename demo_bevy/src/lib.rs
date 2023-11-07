@@ -1,7 +1,6 @@
 use std::{f32::consts::PI, time::Duration};
 
 use bevy::prelude::{shape::Icosphere, *};
-use bevy_rapier3d::prelude::*;
 use bevy_renet::renet::{ChannelConfig, ClientId, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
@@ -27,16 +26,17 @@ pub struct PlayerInput {
 pub enum PlayerCommand {
     BasicAttack { cast_at: Vec3 },
 }
-
 pub enum ClientChannel {
     Input,
     Command,
 }
-
 pub enum ServerChannel {
     ServerMessages,
     NetworkedEntities,
 }
+
+#[derive(Debug, Default, Component)]
+pub struct Velocity(pub Vec3);
 
 #[derive(Debug, Serialize, Deserialize, Component)]
 pub enum ServerMessages {
@@ -132,14 +132,12 @@ pub fn connection_config() -> ConnectionConfig {
 /// set up a simple 3D scene
 pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Box::new(40., 1., 40.))),
-            material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
-            transform: Transform::from_xyz(0.0, -1.0, 0.0),
-            ..Default::default()
-        })
-        .insert(Collider::cuboid(20., 0.5, 20.));
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Box::new(40., 1., 40.))),
+        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+        transform: Transform::from_xyz(0.0, -1.0, 0.0),
+        ..Default::default()
+    });
     // light
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
@@ -183,11 +181,7 @@ pub fn spawn_fireball(
             transform: Transform::from_translation(translation),
             ..Default::default()
         })
-        .insert(RigidBody::Dynamic)
-        .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
-        // .insert(Collider::ball(0.1))
-        .insert(Velocity::linear(direction * 10.))
-        .insert(ActiveEvents::COLLISION_EVENTS)
+        .insert(Velocity(direction * 10.))
         .insert(Projectile {
             duration: Timer::from_seconds(1.5, TimerMode::Once),
         })
