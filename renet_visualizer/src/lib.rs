@@ -366,9 +366,11 @@ fn show_graph(
 
         let body = Shape::Rect(RectShape {
             rect,
-            rounding: Rounding::none(),
+            rounding: Rounding::ZERO,
             fill: Rgba::TRANSPARENT.into(),
             stroke: style.rectangle_stroke,
+            uv: Rect::ZERO,
+            fill_texture_id: egui::TextureId::Managed(0),
         });
         ui.painter().add(body);
         let init_point = rect.left_bottom();
