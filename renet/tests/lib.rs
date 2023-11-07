@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer};
+use renet::{ClientId, ConnectionConfig, DefaultChannel, DisconnectReason, RenetClient, RenetServer, ServerEvent};
 
 pub fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -13,6 +13,8 @@ fn test_remote_connection_reliable_channel() {
 
     let client_id = ClientId::from_raw(0);
     server.add_connection(client_id);
+    assert_eq!(server.connected_clients(), 1);
+    assert_eq!(ServerEvent::ClientConnected { client_id }, server.get_event().unwrap());
 
     for _ in 0..200 {
         server.send_message(client_id, DefaultChannel::ReliableOrdered, Bytes::from("test"));
@@ -53,4 +55,14 @@ fn test_remote_connection_reliable_channel() {
     }
 
     assert_eq!(count, 10);
+
+    server.remove_connection(client_id);
+    assert_eq!(server.connected_clients(), 0);
+    assert_eq!(
+        ServerEvent::ClientDisconnected {
+            client_id,
+            reason: DisconnectReason::Transport
+        },
+        server.get_event().unwrap()
+    );
 }

@@ -1,11 +1,12 @@
 use bevy::prelude::{shape::Plane, *};
 use bevy_renet::{
+    client_connected,
     renet::{
         transport::{ClientAuthentication, ServerAuthentication, ServerConfig},
         ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
     },
     transport::{NetcodeClientPlugin, NetcodeServerPlugin},
-    RenetClientPlugin, RenetServerPlugin, client_connected,
+    RenetClientPlugin, RenetServerPlugin,
 };
 use renet::{
     transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
