@@ -31,25 +31,25 @@ impl SteamClientTransport {
         })
     }
 
-    pub fn is_connected(&self) -> bool {
+    fn is_connected(&self) -> bool {
         let status = self.connection_state();
 
         status == NetworkingConnectionState::Connected
     }
 
-    pub fn is_disconnected(&self) -> bool {
+    fn is_disconnected(&self) -> bool {
         let status = self.connection_state();
         status == NetworkingConnectionState::ClosedByPeer
             || status == NetworkingConnectionState::ProblemDetectedLocally
             || status == NetworkingConnectionState::None
     }
 
-    pub fn is_connecting(&self) -> bool {
+    fn is_connecting(&self) -> bool {
         let status = self.connection_state();
         status == NetworkingConnectionState::Connecting || status == NetworkingConnectionState::FindingRoute
     }
 
-    pub fn connection_state(&self) -> NetworkingConnectionState {
+    fn connection_state(&self) -> NetworkingConnectionState {
         let connection = match &self.state {
             ConnectionState::Connected { connection } => connection,
             ConnectionState::Disconnected { .. } => {
@@ -103,9 +103,7 @@ impl SteamClientTransport {
     pub fn update(&mut self, client: &mut RenetClient) {
         if self.is_disconnected() {
             // Mark the client as disconnected if an error occured in the transport layer
-            if !client.is_disconnected() {
-                client.disconnect_due_to_transport();
-            }
+            client.disconnect_due_to_transport();
 
             if let ConnectionState::Connected { connection } = &self.state {
                 let end_reason = self
@@ -120,6 +118,12 @@ impl SteamClientTransport {
 
             return;
         };
+
+        if self.is_connected() {
+            client.set_connected();
+        } else if self.is_connecting() {
+            client.set_connecting();
+        }
 
         let ConnectionState::Connected { connection } = &mut self.state else {
             unreachable!()

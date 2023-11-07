@@ -7,6 +7,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
+    client_connected,
     renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
@@ -46,7 +47,8 @@ fn add_netcode_network(app: &mut App) {
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(bevy_renet::transport::NetcodeClientPlugin);
-    app.configure_sets(Update, Connected.run_if(bevy_renet::transport::client_connected()));
+
+    app.configure_sets(Update, Connected.run_if(client_connected()));
 
     let client = RenetClient::new(connection_config());
 
@@ -98,7 +100,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(transport);
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
 
-    app.configure_sets(Update, Connected.run_if(bevy_renet::steam::client_connected()));
+    app.configure_sets(Update, Connected.run_if(client_connected()));
 
     app.insert_non_send_resource(single);
     fn steam_callbacks(client: NonSend<SingleClient>) {

@@ -157,7 +157,7 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
         client.update(duration);
         transport.update(&mut client);
 
-        if transport.is_connected() {
+        if client.is_connected() {
             match stdin_channel.try_recv() {
                 Ok(text) => {
                     client.send_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec());
