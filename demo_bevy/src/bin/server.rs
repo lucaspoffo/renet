@@ -5,14 +5,13 @@ use bevy::{
     prelude::*,
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
-use bevy_rapier3d::prelude::*;
 use bevy_renet::{
     renet::{ClientId, RenetServer, ServerEvent},
     RenetServerPlugin,
 };
 use demo_bevy::{
     setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
-    ServerMessages,
+    ServerMessages, Velocity,
 };
 use renet_visualizer::RenetServerVisualizer;
 
@@ -91,8 +90,6 @@ fn main() {
     app.add_plugins(DefaultPlugins);
 
     app.add_plugins(RenetServerPlugin);
-    app.add_plugins(RapierPhysicsPlugin::<NoUserData>::default());
-    app.add_plugins(RapierDebugRenderPlugin::default());
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
@@ -116,11 +113,12 @@ fn main() {
             move_players_system,
             update_projectiles_system,
             update_visulizer_system,
-            despawn_projectile_system,
             spawn_bot,
             bot_autocast,
         ),
     );
+
+    app.add_systems(FixedUpdate, apply_velocity_system);
 
     app.add_systems(PostUpdate, projectile_on_removal_system);
 
@@ -140,7 +138,7 @@ fn server_update_system(
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
     players: Query<(Entity, &Player, &Transform)>,
 ) {
-    for event in server_events.iter() {
+    for event in server_events.read() {
         match event {
             ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
@@ -167,9 +165,6 @@ fn server_update_system(
                         transform,
                         ..Default::default()
                     })
-                    .insert(RigidBody::Dynamic)
-                    .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
-                    .insert(Collider::capsule_y(0.5, 0.5))
                     .insert(PlayerInput::default())
                     .insert(Velocity::default())
                     .insert(Player { id: *client_id })
@@ -266,8 +261,14 @@ fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
         let x = (input.right as i8 - input.left as i8) as f32;
         let y = (input.down as i8 - input.up as i8) as f32;
         let direction = Vec2::new(x, y).normalize_or_zero();
-        velocity.linvel.x = direction.x * PLAYER_MOVE_SPEED;
-        velocity.linvel.z = direction.y * PLAYER_MOVE_SPEED;
+        velocity.0.x = direction.x * PLAYER_MOVE_SPEED;
+        velocity.0.z = direction.y * PLAYER_MOVE_SPEED;
+    }
+}
+
+fn apply_velocity_system(mut query: Query<(&Velocity, &mut Transform)>, time: Res<Time>) {
+    for (velocity, mut transform) in query.iter_mut() {
+        transform.translation += velocity.0 * time.delta_seconds();
     }
 }
 
@@ -279,25 +280,8 @@ pub fn setup_simple_camera(mut commands: Commands) {
     });
 }
 
-fn despawn_projectile_system(
-    mut commands: Commands,
-    mut collision_events: EventReader<CollisionEvent>,
-    projectile_query: Query<Option<&Projectile>>,
-) {
-    for collision_event in collision_events.iter() {
-        if let CollisionEvent::Started(entity1, entity2, _) = collision_event {
-            if let Ok(Some(_)) = projectile_query.get(*entity1) {
-                commands.entity(*entity1).despawn();
-            }
-            if let Ok(Some(_)) = projectile_query.get(*entity2) {
-                commands.entity(*entity2).despawn();
-            }
-        }
-    }
-}
-
 fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_projectiles: RemovedComponents<Projectile>) {
-    for entity in &mut removed_projectiles {
+    for entity in removed_projectiles.read() {
         let message = ServerMessages::DespawnProjectile { entity };
         let message = bincode::serialize(&message).unwrap();
 
@@ -326,9 +310,6 @@ fn spawn_bot(
                 transform,
                 ..Default::default()
             })
-            .insert(RigidBody::Fixed)
-            .insert(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y)
-            .insert(Collider::capsule_y(0.5, 0.5))
             .insert(Player { id: client_id })
             .insert(Bot {
                 auto_cast: Timer::from_seconds(3.0, TimerMode::Repeating),

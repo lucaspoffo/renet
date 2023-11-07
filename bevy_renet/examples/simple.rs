@@ -136,7 +136,7 @@ fn server_update_system(
     mut lobby: ResMut<Lobby>,
     mut server: ResMut<RenetServer>,
 ) {
-    for event in server_events.iter() {
+    for event in server_events.read() {
         match event {
             ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
@@ -291,7 +291,7 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 
 // If any error is found we just panic
 fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
-    for e in renet_error.iter() {
+    for e in renet_error.read() {
         panic!("{}", e);
     }
 }
