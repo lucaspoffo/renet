@@ -69,13 +69,14 @@ impl Plugin for SteamClientPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<SteamClientTransport>())
                 .run_if(resource_exists::<RenetClient>())
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<SteamClientTransport>())
                 .run_if(resource_exists::<RenetClient>()),
         );
@@ -83,11 +84,11 @@ impl Plugin for SteamClientPlugin {
 }
 
 impl SteamClientPlugin {
-    pub fn update_system(mut transport: ResMut<SteamClientTransport>, mut client: ResMut<RenetClient>) {
+    fn update_system(mut transport: ResMut<SteamClientTransport>, mut client: ResMut<RenetClient>) {
         transport.update(&mut client);
     }
 
-    pub fn send_packets(
+    fn send_packets(
         mut transport: ResMut<SteamClientTransport>,
         mut client: ResMut<RenetClient>,
         mut transport_errors: EventWriter<SteamTransportError>,
