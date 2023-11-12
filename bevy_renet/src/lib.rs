@@ -7,8 +7,8 @@ use renet::{RenetClient, RenetServer, ServerEvent};
 #[cfg(feature = "transport")]
 pub mod transport;
 
-// #[cfg(feature = "steam")]
-// pub mod steam;
+#[cfg(feature = "steam")]
+pub mod steam;
 
 /// This system set is where all transports receive messages
 ///
