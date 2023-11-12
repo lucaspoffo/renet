@@ -240,7 +240,7 @@ impl RenetClient {
         matches!(self.connection_status, RenetConnectionStatus::Disconnected { .. })
     }
 
-    /// Returns the disconneect reason if the client is disconnected.
+    /// Returns the disconnect reason if the client is disconnected.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
         if let RenetConnectionStatus::Disconnected { reason } = self.connection_status {
             Some(reason)

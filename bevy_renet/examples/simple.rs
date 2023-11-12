@@ -47,7 +47,6 @@ enum ServerMessages {
 }
 
 fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
-    let client = RenetClient::new(ConnectionConfig::default());
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
@@ -60,13 +59,12 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
     };
 
     let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let client = RenetClient::new(ConnectionConfig::default());
 
     (client, transport)
 }
 
 fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
-    let server = RenetServer::new(ConnectionConfig::default());
-
     let public_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(public_addr).unwrap();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
@@ -79,6 +77,7 @@ fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
     };
 
     let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    let server = RenetServer::new(ConnectionConfig::default());
 
     (server, transport)
 }
@@ -177,7 +176,7 @@ fn server_update_system(
         }
     }
 
-    for client_id in server.clients_id().into_iter() {
+    for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
             if let Some(player_entity) = lobby.players.get(&client_id) {

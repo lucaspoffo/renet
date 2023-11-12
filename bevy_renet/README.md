@@ -28,7 +28,6 @@ let server_config = ServerConfig {
     max_clients: 64, 
     protocol_id: 0,
     server_addresses: vec![server_addr], 
-    ServerAuthentication::Unsecure,
     authentication: ServerAuthentication::Unsecure
 };
 let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
@@ -44,12 +43,12 @@ fn send_message_system(mut server: ResMut<RenetServer>) {
     let channel_id = 0;
     // Send a text message for all clients
     // The enum DefaultChannel describe the channels used by the default configuration
-    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
+    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message");
 }
 
 fn receive_message_system(mut server: ResMut<RenetServer>) {
-     // Send a text message for all clients
-    for client_id in server.clients_id().into_iter() {
+    // Receive message from all clients
+    for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
@@ -57,8 +56,7 @@ fn receive_message_system(mut server: ResMut<RenetServer>) {
 }
 
 fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
-    while let Some(event) = server.get_event() {
-    for event in server_events.iter() {
+    for event in server_events.read() {
         match event {
             ServerEvent::ClientConnected { client_id } => {
                 println!("Client {client_id} connected");
@@ -100,8 +98,8 @@ app.add_system(receive_message_system);
 // Systems
 
 fn send_message_system(mut client: ResMut<RenetClient>) {
-     // Send a text message to the server
-    client.send_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
+    // Send a text message to the server
+    client.send_message(DefaultChannel::ReliableOrdered, "server message");
 }
 
 fn receive_message_system(mut client: ResMut<RenetClient>) {

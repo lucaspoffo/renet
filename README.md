@@ -73,7 +73,7 @@ let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 loop {
     let delta_time = Duration::from_millis(16);
     // Receive new messages and update clients
-    server.update(delta_time)?;
+    server.update(delta_time);
     transport.update(delta_time, &mut server)?;
     
     // Check for client connections/disconnections
@@ -97,13 +97,16 @@ loop {
     }
     
     // Send a text message for all clients
-    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
+    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message");
+
+    let client_id = ClientId::from_raw(0);
+    // Send a text message for all clients except for Client 0
+    server.broadcast_message_except(client_id, DefaultChannel::ReliableOrdered, "server message");
     
     // Send message to only one client
-    let client_id = 0; 
-    server.send_message(client_id, DefaultChannel::ReliableOrdered, "server message".as_bytes().to_vec());
+    server.send_message(client_id, DefaultChannel::ReliableOrdered, "server message");
  
-    // Send packets to clients
+    // Send packets to clients using the transport layer
     transport.send_packets(&mut server);
 }
 ```
@@ -114,13 +117,12 @@ loop {
 let mut client = RenetClient::new(ConnectionConfig::default());
 
 // Setup transport layer
-const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5000);
+const server_addr: SocketAddr = "127.0.0.1:5000".parse().unwrap();
 let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-let client_id: u64 = 0;
 let authentication = ClientAuthentication::Unsecure {
-    server_addr: SERVER_ADDR,
-    client_id,
+    server_addr,
+    client_id: 0,
     user_data: None,
     protocol_id: 0,
 };
@@ -131,20 +133,20 @@ let mut transport = NetcodeClientTransport::new(current_time, authentication, so
 loop {
     let delta_time = Duration::from_millis(16);
     // Receive new messages and update client
-    client.update(delta_time)?;
+    client.update(delta_time);
     transport.update(delta_time, &mut client).unwrap();
     
-    if transport.is_connected() {
+    if client.is_connected() {
         // Receive message from server
         while let Some(message) = client.receive_message(DefaultChannel::ReliableOrdered) {
             // Handle received message
         }
         
         // Send message
-        client.send_message(DefaultChannel::ReliableOrdered, "client text".as_bytes().to_vec());
+        client.send_message(DefaultChannel::ReliableOrdered, "client text");
     }
  
-    // Send packets to server
+    // Send packets to server using the transport layer
     transport.send_packets(&mut client)?;
 }
 ```
