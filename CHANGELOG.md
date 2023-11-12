@@ -1,4 +1,31 @@
-# Renet changelog
+# CHANGELOGS
+
+## 0.0.14 - 12-11-2023
+
+### Renet
+
+#### Added ⭐
+
+* Added `is_connecting`, `is_connected` to `RenetClient`, this should make it easier to write code more transport agnostic. Also added `set_connected`, `set_connecting` so the transport layer can keep the connection status updated for the `RenetClient` (if you are using the default transport layer you will not need call it, but if you have a custom transport layer you will need to call them). [(PR)](https://github.com/lucaspoffo/renet/pull/119) by [OleStrohm](https://github.com/OleStrohm)
+* Added methods `can_send_message` and `channel_available_memory` for `RenetClient` and `RenetServer`. [(commit)](https://github.com/lucaspoffo/renet/commit/edec20e4a2a9bc003375de5a7ffad4f4081c198b)
+* Renetcode: make fields for ConnectToken public. [(PR)](https://github.com/lucaspoffo/renet/pull/116) by [UkoeHB](https://github.com/UkoeHB)
+
+#### Fixed 🐛
+
+* Fixed `RenetServer.connected_clients` not returning the correct numbers of connected clients. [(commit)](https://github.com/lucaspoffo/renet/commit/a7bced4cfb7fbe60f1447f9eb6423d2a8bc1cc6e)
+
+#### Changed 🛠️
+
+* Use ClientId struct instead of u64 for clients ids, better type safety for users. [(PR)](https://github.com/lucaspoffo/renet/pull/103) by [roboteng](https://github.com/roboteng)
+* NetcodeServer: now accepts multiple server addresses when being created. [(PR)](https://github.com/lucaspoffo/renet/pull/102)
+* NetcodeServer: change arguments when creating it, now accepts only a configuration struct `ServerConfig`, that has all previous arguments. [(PR)](https://github.com/lucaspoffo/renet/pull/102)
+* RenetVisualizer: updated to egui 0.23. [(PR)](https://github.com/lucaspoffo/renet/pull/103) by [Zajozor](https://github.com/Zajozor)
+* BevyRenet: updated to bevy 0.12 [(commit)](https://github.com/lucaspoffo/renet/commit/fb71a405deaf2f90c8d5f609c0e40f5a594beacf)
+* BevyRenet: `client_disconnected`, `client_connecting`, `client_just_connected`, `client_just_disconnected` has been moved out of the transport module. Now they use the methods from `RenetClient` instead of the transport layer. [(PR)](https://github.com/lucaspoffo/renet/pull/119) by [OleStrohm](https://github.com/OleStrohm)
+
+#### Removed 🔥
+
+* Netcode: removed `is_connecting`, `is_connected`, `is_disconnected` from `NetcodeClientTransport`, use the methods from `RenetClient` instead. [(PR)](https://github.com/lucaspoffo/renet/pull/119) by [OleStrohm](https://github.com/OleStrohm)
 
 ## 0.0.13 - 19-07-2023
 
