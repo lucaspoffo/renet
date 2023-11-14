@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use renet::{RenetClient, RenetServer};
 use renet_channel::{ChannelClientTransport, ChannelServerTransport};
 
-use crate::{RenetClientPlugin, RenetServerPlugin};
+use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
 pub struct ChannelServerPlugin;
 
@@ -14,13 +14,14 @@ impl Plugin for ChannelServerPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<RenetServer>())
                 .run_if(resource_exists::<ChannelServerTransport>())
                 .after(RenetServerPlugin::update_system),
         )
         .add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<RenetServer>())
                 .run_if(resource_exists::<ChannelServerTransport>()),
         );
@@ -48,13 +49,14 @@ impl Plugin for ChannelClientPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<RenetClient>())
                 .run_if(resource_exists::<ChannelClientTransport>())
                 .after(RenetClientPlugin::update_system),
         )
         .add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<RenetClient>())
                 .run_if(resource_exists::<ChannelClientTransport>()),
         );
