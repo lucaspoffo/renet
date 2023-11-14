@@ -1,5 +1,5 @@
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
-use renet::{ClientId, RenetClient};
+use renet::{ClientId, RenetClient, DisconnectReason};
 
 use crate::Connection;
 
@@ -19,6 +19,7 @@ impl ChannelClientTransport {
 
     pub fn update(&mut self, client: &mut RenetClient) {
         let Some(ref mut connection) = self.connection else { return };
+        client.set_connected();
 
         loop {
             match connection.receiver.try_recv() {
@@ -27,7 +28,10 @@ impl ChannelClientTransport {
                     continue;
                 }
                 Err(TryRecvError::Empty) => (),
-                Err(TryRecvError::Disconnected) => self.disconnect(client),
+                Err(TryRecvError::Disconnected) => {
+                    client.disconnect_due_to_transport();
+                    self.disconnect(client)
+                },
             }
             break;
         }
@@ -40,6 +44,7 @@ impl ChannelClientTransport {
             let Some(ref mut connection) = self.connection else { continue };
 
             if connection.sender.send(packet).is_err() {
+                client.disconnect_due_to_transport();
                 self.disconnect(client);
                 break;
             }

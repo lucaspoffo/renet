@@ -74,46 +74,9 @@ impl ChannelClientPlugin {
 
     fn disconnect_on_exit(mut transport: ResMut<ChannelClientTransport>, mut client: ResMut<RenetClient>, exit: EventReader<AppExit>) {
         if !exit.is_empty() {
+            client.disconnect();
             transport.disconnect(&mut client);
         }
-    }
-}
-
-pub fn client_connected() -> impl FnMut(Option<Res<ChannelClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_connected(),
-        None => false,
-    }
-}
-
-pub fn client_disconnected() -> impl FnMut(Option<Res<ChannelClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => !transport.is_connected(),
-        None => true,
-    }
-}
-
-pub fn client_connecting() -> impl FnMut(Option<Res<ChannelClientTransport>>) -> bool {
-    |_transport| false
-}
-
-pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<ChannelClientTransport>>) -> bool {
-    |mut last_connected: Local<bool>, transport| {
-        let connected = transport.map(|transport| transport.is_connected()).unwrap_or(false);
-
-        let just_connected = !*last_connected && connected;
-        *last_connected = connected;
-        just_connected
-    }
-}
-
-pub fn client_just_disconnected() -> impl FnMut(Local<bool>, Option<Res<ChannelClientTransport>>) -> bool {
-    |mut last_connected: Local<bool>, transport| {
-        let disconnected = transport.map(|transport| transport.is_connected()).unwrap_or(true);
-
-        let just_disconnected = *last_connected && disconnected;
-        *last_connected = !disconnected;
-        just_disconnected
     }
 }
 
