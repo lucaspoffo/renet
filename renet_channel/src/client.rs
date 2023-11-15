@@ -1,5 +1,5 @@
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
-use renet::{ClientId, DisconnectReason, RenetClient};
+use renet::{ClientId, RenetClient};
 
 use crate::Connection;
 
