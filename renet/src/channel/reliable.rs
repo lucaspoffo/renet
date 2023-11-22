@@ -234,7 +234,14 @@ impl SendChannelReliable {
             return;
         };
 
-        let UnackedMessage::Sliced { message, num_slices, num_acked_slices, acked, .. } = unacked_message else {
+        let UnackedMessage::Sliced {
+            message,
+            num_slices,
+            num_acked_slices,
+            acked,
+            ..
+        } = unacked_message
+        else {
             unreachable!("called ack on sliced message but found small");
         };
 
@@ -396,7 +403,12 @@ mod tests {
 
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
-            let Packet::SmallReliable { sequence: 0, channel_id: 0, messages } = packet else {
+            let Packet::SmallReliable {
+                sequence: 0,
+                channel_id: 0,
+                messages,
+            } = packet
+            else {
                 unreachable!();
             };
             for (message, message_id) in messages {
@@ -558,7 +570,12 @@ mod tests {
 
         let packets = send.get_packets_to_send(&mut sequence, &mut available_bytes, current_time);
         for packet in packets {
-            let Packet::SmallReliable { sequence: 0, channel_id: 0, messages } = packet else {
+            let Packet::SmallReliable {
+                sequence: 0,
+                channel_id: 0,
+                messages,
+            } = packet
+            else {
                 unreachable!();
             };
             for (message, message_id) in messages {

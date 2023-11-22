@@ -1,7 +1,10 @@
-const MAX_MESSAGE_BATCH_SIZE: usize = 255;
+const MAX_MESSAGE_BATCH_SIZE: usize = 512;
 
 mod client;
 mod server;
 
 pub use client::SteamClientTransport;
-pub use server::SteamServerTransport;
+pub use server::{AccessPermission, SteamServerConfig, SteamServerTransport};
+
+#[doc(hidden)]
+pub use steamworks;

@@ -88,7 +88,7 @@ pub enum ServerResult<'a, 's> {
 /// Configuration to establish a secure or unsecure connection with the server.
 pub enum ServerAuthentication {
     /// Establishes a safe connection using a private key for encryption. The private key cannot be
-    /// shared with the client. Connections are stablished using [crate::transport::ConnectToken].
+    /// shared with the client. Connections are stablished using [crate::token::ConnectToken].
     ///
     /// See also [ClientAuthentication::Secure][crate::ClientAuthentication::Secure]
     Secure { private_key: [u8; NETCODE_KEY_BYTES] },
@@ -555,6 +555,14 @@ impl NetcodeServer {
     /// Returns the maximum number of clients that can be connected.
     pub fn max_clients(&self) -> usize {
         self.max_clients
+    }
+
+    /// Update the maximum numbers of clients that can be connected
+    ///
+    /// Changing the `max_clients` to a lower value than the current number of connect clients
+    /// does not disconnect clients. So [`NetcodeServer::connected_clients()`] can return a higher value than [`NetcodeServer::max_clients()`].
+    pub fn set_max_clients(&mut self, max_clients: usize) {
+        self.max_clients = max_clients;
     }
 
     /// Returns current number of clients connected.
