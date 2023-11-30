@@ -34,7 +34,7 @@ impl Plugin for NetcodeServerPlugin {
 }
 
 impl NetcodeServerPlugin {
-    pub fn update_system(
+    fn update_system(
         mut transport: ResMut<NetcodeServerTransport>,
         mut server: ResMut<RenetServer>,
         time: Res<Time>,
@@ -45,7 +45,7 @@ impl NetcodeServerPlugin {
         }
     }
 
-    pub fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
+    fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
         transport.send_packets(&mut server);
     }
 
@@ -78,7 +78,7 @@ impl Plugin for NetcodeClientPlugin {
 }
 
 impl NetcodeClientPlugin {
-    fn update_system(
+    pub fn update_system(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         time: Res<Time>,
@@ -89,7 +89,7 @@ impl NetcodeClientPlugin {
         }
     }
 
-    fn send_packets(
+    pub fn send_packets(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         mut transport_errors: EventWriter<NetcodeTransportError>,
