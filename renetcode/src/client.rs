@@ -1,7 +1,7 @@
 use std::{fmt, net::SocketAddr, time::Duration};
 
 use crate::{
-    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientID, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
+    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientId, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
     NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE, NETCODE_USER_DATA_BYTES,
 };
 
@@ -38,7 +38,7 @@ pub enum ClientAuthentication {
     /// See also [crate::ServerAuthentication::Unsecure]
     Unsecure {
         protocol_id: u64,
-        client_id: ClientID,
+        client_id: ClientId,
         server_addr: SocketAddr,
         user_data: Option<[u8; NETCODE_USER_DATA_BYTES]>,
     },
@@ -51,7 +51,7 @@ pub enum ClientAuthentication {
 #[derive(Debug)]
 pub struct NetcodeClient {
     state: ClientState,
-    client_id: ClientID,
+    client_id: ClientId,
     connect_start_time: Duration,
     last_packet_send_time: Option<Duration>,
     last_packet_received_time: Duration,
@@ -148,7 +148,7 @@ impl NetcodeClient {
         self.current_time
     }
 
-    pub fn client_id(&self) -> ClientID {
+    pub fn client_id(&self) -> ClientId {
         self.client_id
     }
 
@@ -386,7 +386,7 @@ mod tests {
         let private_key = b"an example very very secret key."; // 32-bytes
         let protocol_id = 2;
         let expire_seconds = 3;
-        let client_id = ClientID::from_raw(4);
+        let client_id = ClientId::from_raw(4);
         let timeout_seconds = 5;
         let connect_token = ConnectToken::generate(
             Duration::ZERO,

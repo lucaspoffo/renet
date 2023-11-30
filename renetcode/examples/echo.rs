@@ -1,6 +1,6 @@
 use renetcode::{
     ClientAuthentication, ConnectToken, NetcodeClient, NetcodeServer, ServerAuthentication, ServerConfig, ServerResult, NETCODE_KEY_BYTES,
-    NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES, ClientID,
+    NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES, ClientId,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};
@@ -54,7 +54,7 @@ fn main() {
             let username = Username(args[3].clone());
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             println!("Stating connecting at {:?} with username {}", now, username.0,);
-            let client_id = ClientID::from_raw(now.as_millis() as u64);
+            let client_id = ClientId::from_raw(now.as_millis() as u64);
             let connect_token = ConnectToken::generate(
                 now,
                 PROTOCOL_ID,
@@ -83,7 +83,7 @@ fn handle_server_result(
     server_result: ServerResult,
     socket: &UdpSocket,
     received_messages: &mut Vec<String>,
-    usernames: &mut HashMap<ClientID, String>,
+    usernames: &mut HashMap<ClientId, String>,
 ) {
     match server_result {
         ServerResult::Payload { client_id, payload } => {
@@ -133,7 +133,7 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
-    let mut usernames: HashMap<ClientID, String> = HashMap::new();
+    let mut usernames: HashMap<ClientId, String> = HashMap::new();
     loop {
         server.update(Instant::now() - last_updated);
         received_messages.clear();

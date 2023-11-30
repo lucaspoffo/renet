@@ -5,7 +5,7 @@ use crate::{
     packet::{ChallengeToken, Packet},
     replay_protection::ReplayProtection,
     token::PrivateConnectToken,
-    ClientID, NetcodeError, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES,
+    ClientId, NetcodeError, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES,
     NETCODE_MAX_CLIENTS, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_MAX_PENDING_CLIENTS, NETCODE_SEND_RATE,
     NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
@@ -20,7 +20,7 @@ enum ConnectionState {
 #[derive(Debug, Clone)]
 struct Connection {
     confirmed: bool,
-    client_id: ClientID,
+    client_id: ClientId,
     state: ConnectionState,
     send_key: [u8; NETCODE_KEY_BYTES],
     receive_key: [u8; NETCODE_KEY_BYTES],
@@ -69,17 +69,17 @@ pub enum ServerResult<'a, 's> {
     /// A packet to be sent back to the processed address.
     PacketToSend { addr: SocketAddr, payload: &'s mut [u8] },
     /// A payload received from the client.
-    Payload { client_id: ClientID, payload: &'a [u8] },
+    Payload { client_id: ClientId, payload: &'a [u8] },
     /// A new client has connected
     ClientConnected {
-        client_id: ClientID,
+        client_id: ClientId,
         addr: SocketAddr,
         user_data: Box<[u8; NETCODE_USER_DATA_BYTES]>,
         payload: &'s mut [u8],
     },
     /// The client connection has been terminated.
     ClientDisconnected {
-        client_id: ClientID,
+        client_id: ClientId,
         addr: SocketAddr,
         payload: Option<&'s mut [u8]>,
     },
@@ -204,7 +204,7 @@ impl NetcodeServer {
     }
 
     /// Returns the user data from the connected client.
-    pub fn user_data(&self, client_id: ClientID) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
+    pub fn user_data(&self, client_id: ClientId) -> Option<[u8; NETCODE_USER_DATA_BYTES]> {
         if let Some(client) = find_client_by_id(&self.clients, client_id) {
             return Some(client.user_data);
         }
@@ -214,7 +214,7 @@ impl NetcodeServer {
 
     /// Returns the duration since the connected client last received a packet.
     /// Usefull to detect users that are timing out.
-    pub fn time_since_last_received_packet(&self, client_id: ClientID) -> Option<Duration> {
+    pub fn time_since_last_received_packet(&self, client_id: ClientId) -> Option<Duration> {
         if let Some(client) = find_client_by_id(&self.clients, client_id) {
             let time = self.current_time - client.last_packet_received_time;
             return Some(time);
@@ -224,7 +224,7 @@ impl NetcodeServer {
     }
 
     /// Returns the client address if connected.
-    pub fn client_addr(&self, client_id: ClientID) -> Option<SocketAddr> {
+    pub fn client_addr(&self, client_id: ClientId) -> Option<SocketAddr> {
         if let Some(client) = find_client_by_id(&self.clients, client_id) {
             return Some(client.addr);
         }
@@ -359,7 +359,7 @@ impl NetcodeServer {
     /// Returns an encoded packet payload to be sent to the client
     pub fn generate_payload_packet<'s>(
         &'s mut self,
-        client_id: ClientID,
+        client_id: ClientId,
         payload: &[u8],
     ) -> Result<(SocketAddr, &'s mut [u8]), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
@@ -503,7 +503,7 @@ impl NetcodeServer {
                             let len = packet.encode(&mut self.out, self.protocol_id, Some((pending.sequence, &pending.send_key)))?;
                             pending.sequence += 1;
 
-                            let client_id: ClientID = pending.client_id;
+                            let client_id: ClientId = pending.client_id;
                             let user_data: [u8; NETCODE_USER_DATA_BYTES] = pending.user_data;
                             self.clients[client_index] = Some(pending);
 
@@ -543,12 +543,12 @@ impl NetcodeServer {
     }
 
     /// Returns the ids from the connected clients (iterator).
-    pub fn clients_id_iter(&self) -> impl Iterator<Item = ClientID> + '_ {
+    pub fn clients_id_iter(&self) -> impl Iterator<Item = ClientId> + '_ {
         self.clients.iter().filter_map(|slot| slot.as_ref().map(|client| client.client_id))
     }
 
     /// Returns the ids from the connected clients.
-    pub fn clients_id(&self) -> Vec<ClientID> {
+    pub fn clients_id(&self) -> Vec<ClientId> {
         self.clients_id_iter().collect()
     }
 
@@ -598,7 +598,7 @@ impl NetcodeServer {
     /// }
     /// # fn send_to(p: &[u8], addr: std::net::SocketAddr) {}
     /// ```
-    pub fn update_client(&mut self, client_id: ClientID) -> ServerResult<'_, '_> {
+    pub fn update_client(&mut self, client_id: ClientId) -> ServerResult<'_, '_> {
         let slot = match find_client_slot_by_id(&self.clients, client_id) {
             None => return ServerResult::None,
             Some(slot) => slot,
@@ -663,7 +663,7 @@ impl NetcodeServer {
         ServerResult::None
     }
 
-    pub fn is_client_connected(&self, client_id: ClientID) -> bool {
+    pub fn is_client_connected(&self, client_id: ClientId) -> bool {
         find_client_slot_by_id(&self.clients, client_id).is_some()
     }
 
@@ -671,7 +671,7 @@ impl NetcodeServer {
     // TODO: we can return Result<PacketToSend, NetcodeError>
     //       but the library user would need to be aware that he has to run
     //       the same code as Result::ClientDisconnected
-    pub fn disconnect(&mut self, client_id: ClientID) -> ServerResult<'_, '_> {
+    pub fn disconnect(&mut self, client_id: ClientId) -> ServerResult<'_, '_> {
         if let Some(slot) = find_client_slot_by_id(&self.clients, client_id) {
             let client = self.clients[slot].take().unwrap();
             let packet = Packet::Disconnect;
@@ -698,15 +698,15 @@ impl NetcodeServer {
     }
 }
 
-fn find_client_mut_by_id(clients: &mut [Option<Connection>], client_id: ClientID) -> Option<&mut Connection> {
+fn find_client_mut_by_id(clients: &mut [Option<Connection>], client_id: ClientId) -> Option<&mut Connection> {
     clients.iter_mut().flatten().find(|c| c.client_id == client_id)
 }
 
-fn find_client_by_id(clients: &[Option<Connection>], client_id: ClientID) -> Option<&Connection> {
+fn find_client_by_id(clients: &[Option<Connection>], client_id: ClientId) -> Option<&Connection> {
     clients.iter().flatten().find(|c| c.client_id == client_id)
 }
 
-fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: ClientID) -> Option<usize> {
+fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: ClientId) -> Option<usize> {
     clients.iter().enumerate().find_map(|(i, c)| match c {
         Some(c) if c.client_id == client_id => Some(i),
         _ => None,
@@ -746,7 +746,7 @@ mod tests {
         let server_addresses: Vec<SocketAddr> = server.addresses();
         let user_data = generate_random_bytes();
         let expire_seconds = 3;
-        let client_id = ClientID::from_raw(4);
+        let client_id = ClientId::from_raw(4);
         let timeout_seconds = 5;
         let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
         let connect_token = ConnectToken::generate(

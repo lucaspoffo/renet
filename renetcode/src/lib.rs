@@ -30,10 +30,9 @@ pub use crypto::generate_random_bytes;
 pub use error::NetcodeError;
 pub use server::{NetcodeServer, ServerAuthentication, ServerConfig, ServerResult};
 pub use token::{ConnectToken, TokenGenerationError};
+pub use renet_core::ClientId;
 
 use std::time::Duration;
-
-pub type ClientID = renet_core::ClientId;
 
 const NETCODE_VERSION_INFO: &[u8; 13] = b"NETCODE 1.02\0";
 const NETCODE_MAX_CLIENTS: usize = 1024;

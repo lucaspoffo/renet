@@ -11,7 +11,7 @@ use crate::{
     serialize::*,
     NetcodeError, NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE,
     NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS,
-    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO, ClientID,
+    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO, ClientId,
 };
 use chacha20poly1305::aead::Error as CryptoError;
 
@@ -23,7 +23,7 @@ pub struct ConnectToken {
     // NOTE: On the netcode standard the client id is not available in the public part of the
     // ConnectToken. But having it acessible here makes it easier to consume the token, and the
     // server still uses the client_id from the private part.
-    pub client_id: ClientID,
+    pub client_id: ClientId,
     pub version_info: [u8; 13],
     pub protocol_id: u64,
     pub create_timestamp: u64,
@@ -38,7 +38,7 @@ pub struct ConnectToken {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PrivateConnectToken {
-    pub client_id: ClientID,       // globally unique identifier for an authenticated client
+    pub client_id: ClientId,       // globally unique identifier for an authenticated client
     pub timeout_seconds: i32, // timeout in seconds. negative values disable timeout (dev only)
     pub server_addresses: [Option<SocketAddr>; 32],
     pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
@@ -90,7 +90,7 @@ impl ConnectToken {
         current_time: Duration,
         protocol_id: u64,
         expire_seconds: u64,
-        client_id: ClientID,
+        client_id: ClientId,
         timeout_seconds: i32,
         server_addresses: Vec<SocketAddr>,
         user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
@@ -135,7 +135,7 @@ impl ConnectToken {
     }
 
     pub fn read(src: &mut impl io::Read) -> Result<Self, NetcodeError> {
-        let client_id = ClientID::from_raw(read_u64(src)?);
+        let client_id = ClientId::from_raw(read_u64(src)?);
         let version_info: [u8; 13] = read_bytes(src)?;
         if &version_info != NETCODE_VERSION_INFO {
             return Err(NetcodeError::InvalidVersion);
@@ -170,7 +170,7 @@ impl ConnectToken {
 
 impl PrivateConnectToken {
     fn generate(
-        client_id: ClientID,
+        client_id: ClientId,
         timeout_seconds: i32,
         server_addresses: Vec<SocketAddr>,
         user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
@@ -217,7 +217,7 @@ impl PrivateConnectToken {
     }
 
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
-        let client_id = ClientID::from_raw(read_u64(src)?);
+        let client_id = ClientId::from_raw(read_u64(src)?);
         let timeout_seconds = read_i32(src)?;
         let server_addresses = read_server_addresses(src)?;
         let mut client_to_server_key = [0u8; 32];
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn private_connect_token_serialization() {
         let hosts: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
-        let token = PrivateConnectToken::generate(ClientID::from_raw(1), 5, hosts, Some(&generate_random_bytes())).unwrap();
+        let token = PrivateConnectToken::generate(ClientId::from_raw(1), 5, hosts, Some(&generate_random_bytes())).unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         token.write(&mut buffer).unwrap();
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn private_connect_token_encode_decode() {
         let hosts: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
-        let token = PrivateConnectToken::generate(ClientID::from_raw(1), 5, hosts, Some(&generate_random_bytes())).unwrap();
+        let token = PrivateConnectToken::generate(ClientId::from_raw(1), 5, hosts, Some(&generate_random_bytes())).unwrap();
         let key = b"an example very very secret key."; // 32-bytes
         let protocol_id = 12;
         let expire_timestamp = 0;
@@ -381,7 +381,7 @@ mod tests {
         let private_key = b"an example very very secret key."; // 32-bytes
         let protocol_id = 2;
         let expire_seconds = 3;
-        let client_id = ClientID::from_raw(4);
+        let client_id = ClientId::from_raw(4);
         let timeout_seconds = 5;
         let token = ConnectToken::generate(
             Duration::ZERO,
