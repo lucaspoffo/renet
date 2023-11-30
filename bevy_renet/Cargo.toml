@@ -6,7 +6,7 @@ keywords = ["gamedev", "networking"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/lucaspoffo/renet"
-version = "0.0.10"
+version = "0.0.11"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,8 +22,8 @@ required-features = ["serde", "transport"]
 
 [dependencies]
 bevy = {version = "0.12", default-features = false}
-renet = {path = "../renet", version = "0.0.14", default-features=false, features = ["bevy"]}
-renet_steam = { path = "../renet_steam", version = "0.0.1", features = [ "bevy" ], optional = true }
+renet = {path = "../renet", version = "0.0.15", default-features=false, features = ["bevy"]}
+renet_steam = { path = "../renet_steam", version = "0.0.2", features = [ "bevy" ], optional = true }
 
 [dev-dependencies]
 bevy = {version = "0.12", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd"]}

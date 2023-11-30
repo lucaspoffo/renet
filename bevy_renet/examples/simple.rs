@@ -291,7 +291,11 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 
 // If any error is found we just panic
 fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
+    let errs = Vec::new();
     for e in renet_error.read() {
-        panic!("{}", e);
+        // panic!("{}", e);
+        error!("Error: {:?}", e);
+        errs.push(e);
     }
+    panic!("Errors: {:?}", errs);
 }
