@@ -1,5 +1,11 @@
 # CHANGELOGS
 
+## 0.0.15 - UNRELEASED
+
+### Renet Fixed 🐛
+
+* Now using `ClientId` from `renet_core` everywhere, in `renet` and `renetcode`
+
 ## 0.0.14 - 12-11-2023
 
 ### Renet
