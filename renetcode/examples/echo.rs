@@ -1,6 +1,6 @@
 use renetcode::{
-    ClientAuthentication, ConnectToken, NetcodeClient, NetcodeServer, ServerAuthentication, ServerConfig, ServerResult, NETCODE_KEY_BYTES,
-    NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES, ClientId,
+    ClientAuthentication, ClientId, ConnectToken, NetcodeClient, NetcodeServer, ServerAuthentication, ServerConfig, ServerResult,
+    NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};

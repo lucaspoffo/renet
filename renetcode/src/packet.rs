@@ -4,8 +4,8 @@ use crate::crypto::{dencrypted_in_place, encrypt_in_place};
 use crate::replay_protection::ReplayProtection;
 use crate::token::ConnectToken;
 use crate::{
-    serialize::*, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES,
-    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, ClientId,
+    serialize::*, ClientId, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES,
+    NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_MAC_BYTES,
 };
 use crate::{NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO};
 

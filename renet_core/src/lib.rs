@@ -13,10 +13,10 @@ impl ClientId {
         self.0
     }
 
-		/// Depended on in binary protocols
-		pub const fn to_le_bytes(self) -> [u8; 8] {
-			self.0.to_le_bytes()
-		}
+    /// Depended on in binary protocols
+    pub const fn to_le_bytes(self) -> [u8; 8] {
+        self.0.to_le_bytes()
+    }
 }
 
 impl std::fmt::Display for ClientId {

@@ -9,9 +9,9 @@ use std::{
 use crate::{
     crypto::{dencrypted_in_place_xnonce, encrypt_in_place_xnonce, generate_random_bytes},
     serialize::*,
-    NetcodeError, NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE,
+    ClientId, NetcodeError, NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE,
     NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS,
-    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO, ClientId,
+    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
 };
 use chacha20poly1305::aead::Error as CryptoError;
 
@@ -38,7 +38,7 @@ pub struct ConnectToken {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PrivateConnectToken {
-    pub client_id: ClientId,       // globally unique identifier for an authenticated client
+    pub client_id: ClientId,  // globally unique identifier for an authenticated client
     pub timeout_seconds: i32, // timeout in seconds. negative values disable timeout (dev only)
     pub server_addresses: [Option<SocketAddr>; 32],
     pub client_to_server_key: [u8; NETCODE_KEY_BYTES],

@@ -28,9 +28,9 @@ mod token;
 pub use client::{ClientAuthentication, DisconnectReason, NetcodeClient};
 pub use crypto::generate_random_bytes;
 pub use error::NetcodeError;
+pub use renet_core::ClientId;
 pub use server::{NetcodeServer, ServerAuthentication, ServerConfig, ServerResult};
 pub use token::{ConnectToken, TokenGenerationError};
-pub use renet_core::ClientId;
 
 use std::time::Duration;
 

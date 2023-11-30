@@ -35,7 +35,7 @@ struct ClientLobby {
 }
 
 #[derive(Debug, Resource)]
-struct CurrentClientId(u64);
+struct CurrentClientId(ClientId);
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Connected;
@@ -55,7 +55,7 @@ fn add_netcode_network(app: &mut App) {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let client_id = current_time.as_millis() as u64;
+    let client_id = ClientId::from_raw(current_time.as_millis() as u64);
     let authentication = ClientAuthentication::Unsecure {
         client_id,
         protocol_id: PROTOCOL_ID,
@@ -71,9 +71,12 @@ fn add_netcode_network(app: &mut App) {
 
     // If any error is found we just panic
     fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
+        let mut errs = Vec::new();
         for e in renet_error.read() {
-            panic!("{}", e);
+            // panic!("{}", e);
+            errs.push(e);
         }
+        panic!("Errors: {:?}", errs);
     }
 
     app.add_systems(Update, panic_on_error_system);
@@ -98,7 +101,7 @@ fn add_steam_network(app: &mut App) {
     app.add_plugins(SteamClientPlugin);
     app.insert_resource(client);
     app.insert_resource(transport);
-    app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
+    app.insert_resource(CurrentClientId(ClientId::from_raw(steam_client.user().steam_id().raw())));
 
     app.configure_sets(Update, Connected.run_if(client_connected()));
 
@@ -111,9 +114,12 @@ fn add_steam_network(app: &mut App) {
 
     // If any error is found we just panic
     fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
+        let mut errs = Vec::new();
         for e in renet_error.read() {
-            panic!("{}", e);
+            // panic!("{}", e);
+            errs.push(e)
         }
+        panic!("Errors: {:?}", errs);
     }
 
     app.add_systems(Update, panic_on_error_system);
@@ -225,7 +231,7 @@ fn client_sync_players(
                     ..Default::default()
                 });
 
-                if client_id == id.raw() {
+                if client_id == id {
                     client_entity.insert(ControlledPlayer);
                 }
 
