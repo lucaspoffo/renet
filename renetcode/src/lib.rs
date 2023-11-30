@@ -33,7 +33,7 @@ pub use token::{ConnectToken, TokenGenerationError};
 
 use std::time::Duration;
 
-type ClientID = u64;
+pub type ClientID = renet_core::ClientId;
 
 const NETCODE_VERSION_INFO: &[u8; 13] = b"NETCODE 1.02\0";
 const NETCODE_MAX_CLIENTS: usize = 1024;

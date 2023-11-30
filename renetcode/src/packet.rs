@@ -5,7 +5,7 @@ use crate::replay_protection::ReplayProtection;
 use crate::token::ConnectToken;
 use crate::{
     serialize::*, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES, NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES,
-    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES,
+    NETCODE_KEY_BYTES, NETCODE_MAC_BYTES, ClientID,
 };
 use crate::{NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO};
 
@@ -50,7 +50,7 @@ pub enum Packet<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ChallengeToken {
-    pub client_id: u64,
+    pub client_id: ClientID,
     pub user_data: [u8; 256],
 }
 
@@ -106,7 +106,7 @@ impl<'a> Packet<'a> {
     }
 
     pub fn generate_challenge(
-        client_id: u64,
+        client_id: ClientID,
         user_data: &[u8; NETCODE_USER_DATA_BYTES],
         challenge_sequence: u64,
         challenge_key: &[u8; NETCODE_KEY_BYTES],
@@ -300,7 +300,7 @@ impl<'a> Packet<'a> {
 }
 
 impl ChallengeToken {
-    pub fn new(client_id: u64, user_data: &[u8; NETCODE_USER_DATA_BYTES]) -> Self {
+    pub fn new(client_id: ClientID, user_data: &[u8; NETCODE_USER_DATA_BYTES]) -> Self {
         Self {
             client_id,
             user_data: *user_data,
@@ -308,7 +308,7 @@ impl ChallengeToken {
     }
 
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
-        let client_id = read_u64(src)?;
+        let client_id = ClientID::from_raw(read_u64(src)?);
         let user_data: [u8; NETCODE_USER_DATA_BYTES] = read_bytes(src)?;
 
         Ok(Self { client_id, user_data })
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_challenge_token() {
-        let client_id = 0;
+        let client_id = ClientID::from_raw(0);
         let user_data = generate_random_bytes();
         let challenge_key = generate_random_bytes();
         let challenge_sequence = 1;

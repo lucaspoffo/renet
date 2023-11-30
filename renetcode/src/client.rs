@@ -38,7 +38,7 @@ pub enum ClientAuthentication {
     /// See also [crate::ServerAuthentication::Unsecure]
     Unsecure {
         protocol_id: u64,
-        client_id: u64,
+        client_id: ClientID,
         server_addr: SocketAddr,
         user_data: Option<[u8; NETCODE_USER_DATA_BYTES]>,
     },
@@ -386,7 +386,7 @@ mod tests {
         let private_key = b"an example very very secret key."; // 32-bytes
         let protocol_id = 2;
         let expire_seconds = 3;
-        let client_id = 4;
+        let client_id = ClientID::from_raw(4);
         let timeout_seconds = 5;
         let connect_token = ConnectToken::generate(
             Duration::ZERO,

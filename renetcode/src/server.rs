@@ -746,7 +746,7 @@ mod tests {
         let server_addresses: Vec<SocketAddr> = server.addresses();
         let user_data = generate_random_bytes();
         let expire_seconds = 3;
-        let client_id = 4;
+        let client_id = ClientID::from_raw(4);
         let timeout_seconds = 5;
         let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
         let connect_token = ConnectToken::generate(

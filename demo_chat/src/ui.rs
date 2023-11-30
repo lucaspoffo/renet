@@ -259,7 +259,7 @@ fn create_renet_client(username: String, server_addr: SocketAddr) -> (RenetClien
 
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let client_id = current_time.as_millis() as u64;
+    let client_id = ClientId::from_raw(current_time.as_millis() as u64);
     let authentication = ClientAuthentication::Unsecure {
         server_addr,
         client_id,

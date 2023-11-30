@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use renet_core::ClientId;
 use renetcode::{ClientAuthentication, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
 use crate::remote_connection::RenetClient;
@@ -34,7 +35,7 @@ impl NetcodeClientTransport {
         self.socket.local_addr()
     }
 
-    pub fn client_id(&self) -> u64 {
+    pub fn client_id(&self) -> ClientId {
         self.netcode_client.client_id()
     }
 
