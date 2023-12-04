@@ -26,7 +26,8 @@ impl Plugin for SteamServerPlugin {
             Self::update_system
                 .in_set(RenetReceive)
                 .run_if(resource_exists::<RenetServer>())
-                .after(RenetServerPlugin::update_system),
+                .after(RenetServerPlugin::update_system)
+                .before(RenetServerPlugin::emit_server_events_system),
         );
 
         app.add_systems(

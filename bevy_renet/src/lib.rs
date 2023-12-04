@@ -36,13 +36,21 @@ impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Events<ServerEvent>>();
         app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>()));
+        app.add_systems(
+            PreUpdate,
+            Self::emit_server_events_system
+                .run_if(resource_exists::<RenetServer>())
+                .after(Self::update_system),
+        );
     }
 }
 
 impl RenetServerPlugin {
-    pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time>, mut server_events: EventWriter<ServerEvent>) {
+    pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time>) {
         server.update(time.delta());
+    }
 
+    pub fn emit_server_events_system(mut server: ResMut<RenetServer>, mut server_events: EventWriter<ServerEvent>) {
         while let Some(event) = server.get_event() {
             server_events.send(event);
         }
