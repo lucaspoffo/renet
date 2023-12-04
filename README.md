@@ -108,6 +108,8 @@ loop {
  
     // Send packets to clients using the transport layer
     transport.send_packets(&mut server);
+
+    std::thread::sleep(delta_time); // Running at 60hz
 }
 ```
 
@@ -148,6 +150,8 @@ loop {
  
     // Send packets to server using the transport layer
     transport.send_packets(&mut client)?;
+    
+    std::thread::sleep(delta_time); // Running at 60hz
 }
 ```
 
