@@ -63,13 +63,14 @@ impl Plugin for NetcodeClientPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<NetcodeClientTransport>())
                 .run_if(resource_exists::<RenetClient>())
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeClientTransport>())
                 .run_if(resource_exists::<RenetClient>()),
         );
@@ -77,7 +78,7 @@ impl Plugin for NetcodeClientPlugin {
 }
 
 impl NetcodeClientPlugin {
-    pub fn update_system(
+    fn update_system(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         time: Res<Time>,
@@ -88,7 +89,7 @@ impl NetcodeClientPlugin {
         }
     }
 
-    pub fn send_packets(
+    fn send_packets(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         mut transport_errors: EventWriter<NetcodeTransportError>,
