@@ -33,8 +33,6 @@ pub use token::{ConnectToken, TokenGenerationError};
 
 use std::time::Duration;
 
-type ClientID = u64;
-
 const NETCODE_VERSION_INFO: &[u8; 13] = b"NETCODE 1.02\0";
 const NETCODE_MAX_CLIENTS: usize = 1024;
 const NETCODE_MAX_PENDING_CLIENTS: usize = NETCODE_MAX_CLIENTS * 4;

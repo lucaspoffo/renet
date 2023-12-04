@@ -6,7 +6,7 @@ use std::{
 
 use renetcode::{ClientAuthentication, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
-use crate::remote_connection::RenetClient;
+use crate::{remote_connection::RenetClient, ClientId};
 
 use super::NetcodeTransportError;
 
@@ -34,20 +34,8 @@ impl NetcodeClientTransport {
         self.socket.local_addr()
     }
 
-    pub fn client_id(&self) -> u64 {
-        self.netcode_client.client_id()
-    }
-
-    pub fn is_connecting(&self) -> bool {
-        self.netcode_client.is_connecting()
-    }
-
-    pub fn is_connected(&self) -> bool {
-        self.netcode_client.is_connected()
-    }
-
-    pub fn is_disconnected(&self) -> bool {
-        self.netcode_client.is_disconnected()
+    pub fn client_id(&self) -> ClientId {
+        ClientId(self.netcode_client.client_id())
     }
 
     /// Returns the duration since the client last received a packet.
@@ -99,9 +87,7 @@ impl NetcodeClientTransport {
     pub fn update(&mut self, duration: Duration, client: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
             // Mark the client as disconnected if an error occured in the transport layer
-            if !client.is_disconnected() {
-                client.disconnect_due_to_transport();
-            }
+            client.disconnect_due_to_transport();
 
             return Err(NetcodeError::Disconnected(reason).into());
         }
@@ -110,6 +96,12 @@ impl NetcodeClientTransport {
             let (addr, disconnect_packet) = self.netcode_client.disconnect()?;
             self.socket.send_to(disconnect_packet, addr)?;
             return Err(error.into());
+        }
+
+        if self.netcode_client.is_connected() {
+            client.set_connected();
+        } else if self.netcode_client.is_connecting() {
+            client.set_connecting();
         }
 
         loop {

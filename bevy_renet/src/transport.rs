@@ -5,7 +5,7 @@ use renet::{
 
 use bevy::{app::AppExit, prelude::*};
 
-use crate::{RenetClientPlugin, RenetServerPlugin};
+use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
 pub struct NetcodeServerPlugin;
 
@@ -18,14 +18,16 @@ impl Plugin for NetcodeServerPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<NetcodeServerTransport>())
                 .run_if(resource_exists::<RenetServer>())
-                .after(RenetServerPlugin::update_system),
+                .after(RenetServerPlugin::update_system)
+                .before(RenetServerPlugin::emit_server_events_system),
         );
 
         app.add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeServerTransport>())
                 .run_if(resource_exists::<RenetServer>()),
         );
@@ -33,7 +35,7 @@ impl Plugin for NetcodeServerPlugin {
 }
 
 impl NetcodeServerPlugin {
-    pub fn update_system(
+    fn update_system(
         mut transport: ResMut<NetcodeServerTransport>,
         mut server: ResMut<RenetServer>,
         time: Res<Time>,
@@ -44,7 +46,7 @@ impl NetcodeServerPlugin {
         }
     }
 
-    pub fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
+    fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
         transport.send_packets(&mut server);
     }
 
@@ -62,13 +64,14 @@ impl Plugin for NetcodeClientPlugin {
         app.add_systems(
             PreUpdate,
             Self::update_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<NetcodeClientTransport>())
                 .run_if(resource_exists::<RenetClient>())
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
-            (Self::send_packets, Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeClientTransport>())
                 .run_if(resource_exists::<RenetClient>()),
         );
@@ -76,7 +79,7 @@ impl Plugin for NetcodeClientPlugin {
 }
 
 impl NetcodeClientPlugin {
-    pub fn update_system(
+    fn update_system(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         time: Res<Time>,
@@ -87,7 +90,7 @@ impl NetcodeClientPlugin {
         }
     }
 
-    pub fn send_packets(
+    fn send_packets(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         mut transport_errors: EventWriter<NetcodeTransportError>,
@@ -98,49 +101,8 @@ impl NetcodeClientPlugin {
     }
 
     fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<NetcodeClientTransport>) {
-        if !exit.is_empty() && !transport.is_disconnected() {
+        if !exit.is_empty() {
             transport.disconnect();
         }
-    }
-}
-
-pub fn client_connected() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_connected(),
-        None => false,
-    }
-}
-
-pub fn client_diconnected() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_disconnected(),
-        None => true,
-    }
-}
-
-pub fn client_connecting() -> impl FnMut(Option<Res<NetcodeClientTransport>>) -> bool {
-    |transport| match transport {
-        Some(transport) => transport.is_connecting(),
-        None => false,
-    }
-}
-
-pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<NetcodeClientTransport>>) -> bool {
-    |mut last_connected: Local<bool>, transport| {
-        let connected = transport.map(|transport| transport.is_connected()).unwrap_or(false);
-
-        let just_connected = !*last_connected && connected;
-        *last_connected = connected;
-        just_connected
-    }
-}
-
-pub fn client_just_diconnected() -> impl FnMut(Local<bool>, Option<Res<NetcodeClientTransport>>) -> bool {
-    |mut last_connected: Local<bool>, transport| {
-        let disconnected = transport.map(|transport| transport.is_disconnected()).unwrap_or(true);
-
-        let just_disconnected = *last_connected && disconnected;
-        *last_connected = !disconnected;
-        just_disconnected
     }
 }

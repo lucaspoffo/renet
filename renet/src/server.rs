@@ -8,7 +8,7 @@ use std::time::Duration;
 use bytes::Bytes;
 
 /// Connection and disconnection events in the server.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Event))]
 pub enum ServerEvent {
     ClientConnected { client_id: ClientId },
@@ -41,7 +41,9 @@ impl RenetServer {
             return;
         }
 
-        let connection = RenetClient::new_from_server(self.connection_config.clone());
+        let mut connection = RenetClient::new_from_server(self.connection_config.clone());
+        // Consider newly added connections as connected
+        connection.set_connected();
         self.connections.insert(client_id, connection);
         self.events.push_back(ServerEvent::ClientConnected { client_id })
     }
@@ -133,21 +135,17 @@ impl RenetServer {
         }
     }
 
-    /// Disconnects a client, it does nothing if the client does not exits.
+    /// Disconnects a client, it does nothing if the client does not exist.
     pub fn disconnect(&mut self, client_id: ClientId) {
         if let Some(connection) = self.connections.get_mut(&client_id) {
-            if !connection.is_disconnected() {
-                connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
-            }
+            connection.disconnect_with_reason(DisconnectReason::DisconnectedByServer)
         }
     }
 
     /// Disconnects all client.
     pub fn disconnect_all(&mut self) {
         for connection in self.connections.values_mut() {
-            if !connection.is_disconnected() {
-                connection.disconnect_reason = Some(DisconnectReason::DisconnectedByServer);
-            }
+            connection.disconnect_with_reason(DisconnectReason::DisconnectedByServer)
         }
     }
 
@@ -209,7 +207,7 @@ impl RenetServer {
 
     /// Return ids for all connected clients (iterator)
     pub fn clients_id_iter(&self) -> impl Iterator<Item = ClientId> + '_ {
-        self.connections.iter().filter(|(_, c)| !c.is_disconnected()).map(|(id, _)| *id)
+        self.connections.iter().filter(|(_, c)| c.is_connected()).map(|(id, _)| *id)
     }
 
     /// Return ids for all connected clients
@@ -229,12 +227,12 @@ impl RenetServer {
 
     /// Returns the current number of connected clients.
     pub fn connected_clients(&self) -> usize {
-        self.connections.iter().filter(|(_, c)| c.is_disconnected()).count()
+        self.connections.iter().filter(|(_, c)| c.is_connected()).count()
     }
 
     pub fn is_connected(&self, client_id: ClientId) -> bool {
         if let Some(connection) = self.connections.get(&client_id) {
-            return !connection.is_disconnected();
+            return connection.is_connected();
         }
 
         false

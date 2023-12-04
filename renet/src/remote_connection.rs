@@ -70,6 +70,14 @@ pub struct NetworkInfo {
     pub bytes_received_per_second: f64,
 }
 
+/// The connection status of a [`RenetClient`].
+#[derive(Debug)]
+pub enum RenetConnectionStatus {
+    Connected,
+    Connecting,
+    Disconnected { reason: DisconnectReason },
+}
+
 #[derive(Debug)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct RenetClient {
@@ -84,7 +92,7 @@ pub struct RenetClient {
     receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
     stats: ConnectionStats,
     available_bytes_per_tick: u64,
-    pub(crate) disconnect_reason: Option<DisconnectReason>,
+    connection_status: RenetConnectionStatus,
     rtt: f64,
 }
 
@@ -180,7 +188,7 @@ impl RenetClient {
             stats: ConnectionStats::new(),
             rtt: 0.0,
             available_bytes_per_tick,
-            disconnect_reason: None,
+            connection_status: RenetConnectionStatus::Connecting,
         }
     }
 
@@ -214,41 +222,74 @@ impl RenetClient {
         }
     }
 
-    /// Returns if the client is disconnected.
-    ///
-    /// Note: to check if a client is connecting you need to use the transport layer [NetcodeClientTransport::is_connecting][crate::transport::NetcodeClientTransport::is_connecting].
-    /// You can't use `!client.is_disconnected()` for that.
+    /// Returns whether the client is connected.
     #[inline]
-    pub fn is_disconnected(&self) -> bool {
-        self.disconnect_reason.is_some()
+    pub fn is_connected(&self) -> bool {
+        matches!(self.connection_status, RenetConnectionStatus::Connected)
     }
 
-    /// Returns the disconneect reason if the client is disconnected.
+    /// Returns whether the client is connecting.
+    #[inline]
+    pub fn is_connecting(&self) -> bool {
+        matches!(self.connection_status, RenetConnectionStatus::Connecting)
+    }
+
+    /// Returns whether the client is disconnected.
+    #[inline]
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self.connection_status, RenetConnectionStatus::Disconnected { .. })
+    }
+
+    /// Returns the disconnect reason if the client is disconnected.
     pub fn disconnect_reason(&self) -> Option<DisconnectReason> {
-        self.disconnect_reason
+        if let RenetConnectionStatus::Disconnected { reason } = self.connection_status {
+            Some(reason)
+        } else {
+            None
+        }
+    }
+
+    /// Set the client connection status to connected.
+    ///
+    /// Does nothing if the client is disconnected. A disconnected client must be reconstructed.
+    ///
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
+    pub fn set_connected(&mut self) {
+        if !self.is_disconnected() {
+            self.connection_status = RenetConnectionStatus::Connected;
+        }
+    }
+
+    /// Set the client connection status to connecting.
+    ///
+    /// Does nothing if the client is disconnected. A disconnected client must be reconstructed.
+    ///
+    /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
+    /// <strong>Note:</strong> This should only be called by the transport layer.
+    /// </p>
+    pub fn set_connecting(&mut self) {
+        if !self.is_disconnected() {
+            self.connection_status = RenetConnectionStatus::Connecting;
+        }
     }
 
     /// Disconnect the client.
+    ///
     /// If the client is already disconnected, it does nothing.
     pub fn disconnect(&mut self) {
-        if self.disconnect_reason.is_some() {
-            return;
-        }
-
-        self.disconnect_reason = Some(DisconnectReason::DisconnectedByClient);
+        self.disconnect_with_reason(DisconnectReason::DisconnectedByClient);
     }
 
     /// Disconnect the client because an error occurred in the transport layer.
+    ///
     /// If the client is already disconnected, it does nothing.
     /// <p style="background:rgba(77,220,255,0.16);padding:0.5em;">
     /// <strong>Note:</strong> This should only be called by the transport layer.
     /// </p>
     pub fn disconnect_due_to_transport(&mut self) {
-        if self.disconnect_reason.is_some() {
-            return;
-        }
-
-        self.disconnect_reason = Some(DisconnectReason::Transport);
+        self.disconnect_with_reason(DisconnectReason::Transport);
     }
 
     /// Returns the available memory in bytes for the given channel.
@@ -284,7 +325,7 @@ impl RenetClient {
         let channel_id = channel_id.into();
         if let Some(reliable_channel) = self.send_reliable_channels.get_mut(&channel_id) {
             if let Err(error) = reliable_channel.send_message(message.into()) {
-                self.disconnect_reason = Some(DisconnectReason::SendChannelError { channel_id, error });
+                self.disconnect_with_reason(DisconnectReason::SendChannelError { channel_id, error });
             }
         } else if let Some(unreliable_channel) = self.send_unreliable_channels.get_mut(&channel_id) {
             unreliable_channel.send_message(message.into());
@@ -350,7 +391,7 @@ impl RenetClient {
         let mut octets = octets::Octets::with_slice(packet);
         let packet = match Packet::from_bytes(&mut octets) {
             Err(err) => {
-                self.disconnect_reason = Some(DisconnectReason::PacketDeserialization(err));
+                self.disconnect_with_reason(DisconnectReason::PacketDeserialization(err));
                 return;
             }
             Ok(packet) => packet,
@@ -361,20 +402,20 @@ impl RenetClient {
         match packet {
             Packet::SmallReliable { channel_id, messages, .. } => {
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
-                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
                 for (message_id, message) in messages {
                     if let Err(error) = channel.process_message(message, message_id) {
-                        self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
+                        self.disconnect_with_reason(DisconnectReason::ReceiveChannelError { channel_id, error });
                         return;
                     }
                 }
             }
             Packet::SmallUnreliable { channel_id, messages, .. } => {
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
-                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
@@ -384,22 +425,22 @@ impl RenetClient {
             }
             Packet::ReliableSlice { channel_id, slice, .. } => {
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
-                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
                 if let Err(error) = channel.process_slice(slice) {
-                    self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
+                    self.disconnect_with_reason(DisconnectReason::ReceiveChannelError { channel_id, error });
                 }
             }
             Packet::UnreliableSlice { channel_id, slice, .. } => {
                 let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
-                    self.disconnect_reason = Some(DisconnectReason::ReceivedInvalidChannelId(channel_id));
+                    self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
 
                 if let Err(error) = channel.process_slice(slice, self.current_time) {
-                    self.disconnect_reason = Some(DisconnectReason::ReceiveChannelError { channel_id, error });
+                    self.disconnect_with_reason(DisconnectReason::ReceiveChannelError { channel_id, error });
                 }
             }
             Packet::Ack { ack_ranges, .. } => {
@@ -557,7 +598,7 @@ impl RenetClient {
             let mut oct = OctetsMut::with_slice(&mut buffer);
             let len = match packet.to_bytes(&mut oct) {
                 Err(err) => {
-                    self.disconnect_reason = Some(DisconnectReason::PacketSerialization(err));
+                    self.disconnect_with_reason(DisconnectReason::PacketSerialization(err));
                     return vec![];
                 }
                 Ok(len) => len,
@@ -643,6 +684,12 @@ impl RenetClient {
             }
 
             return;
+        }
+    }
+
+    pub(crate) fn disconnect_with_reason(&mut self, reason: DisconnectReason) {
+        if !self.is_disconnected() {
+            self.connection_status = RenetConnectionStatus::Disconnected { reason };
         }
     }
 }

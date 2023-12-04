@@ -1,6 +1,6 @@
 [package]
 name = "renet_visualizer"
-version = "0.0.6"
+version = "0.0.7"
 keywords = ["gamedev", "networking"]
 description = "Egui metrics visualizer for the renet crate: Server/Client network library for multiplayer games"
 repository = "https://github.com/lucaspoffo/renet"
@@ -13,6 +13,6 @@ edition = "2021"
 bevy = ["dep:bevy_ecs"]
 
 [dependencies]
-renet = { path = "../renet", version = "0.0.13" }
-egui = "0.22"
-bevy_ecs = { version = "0.11.0", optional = true }
+renet = { path = "../renet", version = "0.0.14" }
+egui = "0.23"
+bevy_ecs = { version = "0.12.0", optional = true }

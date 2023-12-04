@@ -9,7 +9,7 @@ Running using the netcode transport:
 - server: `cargo run --bin server --features transport`
 - client: `cargo run --bin client --features transport`
 
-Running using the netcode transport:
+Running using the steam transport:
 
 - server: `cargo run --bin server --features steam`
 - client: `cargo run --bin client --features steam -- [HOST_STEAM_ID]`

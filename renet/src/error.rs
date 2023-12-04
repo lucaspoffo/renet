@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::packet::SerializationError;
 
-/// Possibles reasons for a disconnection.
+/// Possible reasons for a disconnection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisconnectReason {
     /// Connection was terminated by the transport layer

@@ -29,10 +29,10 @@ pub struct ChannelConfig {
     /// but it can be repeated between the server and client lists.
     pub channel_id: u8,
     /// Maximum number of bytes that the channel may hold without acknowledgement of messages before becoming full.
-    /// Unreliable channels will drop new messages when this value is reached
-    /// Reliable channels will cause a disconnect when this value is reached
+    /// Unreliable channels will drop new messages when this value is reached.
+    /// Reliable channels will cause a disconnect when this value is reached.
     pub max_memory_usage_bytes: usize,
-    /// Delivery garantee of the channel
+    /// Delivery garantee of the channel.
     pub send_type: SendType,
 }
 

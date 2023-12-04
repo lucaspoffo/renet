@@ -57,7 +57,7 @@ impl ChatApp {
             AppState::MainScreen => {
                 draw_main_screen(&mut self.ui_state, &mut self.state, ctx);
             }
-            AppState::ClientChat { transport, .. } if transport.is_connecting() => draw_loader(ctx),
+            AppState::ClientChat { client, .. } if client.is_connecting() => draw_loader(ctx),
             AppState::ClientChat { usernames, .. } => {
                 let usernames = usernames.clone();
                 draw_chat(&mut self.ui_state, &mut self.state, usernames, ctx);

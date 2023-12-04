@@ -1,7 +1,7 @@
 use std::{fmt, net::SocketAddr, time::Duration};
 
 use crate::{
-    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, ClientID, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
+    packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
     NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_MAX_PAYLOAD_BYTES, NETCODE_SEND_RATE, NETCODE_USER_DATA_BYTES,
 };
 
@@ -25,8 +25,8 @@ enum ClientState {
     Connected,
 }
 
-/// Configuration to establish an secure ou unsecure connection with the server.
-#[derive(Debug)]
+/// Configuration to establish a secure or unsecure connection with the server.
+#[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientAuthentication {
     /// Establishes a safe connection with the server using the [crate::ConnectToken].
@@ -51,7 +51,7 @@ pub enum ClientAuthentication {
 #[derive(Debug)]
 pub struct NetcodeClient {
     state: ClientState,
-    client_id: ClientID,
+    client_id: u64,
     connect_start_time: Duration,
     last_packet_send_time: Option<Duration>,
     last_packet_received_time: Duration,
@@ -148,7 +148,7 @@ impl NetcodeClient {
         self.current_time
     }
 
-    pub fn client_id(&self) -> ClientID {
+    pub fn client_id(&self) -> u64 {
         self.client_id
     }
 

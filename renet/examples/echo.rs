@@ -98,12 +98,23 @@ fn server(public_addr: SocketAddr) {
                 ServerEvent::ClientConnected { client_id } => {
                     let user_data = transport.user_data(client_id).unwrap();
                     let username = Username::from_user_data(&user_data);
+                    server.broadcast_message_except(
+                        client_id,
+                        DefaultChannel::ReliableOrdered,
+                        format!("User \"{}\" connected", username.0),
+                    );
                     usernames.insert(client_id, username.0);
                     println!("Client {} connected.", client_id)
                 }
                 ServerEvent::ClientDisconnected { client_id, reason } => {
                     println!("Client {} disconnected: {}", client_id, reason);
-                    usernames.remove_entry(&client_id);
+                    if let Some(username) = usernames.remove(&client_id) {
+                        server.broadcast_message_except(
+                            client_id,
+                            DefaultChannel::ReliableOrdered,
+                            format!("User \"{}\" disconnected", username),
+                        );
+                    }
                 }
             }
         }
@@ -153,7 +164,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         client.update(duration);
         transport.update(duration, &mut client).unwrap();
 
-        if transport.is_connected() {
+        if client.is_connected() {
             match stdin_channel.try_recv() {
                 Ok(text) => client.send_message(DefaultChannel::ReliableOrdered, text.as_bytes().to_vec()),
                 Err(TryRecvError::Empty) => {}
