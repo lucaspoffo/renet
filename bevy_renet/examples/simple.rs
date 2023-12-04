@@ -290,6 +290,7 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 }
 
 // If any error is found we just panic
+#[allow(clippy::never_loop)]
 fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
     for e in renet_error.read() {
         panic!("{}", e);

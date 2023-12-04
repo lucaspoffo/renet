@@ -70,6 +70,7 @@ fn add_netcode_network(app: &mut App) {
     app.insert_resource(CurrentClientId(client_id));
 
     // If any error is found we just panic
+    #[allow(clippy::never_loop)]
     fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
         for e in renet_error.read() {
             panic!("{}", e);
@@ -110,6 +111,7 @@ fn add_steam_network(app: &mut App) {
     app.add_systems(PreUpdate, steam_callbacks);
 
     // If any error is found we just panic
+    #[allow(clippy::never_loop)]
     fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
         for e in renet_error.read() {
             panic!("{}", e);

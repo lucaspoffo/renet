@@ -25,7 +25,7 @@
 
 #### Removed 🔥
 
-* Netcode: removed `is_connecting`, `is_connected`, `is_disconnected` from `NetcodeClientTransport`, use the methods from `RenetClient` instead. [(PR)](https://github.com/lucaspoffo/renet/pull/119) by [OleStrohm](https://github.com/OleStrohm)
+* Removed `is_connecting`, `is_connected`, `is_disconnected` from `NetcodeClientTransport`, use the methods from `RenetClient` instead. [(PR)](https://github.com/lucaspoffo/renet/pull/119) by [OleStrohm](https://github.com/OleStrohm)
 
 ## 0.0.13 - 19-07-2023
 
