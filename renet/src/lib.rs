@@ -17,6 +17,7 @@ pub use bytes::Bytes;
 
 /// Unique identifier for clients.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Ord, PartialOrd)]
+#[cfg_attr(feature = "bevy", derive(bevy_reflect::Reflect))]
 pub struct ClientId(u64);
 
 impl ClientId {
