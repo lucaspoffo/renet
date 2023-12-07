@@ -70,11 +70,15 @@ let server_config = ServerConfig {
 let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
 
 // Your gameplay loop
+let mut last_updated = Instant::now();
 loop {
-    let delta_time = Duration::from_millis(16);
+    let now = Instant::now();
+    let duration = now - last_updated;
+    last_updated = now;
+
     // Receive new messages and update clients
-    server.update(delta_time);
-    transport.update(delta_time, &mut server)?;
+    server.update(duration);
+    transport.update(duration, &mut server)?;
     
     // Check for client connections/disconnections
     while let Some(event) = server.get_event() {
@@ -132,11 +136,15 @@ let authentication = ClientAuthentication::Unsecure {
 let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
 // Your gameplay loop
+let mut last_updated = Instant::now();
 loop {
-    let delta_time = Duration::from_millis(16);
+    let now = Instant::now();
+    let duration = now - last_updated;
+    last_updated = now;
+
     // Receive new messages and update client
-    client.update(delta_time);
-    transport.update(delta_time, &mut client).unwrap();
+    client.update(duration);
+    transport.update(duration, &mut client).unwrap();
     
     if client.is_connected() {
         // Receive message from server
