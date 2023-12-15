@@ -163,7 +163,7 @@ impl WebTransportClient {
             return;
         }
         if let Ok(response) = self.close_receiver.try_next() {
-            self.is_disconnected = response.is_some();
+            self.is_disconnected = true;
         }
         while let Ok(packet) = self.receiver.try_next() {
             if let Some(packet) = packet {
