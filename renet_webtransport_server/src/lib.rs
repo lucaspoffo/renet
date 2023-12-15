@@ -82,7 +82,7 @@ impl WebTransportServer {
     pub fn update(&mut self, renet_server: &mut RenetServer) {
         let mut clients_added = 0;
 
-        if let Ok(session) = self.connection_receiver.try_recv() {
+        while let Ok(session) = self.connection_receiver.try_recv() {
             let shared_session = Arc::new(session);
             renet_server.add_connection(ClientId::from_raw(self.client_iterator));
             let (sender, receiver) = mpsc::channel::<Bytes>(256);
