@@ -39,6 +39,7 @@ impl Plugin for RenetServerPlugin {
         app.add_systems(
             PreUpdate,
             Self::emit_server_events_system
+                .in_set(RenetReceive)
                 .run_if(resource_exists::<RenetServer>())
                 .after(Self::update_system),
         );
