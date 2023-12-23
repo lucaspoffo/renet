@@ -3,7 +3,7 @@ use bevy_ecs::prelude::*;
 use renet::{RenetClient, RenetServer};
 use steamworks::SteamError;
 
-use bevy_renet::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
+use bevy_renet::{client_disconnected, RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
 pub use crate::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
 
@@ -73,14 +73,14 @@ impl Plugin for SteamClientPlugin {
             Self::update_system
                 .in_set(RenetReceive)
                 .run_if(resource_exists::<SteamClientTransport>)
-                .run_if(resource_exists::<RenetClient>)
+                .run_if(not(client_disconnected))
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<SteamClientTransport>)
-                .run_if(resource_exists::<RenetClient>),
+                .run_if(not(client_disconnected)),
         );
     }
 }

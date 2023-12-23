@@ -5,7 +5,7 @@ use renet::{
 
 use bevy::{app::AppExit, prelude::*};
 
-use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
+use crate::{client_disconnected, RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
 pub struct NetcodeServerPlugin;
 
@@ -66,14 +66,14 @@ impl Plugin for NetcodeClientPlugin {
             Self::update_system
                 .in_set(RenetReceive)
                 .run_if(resource_exists::<NetcodeClientTransport>)
-                .run_if(resource_exists::<RenetClient>)
+                .run_if(not(client_disconnected))
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeClientTransport>)
-                .run_if(resource_exists::<RenetClient>),
+                .run_if(not(client_disconnected)),
         );
     }
 }
