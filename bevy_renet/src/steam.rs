@@ -7,13 +7,11 @@ use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 pub use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
 
 pub struct SteamServerPlugin {
-    pub pre_schedule: Interned<dyn ScheduleLabel>,
-    pub post_schedule: Interned<dyn ScheduleLabel>,
+    pub schedules: NetSchedules,
 }
 
 pub struct SteamClientPlugin {
-    pub pre_schedule: Interned<dyn ScheduleLabel>,
-    pub post_schedule: Interned<dyn ScheduleLabel>,
+    pub schedules: NetSchedules,
 }
 
 impl Default for SteamServerPlugin {

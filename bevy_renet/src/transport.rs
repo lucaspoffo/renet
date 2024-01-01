@@ -3,35 +3,16 @@ use renet::{
     RenetClient, RenetServer,
 };
 
-use bevy::{app::AppExit, ecs::schedule::ScheduleLabel, prelude::*, utils::intern::Interned};
+use bevy::{app::AppExit, prelude::*};
 
-use crate::{CoreSet, RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
-
+use crate::{CoreSet, NetSchedules, RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
+#[derive(Default)]
 pub struct NetcodeServerPlugin {
-    pub pre_schedule: Interned<dyn ScheduleLabel>,
-    pub post_schedule: Interned<dyn ScheduleLabel>,
+    pub schedules: NetSchedules,
 }
-
+#[derive(Default)]
 pub struct NetcodeClientPlugin {
-    pub pre_schedule: Interned<dyn ScheduleLabel>,
-    pub post_schedule: Interned<dyn ScheduleLabel>,
-}
-
-impl Default for NetcodeServerPlugin {
-    fn default() -> Self {
-        Self {
-            pre_schedule: PreUpdate.intern(),
-            post_schedule: PostUpdate.intern(),
-        }
-    }
-}
-impl Default for NetcodeClientPlugin {
-    fn default() -> Self {
-        Self {
-            pre_schedule: PreUpdate.intern(),
-            post_schedule: PostUpdate.intern(),
-        }
-    }
+    pub schedules: NetSchedules,
 }
 
 impl Plugin for NetcodeServerPlugin {
@@ -39,7 +20,7 @@ impl Plugin for NetcodeServerPlugin {
         app.add_event::<NetcodeTransportError>();
 
         app.add_systems(
-            self.pre_schedule,
+            self.schedules.pre,
             Self::update_system
                 .in_set(RenetReceive)
                 .in_set(CoreSet::Pre)
@@ -50,7 +31,7 @@ impl Plugin for NetcodeServerPlugin {
         );
 
         app.add_systems(
-            self.post_schedule,
+            self.schedules.post,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .in_set(CoreSet::Post)
                 .run_if(resource_exists::<NetcodeServerTransport>())
@@ -87,7 +68,7 @@ impl Plugin for NetcodeClientPlugin {
         app.add_event::<NetcodeTransportError>();
 
         app.add_systems(
-            self.pre_schedule,
+            self.schedules.pre,
             Self::update_system
                 .in_set(RenetReceive)
                 .in_set(CoreSet::Pre)
@@ -96,7 +77,7 @@ impl Plugin for NetcodeClientPlugin {
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
-            self.post_schedule,
+            self.schedules.post,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .in_set(CoreSet::Post)
                 .run_if(resource_exists::<NetcodeClientTransport>())
