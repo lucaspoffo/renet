@@ -124,7 +124,7 @@ fn add_steam_network(app: &mut App) {
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    app.add_plugins(RenetClientPlugin);
+    app.add_plugins(RenetClientPlugin::default());
     app.add_plugins(LookTransformPlugin);
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
