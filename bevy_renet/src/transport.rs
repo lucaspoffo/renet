@@ -37,6 +37,9 @@ impl Plugin for NetcodeServerPlugin {
                 .run_if(resource_exists::<NetcodeServerTransport>())
                 .run_if(resource_exists::<RenetServer>()),
         );
+        if self.schedules.post == self.schedules.pre {
+            app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post).chain());
+        }
     }
 }
 
@@ -83,6 +86,9 @@ impl Plugin for NetcodeClientPlugin {
                 .run_if(resource_exists::<NetcodeClientTransport>())
                 .run_if(resource_exists::<RenetClient>()),
         );
+        if self.schedules.post == self.schedules.pre {
+            app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post).chain());
+        }
     }
 }
 

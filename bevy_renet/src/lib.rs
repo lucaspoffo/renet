@@ -69,9 +69,6 @@ impl Plugin for RenetServerPlugin {
                 .after(Self::update_system)
                 .in_set(CoreSet::Pre),
         );
-        if self.schedules.post == self.schedules.pre {
-            app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post));
-        }
     }
 }
 
@@ -93,9 +90,6 @@ impl Plugin for RenetClientPlugin {
             self.schedules.pre,
             Self::update_system.in_set(CoreSet::Pre).run_if(resource_exists::<RenetClient>()),
         );
-        if self.schedules.post == self.schedules.pre {
-            app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post));
-        }
     }
 }
 
