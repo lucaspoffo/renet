@@ -32,7 +32,7 @@ pub enum CoreSet {
     Pre,
     Post,
 }
-
+#[derive(Clone, Copy)]
 pub struct NetSchedules {
     pub pre: Interned<dyn ScheduleLabel>,
     pub post: Interned<dyn ScheduleLabel>,
