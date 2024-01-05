@@ -125,6 +125,13 @@ impl SendChannelUnreliable {
             return;
         }
 
+        let num_fragments = message.len() / SLICE_SIZE;
+        if num_fragments > 20 {
+            log::warn!(
+                "Sending an unreliable message with {num_fragments} fragments, messages with this many fragments are susceptible to packet loss. \
+                Consider breaking your message into smaller ones or using a reliable channel");
+        }
+
         self.memory_usage_bytes += message.len();
         self.unreliable_messages.push_back(message);
     }
