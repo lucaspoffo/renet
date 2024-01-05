@@ -56,3 +56,8 @@ impl<'de> serde::Deserialize<'de> for ClientId {
         u64::deserialize(deserializer).map(ClientId::from_raw)
     }
 }
+
+#[cfg(feature = "bevy")]
+impl bevy_ecs::component::Component for ClientId {
+    type Storage = bevy_ecs::component::TableStorage;
+}
