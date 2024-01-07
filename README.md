@@ -33,7 +33,7 @@ let send_type = SendType::ReliableOrdered {
     resend_time: Duration::from_millis(300)
 };
 
-// Garantee of message delivery but not order
+// Guarantee of message delivery but not order
 let send_type = SendType::ReliableUnordered {
     resend_time: Duration::from_millis(300)
 };
