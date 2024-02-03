@@ -9,10 +9,4 @@ Running using the netcode transport:
 - server: `cargo run --bin server --features transport`
 - client: `cargo run --bin client --features transport`
 
-Running using the steam transport:
-
-- server: `cargo run --bin server --features steam`
-- client: `cargo run --bin client --features steam -- [HOST_STEAM_ID]`
-  - The `HOST_STEAM_ID` is printed in the console when the server is started
-
 You can toogle [renet_visualizer](https://github.com/lucaspoffo/renet/tree/master/renet_visualizer) with `F1` in the client.

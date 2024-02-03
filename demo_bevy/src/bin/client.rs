@@ -80,47 +80,6 @@ fn add_netcode_network(app: &mut App) {
     app.add_systems(Update, panic_on_error_system);
 }
 
-#[cfg(feature = "steam")]
-fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
-    use steamworks::{SingleClient, SteamId};
-
-    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
-
-    steam_client.networking_utils().init_relay_network_access();
-
-    let args: Vec<String> = std::env::args().collect();
-    let server_steam_id: u64 = args[1].parse().unwrap();
-    let server_steam_id = SteamId::from_raw(server_steam_id);
-
-    let client = RenetClient::new(connection_config());
-    let transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
-
-    app.add_plugins(SteamClientPlugin);
-    app.insert_resource(client);
-    app.insert_resource(transport);
-    app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
-
-    app.configure_sets(Update, Connected.run_if(client_connected()));
-
-    app.insert_non_send_resource(single);
-    fn steam_callbacks(client: NonSend<SingleClient>) {
-        client.run_callbacks();
-    }
-
-    app.add_systems(PreUpdate, steam_callbacks);
-
-    // If any error is found we just panic
-    #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
-        for e in renet_error.read() {
-            panic!("{}", e);
-        }
-    }
-
-    app.add_systems(Update, panic_on_error_system);
-}
-
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
@@ -132,9 +91,6 @@ fn main() {
 
     #[cfg(feature = "transport")]
     add_netcode_network(&mut app);
-
-    #[cfg(feature = "steam")]
-    add_steam_network(&mut app);
 
     app.add_event::<PlayerCommand>();
 

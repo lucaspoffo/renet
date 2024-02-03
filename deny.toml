@@ -30,8 +30,3 @@ wildcards = "allow"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-
-allow-git = [
-    # Unreleased version for steamworks, need release with PR https://github.com/Noxime/steamworks-rs/pull/134
-    "https://github.com/Noxime/steamworks-rs"
-]

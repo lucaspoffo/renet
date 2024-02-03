@@ -6,6 +6,5 @@ members = [
     "renetcode",
     "bevy_renet",
     "renet_visualizer",
-    "renet_steam",
 ]
 resolver = "2"
