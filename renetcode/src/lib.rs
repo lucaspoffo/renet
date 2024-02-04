@@ -16,6 +16,7 @@
 //!
 //! [standard]: https://github.com/networkprotocol/netcode/blob/master/STANDARD.md
 //! [netcode]: https://github.com/networkprotocol/netcode
+mod address;
 mod client;
 mod crypto;
 mod error;
@@ -25,6 +26,7 @@ mod serialize;
 mod server;
 mod token;
 
+pub use address::RenetAddr;
 pub use client::{ClientAuthentication, DisconnectReason, NetcodeClient};
 pub use crypto::generate_random_bytes;
 pub use error::NetcodeError;
