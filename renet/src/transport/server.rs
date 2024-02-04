@@ -1,6 +1,6 @@
 use std::{
     io,
-    net::{SocketAddr, UdpSocket},
+    net::SocketAddr,
     time::Duration,
 };
 
@@ -9,24 +9,22 @@ use renetcode::{NetcodeServer, ServerConfig, ServerResult, NETCODE_MAX_PACKET_BY
 use crate::ClientId;
 use crate::RenetServer;
 
-use super::NetcodeTransportError;
+use super::{NetcodeTransportError, TransportSocket};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
 pub struct NetcodeServerTransport {
-    socket: UdpSocket,
+    socket: Box<dyn TransportSocket>,
     netcode_server: NetcodeServer,
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
 }
 
 impl NetcodeServerTransport {
-    pub fn new(server_config: ServerConfig, socket: UdpSocket) -> Result<Self, std::io::Error> {
-        socket.set_nonblocking(true)?;
-
+    pub fn new(server_config: ServerConfig, socket: impl TransportSocket) -> Result<Self, std::io::Error> {
         let netcode_server = NetcodeServer::new(server_config);
 
         Ok(Self {
-            socket,
+            socket: Box::new(socket),
             netcode_server,
             buffer: [0; NETCODE_MAX_PACKET_BYTES],
         })
@@ -63,7 +61,7 @@ impl NetcodeServerTransport {
     pub fn disconnect_all(&mut self, server: &mut RenetServer) {
         for client_id in self.netcode_server.clients_id() {
             let server_result = self.netcode_server.disconnect(client_id);
-            handle_server_result(server_result, &self.socket, server);
+            handle_server_result(server_result, &mut self.socket, server);
         }
     }
 
@@ -77,11 +75,13 @@ impl NetcodeServerTransport {
     pub fn update(&mut self, duration: Duration, server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         self.netcode_server.update(duration);
 
+        self.socket.preupdate();
+
         loop {
-            match self.socket.recv_from(&mut self.buffer) {
+            match self.socket.try_recv(&mut self.buffer) {
                 Ok((len, addr)) => {
                     let server_result = self.netcode_server.process_packet(addr, &mut self.buffer[..len]);
-                    handle_server_result(server_result, &self.socket, server);
+                    handle_server_result(server_result, &mut self.socket, server);
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => break,
@@ -92,13 +92,15 @@ impl NetcodeServerTransport {
 
         for client_id in self.netcode_server.clients_id() {
             let server_result = self.netcode_server.update_client(client_id);
-            handle_server_result(server_result, &self.socket, server);
+            handle_server_result(server_result, &mut self.socket, server);
         }
 
         for disconnection_id in server.disconnections_id() {
             let server_result = self.netcode_server.disconnect(disconnection_id.raw());
-            handle_server_result(server_result, &self.socket, server);
+            handle_server_result(server_result, &mut self.socket, server);
         }
+
+        self.socket.postupdate();
 
         Ok(())
     }
@@ -110,7 +112,7 @@ impl NetcodeServerTransport {
             for packet in packets {
                 match self.netcode_server.generate_payload_packet(client_id.raw(), &packet) {
                     Ok((addr, payload)) => {
-                        if let Err(e) = self.socket.send_to(payload, addr) {
+                        if let Err(e) = self.socket.send(addr, payload) {
                             log::error!("Failed to send packet to client {client_id} ({addr}): {e}");
                             continue 'clients;
                         }
@@ -125,9 +127,13 @@ impl NetcodeServerTransport {
     }
 }
 
-fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliable_server: &mut RenetServer) {
-    let send_packet = |packet: &[u8], addr: SocketAddr| {
-        if let Err(err) = socket.send_to(packet, addr) {
+fn handle_server_result(
+    server_result: ServerResult,
+    socket: &mut Box<dyn TransportSocket>,
+    reliable_server: &mut RenetServer
+){
+    let mut send_packet = |packet: &[u8], addr: SocketAddr| {
+        if let Err(err) = socket.send(addr, packet) {
             log::error!("Failed to send packet to {addr}: {err}");
         }
     };
@@ -157,6 +163,7 @@ fn handle_server_result(server_result: ServerResult, socket: &UdpSocket, reliabl
             if let Some(payload) = payload {
                 send_packet(payload, addr);
             }
+            socket.disconnect(addr);
         }
     }
 }

@@ -6,7 +6,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    renet::{ClientId, RenetServer, ServerEvent},
+    renet::{ClientId, RenetServer, ServerEvent, transport::NativeSocket},
     RenetServerPlugin,
 };
 use demo_bevy::{
@@ -52,7 +52,7 @@ fn add_netcode_network(app: &mut App) {
         authentication: ServerAuthentication::Unsecure,
     };
 
-    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    let transport = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
     app.insert_resource(server);
     app.insert_resource(transport);
 }

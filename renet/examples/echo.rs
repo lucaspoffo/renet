@@ -8,7 +8,8 @@ use std::{
 
 use renet::{
     transport::{
-        ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
+        ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication,
+        ServerConfig, NETCODE_USER_DATA_BYTES,
     },
     ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
@@ -77,7 +78,7 @@ fn server(public_addr: SocketAddr) {
     };
     let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
 
-    let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    let mut transport = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
 
     let mut usernames: HashMap<ClientId, String> = HashMap::new();
     let mut received_messages = vec![];
@@ -152,7 +153,7 @@ fn client(server_addr: SocketAddr, username: Username) {
         protocol_id: PROTOCOL_ID,
     };
 
-    let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let mut transport = NetcodeClientTransport::new(current_time, authentication, NativeSocket::new(socket).unwrap()).unwrap();
     let stdin_channel: Receiver<String> = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
