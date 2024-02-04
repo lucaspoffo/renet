@@ -6,7 +6,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    renet::{ClientId, RenetServer, ServerEvent, transport::NativeSocket},
+    renet::{transport::NativeSocket, ClientId, RenetServer, ServerEvent},
     RenetServerPlugin,
 };
 use demo_bevy::{

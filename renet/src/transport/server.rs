@@ -1,8 +1,4 @@
-use std::{
-    io,
-    net::SocketAddr,
-    time::Duration,
-};
+use std::{io, net::SocketAddr, time::Duration};
 
 use renetcode::{NetcodeServer, ServerConfig, ServerResult, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES};
 
@@ -127,11 +123,7 @@ impl NetcodeServerTransport {
     }
 }
 
-fn handle_server_result(
-    server_result: ServerResult,
-    socket: &mut Box<dyn TransportSocket>,
-    reliable_server: &mut RenetServer
-){
+fn handle_server_result(server_result: ServerResult, socket: &mut Box<dyn TransportSocket>, reliable_server: &mut RenetServer) {
     let mut send_packet = |packet: &[u8], addr: SocketAddr| {
         if let Err(err) = socket.send(addr, packet) {
             log::error!("Failed to send packet to {addr}: {err}");

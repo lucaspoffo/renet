@@ -8,7 +8,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
     client_connected,
-    renet::{ClientId, RenetClient, transport::NativeSocket},
+    renet::{transport::NativeSocket, ClientId, RenetClient},
     RenetClientPlugin,
 };
 use demo_bevy::{

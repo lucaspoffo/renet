@@ -1,8 +1,4 @@
-use std::{
-    io,
-    net::SocketAddr,
-    time::Duration,
-};
+use std::{io, net::SocketAddr, time::Duration};
 
 use renetcode::{ClientAuthentication, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
@@ -19,11 +15,7 @@ pub struct NetcodeClientTransport {
 }
 
 impl NetcodeClientTransport {
-    pub fn new(
-        current_time: Duration,
-        authentication: ClientAuthentication,
-        socket: impl TransportSocket,
-    ) -> Result<Self, NetcodeError> {
+    pub fn new(current_time: Duration, authentication: ClientAuthentication, socket: impl TransportSocket) -> Result<Self, NetcodeError> {
         let netcode_client = NetcodeClient::new(current_time, authentication)?;
 
         Ok(Self {

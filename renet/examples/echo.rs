@@ -8,8 +8,8 @@ use std::{
 
 use renet::{
     transport::{
-        ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication,
-        ServerConfig, NETCODE_USER_DATA_BYTES,
+        ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig,
+        NETCODE_USER_DATA_BYTES,
     },
     ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
