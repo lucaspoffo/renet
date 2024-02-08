@@ -82,7 +82,7 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use renet_steam::bevy::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
     use steamworks::{SingleClient, SteamId};
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();

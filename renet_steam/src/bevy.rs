@@ -1,10 +1,11 @@
-use bevy::{app::AppExit, prelude::*};
+use bevy_app::{prelude::*, AppExit};
+use bevy_ecs::prelude::*;
 use renet::{RenetClient, RenetServer};
-use renet_steam::steamworks::SteamError;
+use steamworks::SteamError;
 
-use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
+use bevy_renet::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
-pub use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
+pub use crate::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
 
 pub struct SteamServerPlugin;
 

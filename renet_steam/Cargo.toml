@@ -11,7 +11,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-bevy = ["dep:bevy_ecs"]
+bevy = ["dep:bevy_app", "dep:bevy_ecs", "dep:bevy_renet"]
 
 [dependencies]
 renet = { path = "../renet" }
@@ -19,6 +19,8 @@ renet = { path = "../renet" }
 steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "a4dfe2a" }
 log = "0.4.19"
 bevy_ecs = { version = "0.12", optional = true }
+bevy_app = { version = "0.12", optional = true }
+bevy_renet = { version = "0.0.10", optional = true, path = "../bevy_renet" }
 
 [dev-dependencies]
 env_logger = "0.10.0"

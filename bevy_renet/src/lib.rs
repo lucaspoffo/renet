@@ -7,9 +7,6 @@ use renet::{RenetClient, RenetServer, ServerEvent};
 #[cfg(feature = "transport")]
 pub mod transport;
 
-#[cfg(feature = "steam")]
-pub mod steam;
-
 /// This system set is where all transports receive messages
 ///
 /// If you want to ensure data has arrived in the [`RenetClient`] or [`RenetServer`], then schedule your

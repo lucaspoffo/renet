@@ -59,8 +59,9 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
     use demo_bevy::connection_config;
+    use renet_steam::bevy::{SteamServerConfig, SteamServerPlugin, SteamServerTransport};
+    use renet_steam::AccessPermission;
     use steamworks::SingleClient;
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
