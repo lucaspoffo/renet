@@ -7,12 +7,6 @@ use bevy::{app::AppExit, prelude::*};
 
 use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SystemSet)]
-pub enum NetcodeSet {
-    Update,
-    SendPackets,
-}
-
 pub struct NetcodeServerPlugin;
 
 pub struct NetcodeClientPlugin;
@@ -20,9 +14,6 @@ pub struct NetcodeClientPlugin;
 impl Plugin for NetcodeServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<NetcodeTransportError>();
-
-        app.configure_sets(PreUpdate, NetcodeSet::Update);
-        app.configure_sets(PostUpdate, NetcodeSet::SendPackets);
 
         app.add_systems(
             PreUpdate,
@@ -32,7 +23,6 @@ impl Plugin for NetcodeServerPlugin {
                 .run_if(resource_exists::<RenetServer>)
                 .after(RenetServerPlugin::update_system)
                 .before(RenetServerPlugin::emit_server_events_system)
-                .in_set(NetcodeSet::Update),
         );
 
         app.add_systems(
@@ -40,7 +30,6 @@ impl Plugin for NetcodeServerPlugin {
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeServerTransport>)
                 .run_if(resource_exists::<RenetServer>)
-                .in_set(NetcodeSet::SendPackets),
         );
     }
 }
