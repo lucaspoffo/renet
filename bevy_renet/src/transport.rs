@@ -22,14 +22,14 @@ impl Plugin for NetcodeServerPlugin {
                 .run_if(resource_exists::<NetcodeServerTransport>)
                 .run_if(resource_exists::<RenetServer>)
                 .after(RenetServerPlugin::update_system)
-                .before(RenetServerPlugin::emit_server_events_system)
+                .before(RenetServerPlugin::emit_server_events_system),
         );
 
         app.add_systems(
             PostUpdate,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeServerTransport>)
-                .run_if(resource_exists::<RenetServer>)
+                .run_if(resource_exists::<RenetServer>),
         );
     }
 }
