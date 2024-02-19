@@ -118,7 +118,7 @@ fn main() {
 
         app.add_systems(
             Update,
-            (player_input, client_send_input, client_sync_players).run_if(client_connected()),
+            (player_input, client_send_input, client_sync_players).run_if(client_connected),
         );
     }
 
