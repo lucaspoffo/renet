@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::{shape::Icosphere, *},
+    prelude::*,
     window::PrimaryWindow,
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
