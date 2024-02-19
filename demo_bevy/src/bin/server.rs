@@ -161,8 +161,8 @@ fn server_update_system(
                 let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
                 let player_entity = commands
                     .spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(shape::Capsule::default())),
-                        material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                        mesh: meshes.add(Mesh::from(Capsule3d::default())),
+                        material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
                         transform,
                         ..Default::default()
                     })
@@ -291,7 +291,7 @@ fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_pro
 }
 
 fn spawn_bot(
-    keyboard_input: Res<Input<KeyCode>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut lobby: ResMut<ServerLobby>,
@@ -306,8 +306,8 @@ fn spawn_bot(
         let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
         let player_entity = commands
             .spawn(PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Capsule::default())),
-                material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                mesh: meshes.add(Mesh::from(Capsule3d::default())),
+                material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
                 transform,
                 ..Default::default()
             })
