@@ -1,4 +1,4 @@
-use bevy::prelude::{shape::Plane, *};
+use bevy::{prelude::*, render::mesh::PlaneMeshBuilder};
 use bevy_renet::{
     client_connected,
     renet::{
@@ -246,7 +246,7 @@ fn client_sync_players(
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(Plane::from_size(5.0))),
+        mesh: meshes.add(Mesh::from(PlaneMeshBuilder::from_size(Vec2::splat(5.0)))),
         material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
         ..Default::default()
     });
