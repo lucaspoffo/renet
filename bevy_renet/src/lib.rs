@@ -32,12 +32,12 @@ pub struct RenetClientPlugin;
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Events<ServerEvent>>();
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>()));
+        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>));
         app.add_systems(
             PreUpdate,
             Self::emit_server_events_system
                 .in_set(RenetReceive)
-                .run_if(resource_exists::<RenetServer>())
+                .run_if(resource_exists::<RenetServer>)
                 .after(Self::update_system),
         );
     }
@@ -57,7 +57,7 @@ impl RenetServerPlugin {
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetClient>()));
+        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetClient>));
     }
 }
 

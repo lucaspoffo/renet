@@ -133,8 +133,8 @@ pub fn connection_config() -> ConnectionConfig {
 pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Box::new(40., 1., 40.))),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+        mesh: meshes.add(Mesh::from(Cuboid::new(40., 1., 40.))),
+        material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
         transform: Transform::from_xyz(0.0, -1.0, 0.0),
         ..Default::default()
     });
@@ -170,14 +170,8 @@ pub fn spawn_fireball(
     }
     commands
         .spawn(PbrBundle {
-            mesh: meshes.add(
-                Mesh::try_from(Icosphere {
-                    radius: 0.1,
-                    subdivisions: 5,
-                })
-                .unwrap(),
-            ),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+            mesh: meshes.add(Sphere { radius: 0.1 }),
+            material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
             transform: Transform::from_translation(translation),
             ..Default::default()
         })

@@ -106,7 +106,7 @@ fn main() {
 
         app.add_systems(
             Update,
-            (server_update_system, server_sync_players, move_players_system).run_if(resource_exists::<RenetServer>()),
+            (server_update_system, server_sync_players, move_players_system).run_if(resource_exists::<RenetServer>),
         );
     } else {
         app.add_plugins(RenetClientPlugin);
@@ -143,8 +143,8 @@ fn server_update_system(
                 // Spawn player cube
                 let player_entity = commands
                     .spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-                        material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                        mesh: meshes.add(Cuboid::from_size(Vec3::splat(1.0))),
+                        material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
                         transform: Transform::from_xyz(0.0, 0.5, 0.0),
                         ..Default::default()
                     })
@@ -210,8 +210,8 @@ fn client_sync_players(
                 println!("Player {} connected.", id);
                 let player_entity = commands
                     .spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-                        material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                        mesh: meshes.add(Cuboid::from_size(Vec3::splat(1.0))),
+                        material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
                         transform: Transform::from_xyz(0.0, 0.5, 0.0),
                         ..Default::default()
                     })
@@ -247,7 +247,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     // plane
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(Plane::from_size(5.0))),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+        material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
         ..Default::default()
     });
     // light
@@ -267,11 +267,11 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     });
 }
 
-fn player_input(keyboard_input: Res<Input<KeyCode>>, mut player_input: ResMut<PlayerInput>) {
-    player_input.left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
-    player_input.right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
-    player_input.up = keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up);
-    player_input.down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
+fn player_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut player_input: ResMut<PlayerInput>) {
+    player_input.left = keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft);
+    player_input.right = keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight);
+    player_input.up = keyboard_input.pressed(KeyCode::KeyW) || keyboard_input.pressed(KeyCode::ArrowUp);
+    player_input.down = keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown);
 }
 
 fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {

@@ -362,7 +362,8 @@ fn show_graph(
         let (outer_rect, _) = ui.allocate_exact_size(Vec2::new(style.width + galley.size().x + spacing_x, style.height), Sense::hover());
         let rect = Rect::from_min_size(outer_rect.left_top(), vec2(style.width, style.height));
         let text_pos = rect.right_center() + vec2(spacing_x / 2.0, -galley.size().y / 2.);
-        galley.paint_with_fallback_color(&ui.painter().with_clip_rect(outer_rect), text_pos, style.text_color);
+        ui.painter().with_clip_rect(outer_rect).galley(text_pos, galley, style.text_color);
+        // galley.paint_with_fallback_color(&ui.painter().with_clip_rect(outer_rect), text_pos, style.text_color);
 
         let body = Shape::Rect(RectShape {
             rect,
@@ -397,7 +398,7 @@ fn show_graph(
             };
             let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
             let text_pos = rect.left_top() + Vec2::new(0.0, galley.size().y / 2.) + vec2(spacing_x, 0.0);
-            galley.paint_with_fallback_color(&ui.painter().with_clip_rect(rect), text_pos, style.text_color);
+            ui.painter().with_clip_rect(outer_rect).galley(text_pos, galley, style.text_color);
         }
         {
             let text: WidgetText = match text_format {
@@ -406,7 +407,7 @@ fn show_graph(
             };
             let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
             let text_pos = rect.left_bottom() - Vec2::new(0.0, galley.size().y * 1.5) + vec2(spacing_x, 0.0);
-            galley.paint_with_fallback_color(&ui.painter().with_clip_rect(rect), text_pos, style.text_color);
+            ui.painter().with_clip_rect(outer_rect).galley(text_pos, galley, style.text_color);
         }
     });
 }

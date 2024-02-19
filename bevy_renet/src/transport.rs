@@ -19,8 +19,8 @@ impl Plugin for NetcodeServerPlugin {
             PreUpdate,
             Self::update_system
                 .in_set(RenetReceive)
-                .run_if(resource_exists::<NetcodeServerTransport>())
-                .run_if(resource_exists::<RenetServer>())
+                .run_if(resource_exists::<NetcodeServerTransport>)
+                .run_if(resource_exists::<RenetServer>)
                 .after(RenetServerPlugin::update_system)
                 .before(RenetServerPlugin::emit_server_events_system),
         );
@@ -28,8 +28,8 @@ impl Plugin for NetcodeServerPlugin {
         app.add_systems(
             PostUpdate,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
-                .run_if(resource_exists::<NetcodeServerTransport>())
-                .run_if(resource_exists::<RenetServer>()),
+                .run_if(resource_exists::<NetcodeServerTransport>)
+                .run_if(resource_exists::<RenetServer>),
         );
     }
 }
@@ -65,15 +65,15 @@ impl Plugin for NetcodeClientPlugin {
             PreUpdate,
             Self::update_system
                 .in_set(RenetReceive)
-                .run_if(resource_exists::<NetcodeClientTransport>())
-                .run_if(resource_exists::<RenetClient>())
+                .run_if(resource_exists::<NetcodeClientTransport>)
+                .run_if(resource_exists::<RenetClient>)
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
             PostUpdate,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
-                .run_if(resource_exists::<NetcodeClientTransport>())
-                .run_if(resource_exists::<RenetClient>()),
+                .run_if(resource_exists::<NetcodeClientTransport>)
+                .run_if(resource_exists::<RenetClient>),
         );
     }
 }
