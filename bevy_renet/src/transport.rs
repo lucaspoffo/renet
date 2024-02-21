@@ -35,7 +35,7 @@ impl Plugin for NetcodeServerPlugin {
 }
 
 impl NetcodeServerPlugin {
-    fn update_system(
+    pub fn update_system(
         mut transport: ResMut<NetcodeServerTransport>,
         mut server: ResMut<RenetServer>,
         time: Res<Time>,
@@ -46,7 +46,7 @@ impl NetcodeServerPlugin {
         }
     }
 
-    fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
+    pub fn send_packets(mut transport: ResMut<NetcodeServerTransport>, mut server: ResMut<RenetServer>) {
         transport.send_packets(&mut server);
     }
 
@@ -79,7 +79,7 @@ impl Plugin for NetcodeClientPlugin {
 }
 
 impl NetcodeClientPlugin {
-    fn update_system(
+    pub fn update_system(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         time: Res<Time>,
@@ -90,7 +90,7 @@ impl NetcodeClientPlugin {
         }
     }
 
-    fn send_packets(
+    pub fn send_packets(
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         mut transport_errors: EventWriter<NetcodeTransportError>,
@@ -100,7 +100,7 @@ impl NetcodeClientPlugin {
         }
     }
 
-    fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<NetcodeClientTransport>) {
+    pub fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<NetcodeClientTransport>) {
         if !exit.is_empty() {
             transport.disconnect();
         }
