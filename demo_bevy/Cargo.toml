@@ -33,5 +33,4 @@ bevy_egui = "0.25"
 renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
 smooth-bevy-cameras = "0.11"
 fastrand = "2.0"
-
-steamworks = { git = "https://github.com/Noxime/steamworks-rs", rev = "a4dfe2a", optional = true }
+steamworks = { version = "0.11", optional = true }
