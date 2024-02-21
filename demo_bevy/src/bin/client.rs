@@ -48,7 +48,7 @@ fn add_netcode_network(app: &mut App) {
 
     app.add_plugins(bevy_renet::transport::NetcodeClientPlugin);
 
-    app.configure_sets(Update, Connected.run_if(client_connected()));
+    app.configure_sets(Update, Connected.run_if(client_connected));
 
     let client = RenetClient::new(connection_config());
 
@@ -101,7 +101,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(transport);
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
 
-    app.configure_sets(Update, Connected.run_if(client_connected()));
+    app.configure_sets(Update, Connected.run_if(client_connected));
 
     app.insert_non_send_resource(single);
     fn steam_callbacks(client: NonSend<SingleClient>) {
