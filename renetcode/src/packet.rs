@@ -214,7 +214,8 @@ impl<'a> Packet<'a> {
         }
     }
 
-    pub fn encode(&self,
+    pub fn encode(
+        &self,
         buffer: &mut [u8],
         protocol_id: u64,
         crypto_info: Option<(u64, &[u8; 32])>,

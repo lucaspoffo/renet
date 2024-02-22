@@ -499,7 +499,8 @@ impl NetcodeServer {
                     match self.clients.iter().position(|c| c.is_none()) {
                         None => {
                             let packet = Packet::ConnectionDenied;
-                            let len = packet.encode(&mut self.out,
+                            let len = packet.encode(
+                                &mut self.out,
                                 self.protocol_id,
                                 Some((self.global_sequence, &pending.send_key)),
                                 self.encryption_policy,
@@ -645,12 +646,7 @@ impl NetcodeServer {
                 let addr = client.addr;
                 self.clients[slot] = None;
 
-                let len = match packet.encode(
-                    &mut self.out,
-                    self.protocol_id,
-                    Some((sequence, &send_key)),
-                    self.encryption_policy,
-                ){
+                let len = match packet.encode(&mut self.out, self.protocol_id, Some((sequence, &send_key)), self.encryption_policy) {
                     Err(e) => {
                         log::error!("Failed to encode disconnect packet: {}", e);
                         return ServerResult::ClientDisconnected {
@@ -680,7 +676,7 @@ impl NetcodeServer {
                     self.protocol_id,
                     Some((client.sequence, &client.send_key)),
                     self.encryption_policy,
-                ){
+                ) {
                     Err(e) => {
                         log::error!("Failed to encode keep alive packet: {}", e);
                         return ServerResult::None;
@@ -717,7 +713,7 @@ impl NetcodeServer {
                 self.protocol_id,
                 Some((client.sequence, &client.send_key)),
                 self.encryption_policy,
-            ){
+            ) {
                 Err(e) => {
                     log::error!("Failed to encode disconnect packet: {}", e);
                     return ServerResult::ClientDisconnected {

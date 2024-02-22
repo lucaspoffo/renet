@@ -429,7 +429,9 @@ mod tests {
         let user_data = generate_random_bytes();
         let challenge_key = generate_random_bytes();
         let challenge_packet = Packet::generate_challenge(client_id, &user_data, challenge_sequence, &challenge_key).unwrap();
-        let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key)), true).unwrap();
+        let len = challenge_packet
+            .encode(&mut buffer, protocol_id, Some((0, &server_key)), true)
+            .unwrap();
         client.process_packet(&mut buffer[..len]);
         assert_eq!(ClientState::SendingConnectionResponse, client.state);
 
@@ -440,14 +442,18 @@ mod tests {
         let max_clients = 4;
         let client_index = 2;
         let keep_alive_packet = Packet::KeepAlive { max_clients, client_index };
-        let len = keep_alive_packet.encode(&mut buffer, protocol_id, Some((1, &server_key)), true).unwrap();
+        let len = keep_alive_packet
+            .encode(&mut buffer, protocol_id, Some((1, &server_key)), true)
+            .unwrap();
         client.process_packet(&mut buffer[..len]);
 
         assert_eq!(client.state, ClientState::Connected);
 
         let payload = vec![7u8; 500];
         let payload_packet = Packet::Payload(&payload[..]);
-        let len = payload_packet.encode(&mut buffer, protocol_id, Some((2, &server_key)), true).unwrap();
+        let len = payload_packet
+            .encode(&mut buffer, protocol_id, Some((2, &server_key)), true)
+            .unwrap();
 
         let payload_client = client.process_packet(&mut buffer[..len]).unwrap();
         assert_eq!(payload, payload_client);

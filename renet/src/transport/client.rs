@@ -16,8 +16,7 @@ pub struct NetcodeClientTransport {
 
 impl NetcodeClientTransport {
     pub fn new(current_time: Duration, authentication: ClientAuthentication, socket: impl TransportSocket) -> Result<Self, NetcodeError> {
-        let netcode_client = NetcodeClient::new(current_time, authentication)?
-            .set_encryption_policy(!socket.is_encrypted());
+        let netcode_client = NetcodeClient::new(current_time, authentication)?.set_encryption_policy(!socket.is_encrypted());
 
         Ok(Self {
             socket: Box::new(socket),
