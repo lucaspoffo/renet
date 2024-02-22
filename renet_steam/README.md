@@ -91,7 +91,7 @@ loop {
 
 ## Example
 
-You can try the steam echo example with:
+You can try the steam echo example with (steam needs to be running in the background):
 
 - server: `cargo run --example echo server`
 - client: `cargo run --example echo client [HOST_STEAM_ID]`
