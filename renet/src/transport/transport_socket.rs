@@ -14,6 +14,12 @@ use super::NetcodeTransportError;
 /// the server list from the connect token, and then map that list to the 16-byte IPV6 segments that will be produced
 /// by the client when it tries to reconnect to different servers.
 pub trait TransportSocket: Debug + Send + Sync + 'static {
+    /// Gets the encryption behavior of the socket.
+    ///
+    /// If the socket internally encrypts packets before sending them, then this should return `true`.
+    /// In that case, `renetcode` will not pre-encrypt packets before [`Self::send`] is called.
+    fn is_encrypted(&self) -> bool;
+
     /// Gets the data source's `SocketAddr`.
     fn addr(&self) -> std::io::Result<SocketAddr>;
 

@@ -17,6 +17,10 @@ impl NativeSocket {
 }
 
 impl TransportSocket for NativeSocket {
+    fn is_encrypted(&self) -> bool {
+        false
+    }
+
     fn addr(&self) -> std::io::Result<SocketAddr> {
         self.socket.local_addr()
     }

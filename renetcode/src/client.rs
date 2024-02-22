@@ -67,6 +67,9 @@ pub struct NetcodeClient {
     send_rate: Duration,
     replay_protection: ReplayProtection,
     out: [u8; NETCODE_MAX_PACKET_BYTES],
+    /// Extension to netcode to allow disabling netcode encryption if the underlying data stream is already
+    /// encrypted.
+    encryption_policy: bool,
 }
 
 impl fmt::Display for DisconnectReason {
@@ -126,7 +129,16 @@ impl NetcodeClient {
             connect_token,
             replay_protection: ReplayProtection::new(),
             out: [0u8; NETCODE_MAX_PACKET_BYTES],
+            encryption_policy: true,
         })
+    }
+
+    /// Sets the clients's encryption policy.
+    ///
+    /// Packets will not be encrypted nor decrypted if set to `false`.
+    pub fn set_encryption_policy(mut self, policy: bool) -> Self {
+        self.encryption_policy = policy;
+        self
     }
 
     pub fn is_connecting(&self) -> bool {
@@ -180,6 +192,7 @@ impl NetcodeClient {
             &mut self.out,
             self.connect_token.protocol_id,
             Some((self.sequence, &self.connect_token.client_to_server_key)),
+            self.encryption_policy,
         )?;
 
         Ok((self.server_addr, &mut self.out[..len]))
@@ -194,6 +207,7 @@ impl NetcodeClient {
             self.connect_token.protocol_id,
             Some(&self.connect_token.server_to_client_key),
             Some(&mut self.replay_protection),
+            self.encryption_policy,
         ) {
             Ok((_, packet)) => packet,
             Err(e) => {
@@ -259,6 +273,7 @@ impl NetcodeClient {
             &mut self.out,
             self.connect_token.protocol_id,
             Some((self.sequence, &self.connect_token.client_to_server_key)),
+            self.encryption_policy,
         )?;
         self.sequence += 1;
         self.last_packet_send_time = Some(self.current_time);
@@ -361,6 +376,7 @@ impl NetcodeClient {
             &mut self.out,
             self.connect_token.protocol_id,
             Some((self.sequence, &self.connect_token.client_to_server_key)),
+            self.encryption_policy,
         );
         match result {
             Err(_) => None,
@@ -405,7 +421,7 @@ mod tests {
         let mut client = NetcodeClient::new(Duration::ZERO, authentication).unwrap();
         let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
 
-        let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
+        let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None, true).unwrap();
         assert_eq!(0, r_sequence);
         assert!(matches!(packet, Packet::ConnectionRequest { .. }));
 
@@ -413,32 +429,32 @@ mod tests {
         let user_data = generate_random_bytes();
         let challenge_key = generate_random_bytes();
         let challenge_packet = Packet::generate_challenge(client_id, &user_data, challenge_sequence, &challenge_key).unwrap();
-        let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key))).unwrap();
+        let len = challenge_packet.encode(&mut buffer, protocol_id, Some((0, &server_key)), true).unwrap();
         client.process_packet(&mut buffer[..len]);
         assert_eq!(ClientState::SendingConnectionResponse, client.state);
 
         let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
-        let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None).unwrap();
+        let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None, true).unwrap();
         assert!(matches!(packet, Packet::Response { .. }));
 
         let max_clients = 4;
         let client_index = 2;
         let keep_alive_packet = Packet::KeepAlive { max_clients, client_index };
-        let len = keep_alive_packet.encode(&mut buffer, protocol_id, Some((1, &server_key))).unwrap();
+        let len = keep_alive_packet.encode(&mut buffer, protocol_id, Some((1, &server_key)), true).unwrap();
         client.process_packet(&mut buffer[..len]);
 
         assert_eq!(client.state, ClientState::Connected);
 
         let payload = vec![7u8; 500];
         let payload_packet = Packet::Payload(&payload[..]);
-        let len = payload_packet.encode(&mut buffer, protocol_id, Some((2, &server_key))).unwrap();
+        let len = payload_packet.encode(&mut buffer, protocol_id, Some((2, &server_key)), true).unwrap();
 
         let payload_client = client.process_packet(&mut buffer[..len]).unwrap();
         assert_eq!(payload, payload_client);
 
         let to_send_payload = vec![5u8; 1000];
         let (_, packet) = client.generate_payload_packet(&to_send_payload).unwrap();
-        let (_, result) = Packet::decode(packet, protocol_id, Some(&client_key), None).unwrap();
+        let (_, result) = Packet::decode(packet, protocol_id, Some(&client_key), None, true).unwrap();
         match result {
             Packet::Payload(payload) => assert_eq!(to_send_payload, payload),
             _ => unreachable!(),

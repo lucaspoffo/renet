@@ -17,7 +17,8 @@ pub struct NetcodeServerTransport {
 
 impl NetcodeServerTransport {
     pub fn new(server_config: ServerConfig, socket: impl TransportSocket) -> Result<Self, std::io::Error> {
-        let netcode_server = NetcodeServer::new(server_config);
+        let netcode_server = NetcodeServer::new(server_config)
+            .set_encryption_policy(!socket.is_encrypted());
 
         Ok(Self {
             socket: Box::new(socket),
