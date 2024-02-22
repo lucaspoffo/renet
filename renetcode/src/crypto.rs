@@ -92,7 +92,7 @@ mod tests {
         data.extend_from_slice(&[0u8; ENCODED_PACKET_TAG_BYTES]);
 
         encode_in_place(&mut data, protocol_id);
-        decode_and_check_buffer(&mut data, protocol_id).unwrap();
+        decode_and_check_buffer(&data, protocol_id).unwrap();
         assert_eq!(&data[..data_len], b"some packet data");
     }
 
