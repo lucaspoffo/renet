@@ -25,6 +25,7 @@ struct Connection {
     send_key: [u8; NETCODE_KEY_BYTES],
     receive_key: [u8; NETCODE_KEY_BYTES],
     user_data: [u8; NETCODE_USER_DATA_BYTES],
+    socket_id: usize,
     addr: SocketAddr,
     last_packet_received_time: Duration,
     last_packet_send_time: Duration,
@@ -37,6 +38,7 @@ struct Connection {
 #[derive(Debug, Copy, Clone)]
 struct ConnectTokenEntry {
     time: Duration,
+    socket_id: usize,
     address: SocketAddr,
     mac: [u8; NETCODE_MAC_BYTES],
 }
@@ -46,22 +48,19 @@ struct ConnectTokenEntry {
 /// consuming and generating bytes that can be transported in any way desired.
 #[derive(Debug)]
 pub struct NetcodeServer {
+    sockets: Vec<ServerSocketConfig>,
     clients: Box<[Option<Connection>]>,
-    pending_clients: HashMap<SocketAddr, Connection>,
+    pending_clients: HashMap<(usize, SocketAddr), Connection>,
     connect_token_entries: Box<[Option<ConnectTokenEntry>; NETCODE_MAX_CLIENTS * 2]>,
     protocol_id: u64,
     connect_key: [u8; NETCODE_KEY_BYTES],
     max_clients: usize,
     challenge_sequence: u64,
     challenge_key: [u8; NETCODE_KEY_BYTES],
-    public_addresses: Vec<SocketAddr>,
     current_time: Duration,
     global_sequence: u64,
     secure: bool,
     out: [u8; NETCODE_MAX_PACKET_BYTES],
-    /// Extension to netcode to allow disabling netcode encryption if the underlying data stream is already
-    /// encrypted.
-    encryption_policy: bool,
 }
 
 /// Result from processing an packet in the server
@@ -70,12 +69,13 @@ pub enum ServerResult<'a, 's> {
     /// Nothing needs to be done.
     None,
     /// A packet to be sent back to the processed address.
-    PacketToSend { addr: SocketAddr, payload: &'s mut [u8] },
+    PacketToSend { socket_id: usize, addr: SocketAddr, payload: &'s mut [u8] },
     /// A payload received from the client.
     Payload { client_id: u64, payload: &'a [u8] },
     /// A new client has connected
     ClientConnected {
         client_id: u64,
+        socket_id: usize,
         addr: SocketAddr,
         user_data: Box<[u8; NETCODE_USER_DATA_BYTES]>,
         payload: &'s mut [u8],
@@ -83,9 +83,29 @@ pub enum ServerResult<'a, 's> {
     /// The client connection has been terminated.
     ClientDisconnected {
         client_id: u64,
+        socket_id: usize,
         addr: SocketAddr,
         payload: Option<&'s mut [u8]>,
     },
+}
+
+/// Configuration details for a socket associated with a netcode server.
+#[derive(Debug)]
+pub struct ServerSocketConfig {
+    /// If `true` then netcode packets sent/received to/from this socket will be encrypted/decrypted.
+    pub insecure: bool,
+    /// Publicly available addresses to which clients will attempt to connect.
+    pub public_addresses: Vec<SocketAddr>,
+}
+
+impl ServerSocketConfig {
+    /// Makes a new config with default settings.
+    pub fn new(public_addresses: Vec<SocketAddr>) -> Self {
+        Self{
+            insecure: true,
+            public_addresses,
+        }
+    }
 }
 
 /// Configuration to establish a secure or unsecure connection with the server.
@@ -109,14 +129,17 @@ pub struct ServerConfig {
     /// You can use a hash function with the current version of the game to generate this value
     /// so that older versions cannot connect to newer versions.
     pub protocol_id: u64,
-    /// Publicly available addresses to which clients will attempt to connect.
-    pub public_addresses: Vec<SocketAddr>,
+    /// Settings for sockets associated with this server.
+    pub sockets: Vec<ServerSocketConfig>,
     /// Authentication configuration for the server
     pub authentication: ServerAuthentication,
 }
 
 impl NetcodeServer {
     pub fn new(config: ServerConfig) -> Self {
+        if config.sockets.len() == 0 {
+            panic!("Cannot make a server with no sockets.");
+        }
         if config.max_clients > NETCODE_MAX_CLIENTS {
             // TODO: do we really need to set a max?
             //       only using for token entries
@@ -136,6 +159,7 @@ impl NetcodeServer {
         };
 
         Self {
+            sockets: config.sockets,
             clients,
             connect_token_entries: Box::new([None; NETCODE_MAX_CLIENTS * 2]),
             pending_clients: HashMap::new(),
@@ -145,20 +169,10 @@ impl NetcodeServer {
             challenge_sequence: 0,
             global_sequence: 0,
             challenge_key,
-            public_addresses: config.public_addresses,
             current_time: config.current_time,
             secure,
             out: [0u8; NETCODE_MAX_PACKET_BYTES],
-            encryption_policy: true,
         }
-    }
-
-    /// Sets the server's encryption policy.
-    ///
-    /// Packets will not be encrypted nor decrypted if set to `false`.
-    pub fn set_encryption_policy(mut self, policy: bool) -> Self {
-        self.encryption_policy = policy;
-        self
     }
 
     #[doc(hidden)]
@@ -167,14 +181,17 @@ impl NetcodeServer {
             current_time: Duration::ZERO,
             max_clients: 32,
             protocol_id: 0,
-            public_addresses: vec!["127.0.0.1:0".parse().unwrap()],
+            sockets: vec![ServerSocketConfig::new(vec!["127.0.0.1:0".parse().unwrap()])],
             authentication: ServerAuthentication::Unsecure,
         };
         Self::new(config)
     }
 
-    pub fn addresses(&self) -> Vec<SocketAddr> {
-        self.public_addresses.clone()
+    /// Gets the public addresses of a specific socket.
+    ///
+    /// Panics if `socket_id` is out of range.
+    pub fn addresses(&self, socket_id: usize) -> Vec<SocketAddr> {
+        self.sockets[socket_id].public_addresses.clone()
     }
 
     pub fn current_time(&self) -> Duration {
@@ -207,7 +224,7 @@ impl NetcodeServer {
         }
 
         if let Some(entry) = matching_entry {
-            return entry.address == new_entry.address;
+            return (entry.socket_id == new_entry.socket_id) && (entry.address == new_entry.address);
         }
 
         self.connect_token_entries[oldest_entry] = Some(new_entry);
@@ -235,10 +252,10 @@ impl NetcodeServer {
         None
     }
 
-    /// Returns the client address if connected.
-    pub fn client_addr(&self, client_id: u64) -> Option<SocketAddr> {
+    /// Returns the client socket id and address if connected.
+    pub fn client_addr(&self, client_id: u64) -> Option<(usize, SocketAddr)> {
         if let Some(client) = find_client_by_id(&self.clients, client_id) {
-            return Some(client.addr);
+            return Some((client.socket_id, client.addr));
         }
 
         None
@@ -246,6 +263,7 @@ impl NetcodeServer {
 
     fn handle_connection_request<'a>(
         &mut self,
+        socket_id: usize,
         addr: SocketAddr,
         version_info: [u8; 13],
         protocol_id: u64,
@@ -267,31 +285,39 @@ impl NetcodeServer {
 
         let connect_token = PrivateConnectToken::decode(&data, self.protocol_id, expire_timestamp, &xnonce, &self.connect_key)?;
 
+        if socket_id >= self.sockets.len() {
+            return Err(NetcodeError::InvalidSocketId);
+        }
+        if socket_id != connect_token.socket_id as usize {
+            return Err(NetcodeError::InvalidSocketId);
+        }
+
         // Skip host list check when unsecure
         if self.secure {
             let in_host_list = connect_token
                 .server_addresses
                 .iter()
                 .filter_map(|host| *host)
-                .any(|addr| self.public_addresses.contains(&addr));
+                .any(|addr| self.sockets[socket_id].public_addresses.contains(&addr));
 
             if !in_host_list {
                 return Err(NetcodeError::NotInHostList);
             }
         }
 
-        let addr_already_connected = find_client_mut_by_addr(&mut self.clients, addr).is_some();
+        let addr_already_connected = find_client_mut_by_addr(&mut self.clients, socket_id, addr).is_some();
         let id_already_connected = find_client_mut_by_id(&mut self.clients, connect_token.client_id).is_some();
         if id_already_connected || addr_already_connected {
             log::debug!(
-                "Connection request denied: client {} already connected (address: {}).",
+                "Connection request denied: client {} already connected (socket id: {}, address: {}).",
                 connect_token.client_id,
+                socket_id,
                 addr
             );
             return Ok(ServerResult::None);
         }
 
-        if !self.pending_clients.contains_key(&addr) && self.pending_clients.len() >= NETCODE_MAX_PENDING_CLIENTS {
+        if !self.pending_clients.contains_key(&(socket_id, addr)) && self.pending_clients.len() >= NETCODE_MAX_PENDING_CLIENTS {
             log::warn!(
                 "Connection request denied: reached max amount allowed of pending clients ({}).",
                 NETCODE_MAX_PENDING_CLIENTS
@@ -302,6 +328,7 @@ impl NetcodeServer {
         let mut mac = [0u8; NETCODE_MAC_BYTES];
         mac.copy_from_slice(&data[NETCODE_CONNECT_TOKEN_PRIVATE_BYTES - NETCODE_MAC_BYTES..]);
         let connect_token_entry = ConnectTokenEntry {
+            socket_id,
             address: addr,
             time: self.current_time,
             mac,
@@ -313,16 +340,17 @@ impl NetcodeServer {
         }
 
         if self.clients.iter().flatten().count() >= self.max_clients {
-            self.pending_clients.remove(&addr);
+            self.pending_clients.remove(&(socket_id, addr));
             let packet = Packet::ConnectionDenied;
             let len = packet.encode(
                 &mut self.out,
                 self.protocol_id,
                 Some((self.global_sequence, &connect_token.server_to_client_key)),
-                self.encryption_policy,
+                self.sockets[socket_id].insecure,
             )?;
             self.global_sequence += 1;
             return Ok(ServerResult::PacketToSend {
+                socket_id,
                 addr,
                 payload: &mut self.out[..len],
             });
@@ -340,18 +368,19 @@ impl NetcodeServer {
             &mut self.out,
             self.protocol_id,
             Some((self.global_sequence, &connect_token.server_to_client_key)),
-            self.encryption_policy,
+            self.sockets[socket_id].insecure,
         )?;
         self.global_sequence += 1;
 
         log::trace!("Connection request from Client {}", connect_token.client_id);
 
-        let pending = self.pending_clients.entry(addr).or_insert_with(|| Connection {
+        let pending = self.pending_clients.entry((socket_id, addr)).or_insert_with(|| Connection {
             confirmed: false,
             sequence: 0,
             client_id: connect_token.client_id,
             last_packet_received_time: self.current_time,
             last_packet_send_time: self.current_time,
+            socket_id,
             addr,
             state: ConnectionState::PendingResponse,
             send_key: connect_token.server_to_client_key,
@@ -365,13 +394,14 @@ impl NetcodeServer {
         pending.last_packet_send_time = self.current_time;
 
         Ok(ServerResult::PacketToSend {
+            socket_id,
             addr,
             payload: &mut self.out[..len],
         })
     }
 
-    /// Returns an encoded packet payload to be sent to the client
-    pub fn generate_payload_packet<'s>(&'s mut self, client_id: u64, payload: &[u8]) -> Result<(SocketAddr, &'s mut [u8]), NetcodeError> {
+    /// Returns an encoded packet payload to be sent to the client.
+    pub fn generate_payload_packet<'s>(&'s mut self, client_id: u64, payload: &[u8]) -> Result<(usize, SocketAddr, &'s mut [u8]), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
@@ -382,12 +412,12 @@ impl NetcodeServer {
                 &mut self.out,
                 self.protocol_id,
                 Some((client.sequence, &client.send_key)),
-                self.encryption_policy,
+                self.sockets[client.socket_id].insecure,
             )?;
             client.sequence += 1;
             client.last_packet_send_time = self.current_time;
 
-            return Ok((client.addr, &mut self.out[..len]));
+            return Ok((client.socket_id, client.addr, &mut self.out[..len]));
         }
 
         Err(NetcodeError::ClientNotFound)
@@ -395,8 +425,8 @@ impl NetcodeServer {
 
     /// Process an packet from the especifed address. Returns a server result, check out
     /// [ServerResult].
-    pub fn process_packet<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> ServerResult<'a, 's> {
-        match self.process_packet_internal(addr, buffer) {
+    pub fn process_packet<'a, 's>(&'s mut self, socket_id: usize, addr: SocketAddr, buffer: &'a mut [u8]) -> ServerResult<'a, 's> {
+        match self.process_packet_internal(socket_id, addr, buffer) {
             Err(e) => {
                 log::error!("Failed to process packet: {}", e);
                 ServerResult::None
@@ -405,19 +435,19 @@ impl NetcodeServer {
         }
     }
 
-    fn process_packet_internal<'a, 's>(&'s mut self, addr: SocketAddr, buffer: &'a mut [u8]) -> Result<ServerResult<'a, 's>, NetcodeError> {
+    fn process_packet_internal<'a, 's>(&'s mut self, socket_id: usize, addr: SocketAddr, buffer: &'a mut [u8]) -> Result<ServerResult<'a, 's>, NetcodeError> {
         if buffer.len() < 2 + NETCODE_MAC_BYTES {
             return Err(NetcodeError::PacketTooSmall);
         }
 
         // Handle connected client
-        if let Some((slot, client)) = find_client_mut_by_addr(&mut self.clients, addr) {
+        if let Some((slot, client)) = find_client_mut_by_addr(&mut self.clients, socket_id, addr) {
             let (_, packet) = Packet::decode(
                 buffer,
                 self.protocol_id,
                 Some(&client.receive_key),
                 Some(&mut client.replay_protection),
-                self.encryption_policy,
+                self.sockets[socket_id].insecure,
             )?;
             log::trace!(
                 "Received packet from connected client ({}): {:?}",
@@ -435,6 +465,7 @@ impl NetcodeServer {
                         log::trace!("Client {} requested to disconnect", client_id);
                         return Ok(ServerResult::ClientDisconnected {
                             client_id,
+                            socket_id,
                             addr,
                             payload: None,
                         });
@@ -463,13 +494,13 @@ impl NetcodeServer {
         }
 
         // Handle pending client
-        if let Some(pending) = self.pending_clients.get_mut(&addr) {
+        if let Some(pending) = self.pending_clients.get_mut(&(socket_id, addr)) {
             let (_, packet) = Packet::decode(
                 buffer,
                 self.protocol_id,
                 Some(&pending.receive_key),
                 Some(&mut pending.replay_protection),
-                self.encryption_policy,
+                self.sockets[socket_id].insecure,
             )?;
             pending.last_packet_received_time = self.current_time;
             log::trace!("Received packet from pending client ({}): {:?}", addr, packet.packet_type());
@@ -481,14 +512,14 @@ impl NetcodeServer {
                     xnonce,
                     version_info,
                 } => {
-                    return self.handle_connection_request(addr, version_info, protocol_id, expire_timestamp, xnonce, data);
+                    return self.handle_connection_request(socket_id, addr, version_info, protocol_id, expire_timestamp, xnonce, data);
                 }
                 Packet::Response {
                     token_data,
                     token_sequence,
                 } => {
                     let challenge_token = ChallengeToken::decode(token_data, token_sequence, &self.challenge_key)?;
-                    let mut pending = self.pending_clients.remove(&addr).unwrap();
+                    let mut pending = self.pending_clients.remove(&(socket_id, addr)).unwrap();
                     if find_client_slot_by_id(&self.clients, challenge_token.client_id).is_some() {
                         log::debug!(
                             "Ignored connection response for Client {}, already connected.",
@@ -503,12 +534,13 @@ impl NetcodeServer {
                                 &mut self.out,
                                 self.protocol_id,
                                 Some((self.global_sequence, &pending.send_key)),
-                                self.encryption_policy,
+                                self.sockets[socket_id].insecure,
                             )?;
                             pending.state = ConnectionState::Disconnected;
                             self.global_sequence += 1;
                             pending.last_packet_send_time = self.current_time;
                             return Ok(ServerResult::PacketToSend {
+                                socket_id,
                                 addr,
                                 payload: &mut self.out[..len],
                             });
@@ -526,7 +558,7 @@ impl NetcodeServer {
                                 &mut self.out,
                                 self.protocol_id,
                                 Some((pending.sequence, &pending.send_key)),
-                                self.encryption_policy,
+                                self.sockets[socket_id].insecure,
                             )?;
                             pending.sequence += 1;
 
@@ -536,6 +568,7 @@ impl NetcodeServer {
 
                             return Ok(ServerResult::ClientConnected {
                                 client_id,
+                                socket_id,
                                 addr,
                                 user_data: Box::new(user_data),
                                 payload: &mut self.out[..len],
@@ -548,7 +581,7 @@ impl NetcodeServer {
         }
 
         // Handle new client
-        let (_, packet) = Packet::decode(buffer, self.protocol_id, None, None, self.encryption_policy)?;
+        let (_, packet) = Packet::decode(buffer, self.protocol_id, None, None, self.sockets[socket_id].insecure)?;
         match packet {
             Packet::ConnectionRequest {
                 data,
@@ -556,7 +589,7 @@ impl NetcodeServer {
                 expire_timestamp,
                 xnonce,
                 version_info,
-            } => self.handle_connection_request(addr, version_info, protocol_id, expire_timestamp, xnonce, data),
+            } => self.handle_connection_request(socket_id, addr, version_info, protocol_id, expire_timestamp, xnonce, data),
             _ => unreachable!("Decoding packet without key can only return ConnectionRequest packets"),
         }
     }
@@ -619,11 +652,11 @@ impl NetcodeServer {
     /// # let mut server = renetcode::NetcodeServer::__test();
     /// for client_id in server.clients_id().into_iter() {
     ///     match server.update_client(client_id) {
-    ///         ServerResult::PacketToSend { payload, addr } => send_to(payload, addr),
+    ///         ServerResult::PacketToSend { payload, socket_id, addr } => send_to(payload, socket_id, addr),
     ///         _ => { /* ... */ }
     ///     }
     /// }
-    /// # fn send_to(p: &[u8], addr: std::net::SocketAddr) {}
+    /// # fn send_to(p: &[u8], socket_id: usize, addr: std::net::SocketAddr) {}
     /// ```
     pub fn update_client(&mut self, client_id: u64) -> ServerResult<'_, '_> {
         let slot = match find_client_slot_by_id(&self.clients, client_id) {
@@ -638,6 +671,7 @@ impl NetcodeServer {
                 log::debug!("Client {} disconnected, connection timed out", client.client_id);
                 client.state = ConnectionState::Disconnected;
             }
+            let socket_id = client.socket_id;
 
             if client.state == ConnectionState::Disconnected {
                 let packet = Packet::Disconnect;
@@ -646,11 +680,12 @@ impl NetcodeServer {
                 let addr = client.addr;
                 self.clients[slot] = None;
 
-                let len = match packet.encode(&mut self.out, self.protocol_id, Some((sequence, &send_key)), self.encryption_policy) {
+                let len = match packet.encode(&mut self.out, self.protocol_id, Some((sequence, &send_key)), self.sockets[socket_id].insecure) {
                     Err(e) => {
                         log::error!("Failed to encode disconnect packet: {}", e);
                         return ServerResult::ClientDisconnected {
                             client_id,
+                            socket_id,
                             addr,
                             payload: None,
                         };
@@ -660,6 +695,7 @@ impl NetcodeServer {
 
                 return ServerResult::ClientDisconnected {
                     client_id,
+                    socket_id,
                     addr,
                     payload: Some(&mut self.out[..len]),
                 };
@@ -675,7 +711,7 @@ impl NetcodeServer {
                     &mut self.out,
                     self.protocol_id,
                     Some((client.sequence, &client.send_key)),
-                    self.encryption_policy,
+                    self.sockets[socket_id].insecure,
                 ) {
                     Err(e) => {
                         log::error!("Failed to encode keep alive packet: {}", e);
@@ -686,6 +722,7 @@ impl NetcodeServer {
                 client.sequence += 1;
                 client.last_packet_send_time = self.current_time;
                 return ServerResult::PacketToSend {
+                    socket_id,
                     addr: client.addr,
                     payload: &mut self.out[..len],
                 };
@@ -712,12 +749,13 @@ impl NetcodeServer {
                 &mut self.out,
                 self.protocol_id,
                 Some((client.sequence, &client.send_key)),
-                self.encryption_policy,
+                self.sockets[client.socket_id].insecure,
             ) {
                 Err(e) => {
                     log::error!("Failed to encode disconnect packet: {}", e);
                     return ServerResult::ClientDisconnected {
                         client_id,
+                        socket_id: client.socket_id,
                         addr: client.addr,
                         payload: None,
                     };
@@ -726,6 +764,7 @@ impl NetcodeServer {
             };
             return ServerResult::ClientDisconnected {
                 client_id,
+                socket_id: client.socket_id,
                 addr: client.addr,
                 payload: Some(&mut self.out[..len]),
             };
@@ -750,9 +789,9 @@ fn find_client_slot_by_id(clients: &[Option<Connection>], client_id: u64) -> Opt
     })
 }
 
-fn find_client_mut_by_addr(clients: &mut [Option<Connection>], addr: SocketAddr) -> Option<(usize, &mut Connection)> {
+fn find_client_mut_by_addr(clients: &mut [Option<Connection>], socket_id: usize, addr: SocketAddr) -> Option<(usize, &mut Connection)> {
     clients.iter_mut().enumerate().find_map(|(i, c)| match c {
-        Some(c) if c.addr == addr => Some((i, c)),
+        Some(c) if (c.socket_id == socket_id) && (c.addr == addr) => Some((i, c)),
         _ => None,
     })
 }
@@ -771,7 +810,7 @@ mod tests {
             current_time: Duration::ZERO,
             max_clients: 16,
             protocol_id: TEST_PROTOCOL_ID,
-            public_addresses: vec!["127.0.0.1:5000".parse().unwrap()],
+            sockets: vec![ServerSocketConfig::new(vec!["127.0.0.1:5000".parse().unwrap()])],
             authentication: ServerAuthentication::Secure { private_key: *TEST_KEY },
         };
         NetcodeServer::new(config)
@@ -780,7 +819,7 @@ mod tests {
     #[test]
     fn server_connection() {
         let mut server = new_server();
-        let server_addresses: Vec<SocketAddr> = server.addresses();
+        let server_addresses: Vec<SocketAddr> = server.addresses(0);
         let user_data = generate_random_bytes();
         let expire_seconds = 3;
         let client_id = 4;
@@ -792,6 +831,7 @@ mod tests {
             expire_seconds,
             client_id,
             timeout_seconds,
+            0,
             server_addresses,
             Some(&user_data),
             TEST_KEY,
@@ -801,7 +841,7 @@ mod tests {
         let mut client = NetcodeClient::new(Duration::ZERO, client_auth).unwrap();
         let (client_packet, _) = client.update(Duration::ZERO).unwrap();
 
-        let result = server.process_packet(client_addr, client_packet);
+        let result = server.process_packet(0, client_addr, client_packet);
         assert!(matches!(result, ServerResult::PacketToSend { .. }));
         match result {
             ServerResult::PacketToSend { payload, .. } => client.process_packet(payload),
@@ -810,15 +850,17 @@ mod tests {
 
         assert!(!client.is_connected());
         let (client_packet, _) = client.update(Duration::ZERO).unwrap();
-        let result = server.process_packet(client_addr, client_packet);
+        let result = server.process_packet(0, client_addr, client_packet);
 
         match result {
             ServerResult::ClientConnected {
+                socket_id,
                 client_id: r_id,
                 user_data: r_data,
                 payload,
                 ..
             } => {
+                assert_eq!(socket_id, 0);
                 assert_eq!(client_id, r_id);
                 assert_eq!(user_data, *r_data);
                 client.process_packet(payload)
@@ -830,7 +872,7 @@ mod tests {
 
         for _ in 0..3 {
             let payload = [7u8; 300];
-            let (_, packet) = server.generate_payload_packet(client_id, &payload).unwrap();
+            let (_, _, packet) = server.generate_payload_packet(client_id, &payload).unwrap();
             let result_payload = client.process_packet(packet).unwrap();
             assert_eq!(payload, result_payload);
         }
@@ -850,7 +892,7 @@ mod tests {
         let client_payload = [2u8; 300];
         let (_, packet) = client.generate_payload_packet(&client_payload).unwrap();
 
-        match server.process_packet(client_addr, packet) {
+        match server.process_packet(0, client_addr, packet) {
             ServerResult::Payload { client_id: id, payload } => {
                 assert_eq!(id, client_id);
                 assert_eq!(client_payload, payload);
@@ -881,6 +923,7 @@ mod tests {
         let client_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
         let mut connect_token = ConnectTokenEntry {
             time: Duration::ZERO,
+            socket_id: 0,
             address: client_addr,
             mac: generate_random_bytes(),
         };
@@ -888,9 +931,14 @@ mod tests {
         assert!(server.find_or_add_connect_token_entry(connect_token));
         // Allow same token with the same address
         assert!(server.find_or_add_connect_token_entry(connect_token));
-        connect_token.address = "127.0.0.1:3001".parse().unwrap();
+
+        // Don't allow same token with different socket id
+        connect_token.socket_id = 1;
+        assert!(!server.find_or_add_connect_token_entry(connect_token));
+        connect_token.socket_id = 0;
 
         // Don't allow same token with different address
+        connect_token.address = "127.0.0.1:3001".parse().unwrap();
         assert!(!server.find_or_add_connect_token_entry(connect_token));
     }
 }

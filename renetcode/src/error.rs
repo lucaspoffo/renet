@@ -14,6 +14,8 @@ pub enum NetcodeError {
     InvalidProtocolID,
     /// The connect token has an invalid version.
     InvalidVersion,
+    /// The connect token was transmitted by an invalid socket.
+    InvalidSocketId,
     /// Packet size is too small to be a netcode packet.
     PacketTooSmall,
     /// Payload is above the maximum limit
@@ -48,6 +50,7 @@ impl fmt::Display for NetcodeError {
             UnavailablePrivateKey => write!(fmt, "no private key was found for this address"),
             InvalidPacketType => write!(fmt, "invalid packet type"),
             InvalidProtocolID => write!(fmt, "invalid protocol id"),
+            InvalidSocketId => write!(fmt, "invalid socket id"),
             InvalidVersion => write!(fmt, "invalid version info"),
             PacketTooSmall => write!(fmt, "packet is too small"),
             PayloadAboveLimit => write!(fmt, "payload is above the {} bytes limit", NETCODE_MAX_PAYLOAD_BYTES),

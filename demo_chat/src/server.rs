@@ -6,7 +6,7 @@ use std::{
 };
 
 use renet::{
-    transport::{NativeSocket, NetcodeServerTransport, ServerAuthentication, ServerConfig},
+    transport::{NativeSocket, NetcodeServerTransport, ServerAuthentication, ServerConfig, ServerSocketConfig},
     ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
 };
 use renet_visualizer::RenetServerVisualizer;
@@ -34,7 +34,7 @@ impl ChatServer {
             current_time,
             max_clients: 64,
             protocol_id: PROTOCOL_ID,
-            public_addresses: vec![socket.local_addr().unwrap()],
+            sockets: vec![ServerSocketConfig::new(vec![socket.local_addr().unwrap()])],
             authentication: ServerAuthentication::Unsecure,
         };
 

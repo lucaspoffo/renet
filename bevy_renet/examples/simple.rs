@@ -2,7 +2,7 @@ use bevy::prelude::{shape::Plane, *};
 use bevy_renet::{
     client_connected,
     renet::{
-        transport::{ClientAuthentication, ServerAuthentication, ServerConfig},
+        transport::{ClientAuthentication, ServerAuthentication, ServerConfig, ServerSocketConfig},
         ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
     },
     transport::{NetcodeClientPlugin, NetcodeServerPlugin},
@@ -54,6 +54,7 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
     let authentication = ClientAuthentication::Unsecure {
         client_id,
         protocol_id: PROTOCOL_ID,
+        socket_id: 0,
         server_addr,
         user_data: None,
     };
@@ -72,7 +73,7 @@ fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
         current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addresses: vec![public_addr],
+        sockets: vec![ServerSocketConfig::new(vec![public_addr])],
         authentication: ServerAuthentication::Unsecure,
     };
 

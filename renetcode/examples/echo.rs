@@ -1,6 +1,6 @@
 use renetcode::{
-    ClientAuthentication, ConnectToken, NetcodeClient, NetcodeServer, ServerAuthentication, ServerConfig, ServerResult, NETCODE_KEY_BYTES,
-    NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
+    ClientAuthentication, ConnectToken, NetcodeClient, NetcodeServer, ServerAuthentication, ServerConfig, ServerResult, ServerSocketConfig,
+    NETCODE_KEY_BYTES, NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
 };
 use std::time::Duration;
 use std::{collections::HashMap, thread};
@@ -50,6 +50,7 @@ fn main() {
     let exec_type = &args[1];
     match exec_type.as_str() {
         "client" => {
+            let socket_id = 0;
             let server_addr: SocketAddr = format!("127.0.0.1:{}", args[2]).parse().unwrap();
             let username = Username(args[3].clone());
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
@@ -61,6 +62,7 @@ fn main() {
                 300,
                 client_id,
                 15,
+                socket_id,
                 vec![server_addr],
                 Some(&username.to_netcode_user_data()),
                 private_key,
@@ -93,7 +95,7 @@ fn handle_server_result(
             let text = format!("{}: {}", username, text);
             received_messages.push(text);
         }
-        ServerResult::PacketToSend { payload, addr } => {
+        ServerResult::PacketToSend { payload, addr, .. } => {
             socket.send_to(payload, addr).unwrap();
         }
         ServerResult::ClientConnected {
@@ -101,13 +103,14 @@ fn handle_server_result(
             user_data,
             payload,
             addr,
+            ..
         } => {
             let username = Username::from_user_data(&user_data);
             println!("Client {} with id {} connected.", username.0, client_id);
             usernames.insert(client_id, username.0);
             socket.send_to(payload, addr).unwrap();
         }
-        ServerResult::ClientDisconnected { client_id, addr, payload } => {
+        ServerResult::ClientDisconnected { client_id, addr, payload, .. } => {
             println!("Client {} disconnected.", client_id);
             usernames.remove_entry(&client_id);
             if let Some(payload) = payload {
@@ -124,7 +127,7 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
         current_time,
         max_clients: 16,
         protocol_id: PROTOCOL_ID,
-        public_addresses: vec![addr],
+        sockets: vec![ServerSocketConfig::new(vec![addr])],
         authentication: ServerAuthentication::Secure { private_key },
     };
     let mut server: NetcodeServer = NetcodeServer::new(config);
@@ -142,7 +145,7 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
             match udp_socket.recv_from(&mut buffer) {
                 Ok((len, addr)) => {
                     // println!("Received decrypted message {:?} from {}.", &buffer[..len], addr);
-                    let server_result = server.process_packet(addr, &mut buffer[..len]);
+                    let server_result = server.process_packet(0, addr, &mut buffer[..len]);
                     handle_server_result(server_result, &udp_socket, &mut received_messages, &mut usernames);
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
@@ -152,7 +155,7 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
 
         for text in received_messages.iter() {
             for client_id in server.clients_id().iter() {
-                let (addr, payload) = server.generate_payload_packet(*client_id, text.as_bytes()).unwrap();
+                let (_, addr, payload) = server.generate_payload_packet(*client_id, text.as_bytes()).unwrap();
                 udp_socket.send_to(payload, addr).unwrap();
             }
         }

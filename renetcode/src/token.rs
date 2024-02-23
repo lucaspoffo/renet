@@ -29,6 +29,7 @@ pub struct ConnectToken {
     pub create_timestamp: u64,
     pub expire_timestamp: u64,
     pub xnonce: [u8; NETCODE_CONNECT_TOKEN_XNONCE_BYTES],
+    pub socket_id: u8,
     pub server_addresses: [Option<SocketAddr>; 32],
     pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
     pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
@@ -40,6 +41,7 @@ pub struct ConnectToken {
 pub(crate) struct PrivateConnectToken {
     pub client_id: u64,       // globally unique identifier for an authenticated client
     pub timeout_seconds: i32, // timeout in seconds. negative values disable timeout (dev only)
+    pub socket_id: u8,
     pub server_addresses: [Option<SocketAddr>; 32],
     pub client_to_server_key: [u8; NETCODE_KEY_BYTES],
     pub server_to_client_key: [u8; NETCODE_KEY_BYTES],
@@ -92,13 +94,20 @@ impl ConnectToken {
         expire_seconds: u64,
         client_id: u64,
         timeout_seconds: i32,
+        socket_id: u8,
         server_addresses: Vec<SocketAddr>,
         user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
         private_key: &[u8; NETCODE_KEY_BYTES],
     ) -> Result<Self, TokenGenerationError> {
         let expire_timestamp = current_time.as_secs() + expire_seconds;
 
-        let private_connect_token = PrivateConnectToken::generate(client_id, timeout_seconds, server_addresses, user_data)?;
+        let private_connect_token = PrivateConnectToken::generate(
+            client_id,
+            timeout_seconds,
+            socket_id,
+            server_addresses,
+            user_data
+        )?;
         let mut private_data = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
         let xnonce = generate_random_bytes();
         private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, &xnonce, private_key)?;
@@ -111,6 +120,7 @@ impl ConnectToken {
             create_timestamp: current_time.as_secs(),
             expire_timestamp,
             xnonce,
+            socket_id,
             server_addresses: private_connect_token.server_addresses,
             client_to_server_key: private_connect_token.client_to_server_key,
             server_to_client_key: private_connect_token.server_to_client_key,
@@ -127,6 +137,7 @@ impl ConnectToken {
         writer.write_all(&self.xnonce)?;
         writer.write_all(&self.private_data)?;
         writer.write_all(&self.timeout_seconds.to_le_bytes())?;
+        writer.write_all(&self.socket_id.to_le_bytes())?;
         write_server_adresses(writer, &self.server_addresses)?;
         writer.write_all(&self.client_to_server_key)?;
         writer.write_all(&self.server_to_client_key)?;
@@ -148,6 +159,7 @@ impl ConnectToken {
 
         let private_data: [u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES] = read_bytes(src)?;
         let timeout_seconds = read_i32(src)?;
+        let socket_id = read_u8(src)?;
         let server_addresses = read_server_addresses(src)?;
         let client_to_server_key: [u8; NETCODE_KEY_BYTES] = read_bytes(src)?;
         let server_to_client_key: [u8; NETCODE_KEY_BYTES] = read_bytes(src)?;
@@ -160,6 +172,7 @@ impl ConnectToken {
             expire_timestamp,
             xnonce,
             private_data,
+            socket_id,
             server_addresses,
             client_to_server_key,
             server_to_client_key,
@@ -172,6 +185,7 @@ impl PrivateConnectToken {
     fn generate(
         client_id: u64,
         timeout_seconds: i32,
+        socket_id: u8,
         server_addresses: Vec<SocketAddr>,
         user_data: Option<&[u8; NETCODE_USER_DATA_BYTES]>,
     ) -> Result<Self, TokenGenerationError> {
@@ -198,6 +212,7 @@ impl PrivateConnectToken {
         Ok(Self {
             client_id,
             timeout_seconds,
+            socket_id,
             server_addresses: server_addresses_arr,
             client_to_server_key,
             server_to_client_key,
@@ -208,6 +223,7 @@ impl PrivateConnectToken {
     fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
         writer.write_all(&self.client_id.to_le_bytes())?;
         writer.write_all(&self.timeout_seconds.to_le_bytes())?;
+        writer.write_all(&self.socket_id.to_le_bytes())?;
         write_server_adresses(writer, &self.server_addresses)?;
         writer.write_all(&self.client_to_server_key)?;
         writer.write_all(&self.server_to_client_key)?;
@@ -219,6 +235,7 @@ impl PrivateConnectToken {
     fn read(src: &mut impl io::Read) -> Result<Self, io::Error> {
         let client_id = read_u64(src)?;
         let timeout_seconds = read_i32(src)?;
+        let socket_id = read_u8(src)?;
         let server_addresses = read_server_addresses(src)?;
         let mut client_to_server_key = [0u8; 32];
         src.read_exact(&mut client_to_server_key)?;
@@ -232,6 +249,7 @@ impl PrivateConnectToken {
         Ok(Self {
             client_id,
             timeout_seconds,
+            socket_id,
             server_addresses,
             client_to_server_key,
             server_to_client_key,
@@ -350,7 +368,7 @@ mod tests {
     #[test]
     fn private_connect_token_serialization() {
         let hosts: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
-        let token = PrivateConnectToken::generate(1, 5, hosts, Some(&generate_random_bytes())).unwrap();
+        let token = PrivateConnectToken::generate(1, 5, 0, hosts, Some(&generate_random_bytes())).unwrap();
         let mut buffer: Vec<u8> = vec![];
 
         token.write(&mut buffer).unwrap();
@@ -361,8 +379,9 @@ mod tests {
 
     #[test]
     fn private_connect_token_encode_decode() {
+        let socket_id = 0u8;
         let hosts: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
-        let token = PrivateConnectToken::generate(1, 5, hosts, Some(&generate_random_bytes())).unwrap();
+        let token = PrivateConnectToken::generate(1, 5, socket_id, hosts, Some(&generate_random_bytes())).unwrap();
         let key = b"an example very very secret key."; // 32-bytes
         let protocol_id = 12;
         let expire_timestamp = 0;
@@ -376,6 +395,7 @@ mod tests {
 
     #[test]
     fn connect_token_serialization() {
+        let socket_id = 0u8;
         let server_addresses: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap(), "127.0.0.2:3000".parse().unwrap()];
         let user_data = generate_random_bytes();
         let private_key = b"an example very very secret key."; // 32-bytes
@@ -389,6 +409,7 @@ mod tests {
             expire_seconds,
             client_id,
             timeout_seconds,
+            socket_id,
             server_addresses,
             Some(&user_data),
             private_key,
@@ -412,6 +433,7 @@ mod tests {
         assert_eq!(timeout_seconds, private.timeout_seconds);
         assert_eq!(client_id, private.client_id);
         assert_eq!(user_data, private.user_data);
+        assert_eq!(token.socket_id, private.socket_id);
         assert_eq!(token.server_addresses, private.server_addresses);
         assert_eq!(token.client_to_server_key, private.client_to_server_key);
         assert_eq!(token.server_to_client_key, private.server_to_client_key);

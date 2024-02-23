@@ -39,6 +39,7 @@ pub enum ClientAuthentication {
     Unsecure {
         protocol_id: u64,
         client_id: u64,
+        socket_id: u8,
         server_addr: SocketAddr,
         user_data: Option<[u8; NETCODE_USER_DATA_BYTES]>,
     },
@@ -92,6 +93,7 @@ impl NetcodeClient {
     pub fn new(current_time: Duration, authentication: ClientAuthentication) -> Result<Self, NetcodeError> {
         let connect_token: ConnectToken = match authentication {
             ClientAuthentication::Unsecure {
+                socket_id,
                 server_addr,
                 protocol_id,
                 client_id,
@@ -102,6 +104,7 @@ impl NetcodeClient {
                 300,
                 client_id,
                 15,
+                socket_id,
                 vec![server_addr],
                 user_data.as_ref(),
                 &[0; NETCODE_KEY_BYTES],
@@ -410,6 +413,7 @@ mod tests {
             expire_seconds,
             client_id,
             timeout_seconds,
+            0,
             server_addresses,
             Some(&user_data),
             private_key,

@@ -261,6 +261,7 @@ fn create_renet_client(username: String, server_addr: SocketAddr) -> (RenetClien
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     let authentication = ClientAuthentication::Unsecure {
+        socket_id: 0,
         server_addr,
         client_id,
         user_data: Some(Username(username).to_netcode_user_data()),

@@ -6,7 +6,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    renet::{transport::NativeSocket, ClientId, RenetServer, ServerEvent},
+    renet::{ClientId, RenetServer, ServerEvent},
     RenetServerPlugin,
 };
 use demo_bevy::{
@@ -32,7 +32,7 @@ struct BotId(u64);
 
 #[cfg(feature = "transport")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::renet::transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig};
+    use bevy_renet::renet::transport::{NativeSocket, NetcodeServerTransport, ServerAuthentication, ServerConfig, ServerSocketConfig};
     use bevy_renet::transport::NetcodeServerPlugin;
     use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
@@ -48,7 +48,7 @@ fn add_netcode_network(app: &mut App) {
         current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addresses: vec![public_addr],
+        sockets: vec![ServerSocketConfig::new(vec![public_addr])],
         authentication: ServerAuthentication::Unsecure,
     };
 

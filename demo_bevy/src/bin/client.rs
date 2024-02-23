@@ -7,12 +7,11 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    client_connected,
-    renet::{transport::NativeSocket, ClientId, RenetClient},
+    renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
 use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
+    setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
@@ -42,8 +41,8 @@ struct Connected;
 
 #[cfg(feature = "transport")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::renet::transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError};
-    use demo_bevy::PROTOCOL_ID;
+    use bevy_renet::renet::transport::{client_connected, NativeSocket, ClientAuthentication, NetcodeClientTransport, NetcodeTransportError};
+    use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(bevy_renet::transport::NetcodeClientPlugin);
@@ -59,6 +58,7 @@ fn add_netcode_network(app: &mut App) {
     let authentication = ClientAuthentication::Unsecure {
         client_id,
         protocol_id: PROTOCOL_ID,
+        socket_id: 0,
         server_addr,
         user_data: None,
     };
