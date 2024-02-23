@@ -39,10 +39,8 @@ struct Connected;
 
 #[cfg(feature = "transport")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::renet::transport::{
-        ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeTransportError,
-    };
-    use bevy_renet::renet::client_connected;
+    use bevy_renet::client_connected;
+    use bevy_renet::renet::transport::{ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeTransportError};
     use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
 
@@ -83,9 +81,9 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::renet::client_connected;
-    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use bevy_renet::client_connected;
     use demo_bevy::connection_config;
+    use renet_steam::bevy::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
     use steamworks::{SingleClient, SteamId};
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
