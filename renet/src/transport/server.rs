@@ -26,7 +26,7 @@ impl NetcodeServerTransport {
     /// Multiple [`TransportSockets`](super::TransportSocket) may be inserted. Each socket must line
     /// up 1:1 with socket config entries in `ServerConfig::sockets`.
     pub fn new_with_sockets(server_config: ServerConfig, sockets: Vec<Box<dyn TransportSocket>>) -> Result<Self, std::io::Error> {
-        if server_config.sockets.len() == 0 {
+        if server_config.sockets.is_empty() {
             panic!("netcode server transport must have at least 1 socket");
         }
         if server_config.sockets.len() != sockets.len() {
@@ -99,14 +99,14 @@ impl NetcodeServerTransport {
     pub fn update(&mut self, duration: Duration, server: &mut RenetServer) -> Result<(), NetcodeTransportError> {
         self.netcode_server.update(duration);
 
-        for (socket_id, mut socket) in self.sockets.iter_mut().enumerate() {
+        for (socket_id, socket) in self.sockets.iter_mut().enumerate() {
             socket.preupdate();
 
             loop {
                 match socket.try_recv(&mut self.buffer) {
                     Ok((len, addr)) => {
                         let server_result = self.netcode_server.process_packet(socket_id, addr, &mut self.buffer[..len]);
-                        handle_server_result(server_result, socket_id, &mut socket, server);
+                        handle_server_result(server_result, socket_id, socket, server);
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => break,
@@ -117,12 +117,12 @@ impl NetcodeServerTransport {
 
             for client_id in self.netcode_server.clients_id() {
                 let server_result = self.netcode_server.update_client(client_id);
-                handle_server_result(server_result, socket_id, &mut socket, server);
+                handle_server_result(server_result, socket_id, socket, server);
             }
 
             for disconnection_id in server.disconnections_id() {
                 let server_result = self.netcode_server.disconnect(disconnection_id.raw());
-                handle_server_result(server_result, socket_id, &mut socket, server);
+                handle_server_result(server_result, socket_id, socket, server);
             }
 
             socket.postupdate();

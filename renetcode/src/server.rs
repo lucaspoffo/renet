@@ -141,7 +141,7 @@ pub struct ServerConfig {
 
 impl NetcodeServer {
     pub fn new(config: ServerConfig) -> Self {
-        if config.sockets.len() == 0 {
+        if config.sockets.is_empty() {
             panic!("Cannot make a server with no sockets.");
         }
         if config.max_clients > NETCODE_MAX_CLIENTS {
@@ -265,6 +265,7 @@ impl NetcodeServer {
         None
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_connection_request<'a>(
         &mut self,
         socket_id: usize,
