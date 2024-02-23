@@ -10,9 +10,7 @@ use bevy_renet::{
     renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
-use demo_bevy::{
-    setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
+use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
@@ -41,7 +39,9 @@ struct Connected;
 
 #[cfg(feature = "transport")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::renet::transport::{client_connected, NativeSocket, ClientAuthentication, NetcodeClientTransport, NetcodeTransportError};
+    use bevy_renet::renet::transport::{
+        client_connected, ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeTransportError,
+    };
     use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
 

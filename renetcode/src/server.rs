@@ -69,7 +69,11 @@ pub enum ServerResult<'a, 's> {
     /// Nothing needs to be done.
     None,
     /// A packet to be sent back to the processed address.
-    PacketToSend { socket_id: usize, addr: SocketAddr, payload: &'s mut [u8] },
+    PacketToSend {
+        socket_id: usize,
+        addr: SocketAddr,
+        payload: &'s mut [u8],
+    },
     /// A payload received from the client.
     Payload { client_id: u64, payload: &'a [u8] },
     /// A new client has connected
@@ -101,7 +105,7 @@ pub struct ServerSocketConfig {
 impl ServerSocketConfig {
     /// Makes a new config with default settings.
     pub fn new(public_addresses: Vec<SocketAddr>) -> Self {
-        Self{
+        Self {
             insecure: true,
             public_addresses,
         }
@@ -401,7 +405,11 @@ impl NetcodeServer {
     }
 
     /// Returns an encoded packet payload to be sent to the client.
-    pub fn generate_payload_packet<'s>(&'s mut self, client_id: u64, payload: &[u8]) -> Result<(usize, SocketAddr, &'s mut [u8]), NetcodeError> {
+    pub fn generate_payload_packet<'s>(
+        &'s mut self,
+        client_id: u64,
+        payload: &[u8],
+    ) -> Result<(usize, SocketAddr, &'s mut [u8]), NetcodeError> {
         if payload.len() > NETCODE_MAX_PAYLOAD_BYTES {
             return Err(NetcodeError::PayloadAboveLimit);
         }
@@ -435,7 +443,12 @@ impl NetcodeServer {
         }
     }
 
-    fn process_packet_internal<'a, 's>(&'s mut self, socket_id: usize, addr: SocketAddr, buffer: &'a mut [u8]) -> Result<ServerResult<'a, 's>, NetcodeError> {
+    fn process_packet_internal<'a, 's>(
+        &'s mut self,
+        socket_id: usize,
+        addr: SocketAddr,
+        buffer: &'a mut [u8],
+    ) -> Result<ServerResult<'a, 's>, NetcodeError> {
         if buffer.len() < 2 + NETCODE_MAC_BYTES {
             return Err(NetcodeError::PacketTooSmall);
         }
@@ -680,7 +693,12 @@ impl NetcodeServer {
                 let addr = client.addr;
                 self.clients[slot] = None;
 
-                let len = match packet.encode(&mut self.out, self.protocol_id, Some((sequence, &send_key)), self.sockets[socket_id].insecure) {
+                let len = match packet.encode(
+                    &mut self.out,
+                    self.protocol_id,
+                    Some((sequence, &send_key)),
+                    self.sockets[socket_id].insecure,
+                ) {
                     Err(e) => {
                         log::error!("Failed to encode disconnect packet: {}", e);
                         return ServerResult::ClientDisconnected {

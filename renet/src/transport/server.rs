@@ -25,10 +25,7 @@ impl NetcodeServerTransport {
     ///
     /// Multiple [`TransportSockets`](super::TransportSocket) may be inserted. Each socket must line
     /// up 1:1 with socket config entries in `ServerConfig::sockets`.
-    pub fn new_with_sockets(
-        server_config: ServerConfig,
-        sockets: Vec<Box<dyn TransportSocket>>
-    ) -> Result<Self, std::io::Error> {
+    pub fn new_with_sockets(server_config: ServerConfig, sockets: Vec<Box<dyn TransportSocket>>) -> Result<Self, std::io::Error> {
         if server_config.sockets.len() == 0 {
             panic!("netcode server transport must have at least 1 socket");
         }
@@ -83,7 +80,7 @@ impl NetcodeServerTransport {
     pub fn disconnect_all(&mut self, server: &mut RenetServer) {
         for client_id in self.netcode_server.clients_id() {
             let server_result = self.netcode_server.disconnect(client_id);
-            let ServerResult::ClientDisconnected{ socket_id, ..} = &server_result else {
+            let ServerResult::ClientDisconnected { socket_id, .. } = &server_result else {
                 continue;
             };
             let socket_id = *socket_id;
@@ -160,7 +157,7 @@ fn handle_server_result(
     server_result: ServerResult,
     socket_id: usize,
     socket: &mut Box<dyn TransportSocket>,
-    reliable_server: &mut RenetServer
+    reliable_server: &mut RenetServer,
 ) {
     let mut send_packet = |packet: &[u8], s_id: usize, addr: SocketAddr| {
         if s_id != socket_id {
@@ -193,7 +190,12 @@ fn handle_server_result(
             reliable_server.add_connection(ClientId::from_raw(client_id));
             send_packet(payload, socket_id, addr);
         }
-        ServerResult::ClientDisconnected { client_id, addr, payload, socket_id } => {
+        ServerResult::ClientDisconnected {
+            client_id,
+            addr,
+            payload,
+            socket_id,
+        } => {
             reliable_server.remove_connection(ClientId::from_raw(client_id));
             if let Some(payload) = payload {
                 send_packet(payload, socket_id, addr);

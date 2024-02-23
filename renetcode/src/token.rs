@@ -101,13 +101,7 @@ impl ConnectToken {
     ) -> Result<Self, TokenGenerationError> {
         let expire_timestamp = current_time.as_secs() + expire_seconds;
 
-        let private_connect_token = PrivateConnectToken::generate(
-            client_id,
-            timeout_seconds,
-            socket_id,
-            server_addresses,
-            user_data
-        )?;
+        let private_connect_token = PrivateConnectToken::generate(client_id, timeout_seconds, socket_id, server_addresses, user_data)?;
         let mut private_data = [0u8; NETCODE_CONNECT_TOKEN_PRIVATE_BYTES];
         let xnonce = generate_random_bytes();
         private_connect_token.encode(&mut private_data, protocol_id, expire_timestamp, &xnonce, private_key)?;

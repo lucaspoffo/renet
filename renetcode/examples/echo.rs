@@ -110,7 +110,9 @@ fn handle_server_result(
             usernames.insert(client_id, username.0);
             socket.send_to(payload, addr).unwrap();
         }
-        ServerResult::ClientDisconnected { client_id, addr, payload, .. } => {
+        ServerResult::ClientDisconnected {
+            client_id, addr, payload, ..
+        } => {
             println!("Client {} disconnected.", client_id);
             usernames.remove_entry(&client_id);
             if let Some(payload) = payload {
