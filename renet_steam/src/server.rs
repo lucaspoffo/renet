@@ -141,12 +141,13 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
 
         for (client_id, connection) in self.connections.iter_mut() {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
-            let messages = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE);
-            messages.iter().for_each(|message| {
-                if let Err(e) = server.process_packet_from(message.data(), *client_id) {
-                    log::error!("Error while processing payload for {}: {}", client_id, e);
-                };
-            });
+            if let Ok(messages) = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
+                messages.iter().for_each(|message| {
+                    if let Err(e) = server.process_packet_from(message.data(), *client_id) {
+                        log::error!("Error while processing payload for {}: {}", client_id, e);
+                    };
+                });
+            }
         }
     }
 

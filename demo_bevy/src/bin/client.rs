@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::{shape::Icosphere, *},
+    prelude::*,
     window::PrimaryWindow,
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
@@ -164,7 +164,7 @@ fn update_visulizer_system(
     mut visualizer: ResMut<RenetClientVisualizer<200>>,
     client: Res<RenetClient>,
     mut show_visualizer: Local<bool>,
-    keyboard_input: Res<Input<KeyCode>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
 ) {
     visualizer.add_network_info(client.network_info());
     if keyboard_input.just_pressed(KeyCode::F1) {
@@ -176,16 +176,16 @@ fn update_visulizer_system(
 }
 
 fn player_input(
-    keyboard_input: Res<Input<KeyCode>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
     mut player_input: ResMut<PlayerInput>,
-    mouse_button_input: Res<Input<MouseButton>>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
     target_query: Query<&Transform, With<Target>>,
     mut player_commands: EventWriter<PlayerCommand>,
 ) {
-    player_input.left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
-    player_input.right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
-    player_input.up = keyboard_input.pressed(KeyCode::W) || keyboard_input.pressed(KeyCode::Up);
-    player_input.down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
+    player_input.left = keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft);
+    player_input.right = keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight);
+    player_input.up = keyboard_input.pressed(KeyCode::KeyW) || keyboard_input.pressed(KeyCode::ArrowUp);
+    player_input.down = keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown);
 
     if mouse_button_input.just_pressed(MouseButton::Left) {
         let target_transform = target_query.single();
@@ -224,8 +224,8 @@ fn client_sync_players(
             ServerMessages::PlayerCreate { id, translation, entity } => {
                 println!("Player {} connected.", id);
                 let mut client_entity = commands.spawn(PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Capsule::default())),
-                    material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                    mesh: meshes.add(Mesh::from(Capsule3d::default())),
+                    material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
                     transform: Transform::from_xyz(translation[0], translation[1], translation[2]),
                     ..Default::default()
                 });
@@ -254,14 +254,8 @@ fn client_sync_players(
             }
             ServerMessages::SpawnProjectile { entity, translation } => {
                 let projectile_entity = commands.spawn(PbrBundle {
-                    mesh: meshes.add(
-                        Mesh::try_from(Icosphere {
-                            radius: 0.1,
-                            subdivisions: 5,
-                        })
-                        .unwrap(),
-                    ),
-                    material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+                    mesh: meshes.add(Mesh::from(Sphere::new(0.1))),
+                    material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
                     transform: Transform::from_translation(translation.into()),
                     ..Default::default()
                 });
@@ -303,7 +297,7 @@ fn update_target_system(
     let mut target_transform = target_query.single_mut();
     if let Some(cursor_pos) = primary_window.single().cursor_position() {
         if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
-            if let Some(distance) = ray.intersect_plane(Vec3::Y, Vec3::Y) {
+            if let Some(distance) = ray.intersect_plane(Vec3::Y, Plane3d::new(Vec3::Y)) {
                 target_transform.translation = ray.direction * distance + ray.origin;
             }
         }
@@ -329,14 +323,8 @@ fn setup_camera(mut commands: Commands) {
 fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     commands
         .spawn(PbrBundle {
-            mesh: meshes.add(
-                Mesh::try_from(Icosphere {
-                    radius: 0.1,
-                    subdivisions: 5,
-                })
-                .unwrap(),
-            ),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+            mesh: meshes.add(Mesh::from(Sphere::new(0.1))),
+            material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
             transform: Transform::from_xyz(0.0, 0., 0.0),
             ..Default::default()
         })

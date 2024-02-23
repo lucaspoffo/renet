@@ -56,9 +56,6 @@ const NETCODE_CHALLENGE_TOKEN_BYTES: usize = 300;
 const NETCODE_CONNECT_TOKEN_XNONCE_BYTES: usize = 24;
 
 const NETCODE_ADDITIONAL_DATA_SIZE: usize = 13 + 8 + 8;
-
-const NETCODE_TIMEOUT_SECONDS: i32 = 15;
-
 const NETCODE_SEND_RATE: Duration = Duration::from_millis(250);
 
 /// The tag size of encoded (unencrypted) packets.

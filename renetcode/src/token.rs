@@ -10,8 +10,8 @@ use crate::{
     crypto::{dencrypted_in_place_xnonce, encrypt_in_place_xnonce, generate_random_bytes},
     serialize::*,
     NetcodeError, NETCODE_ADDITIONAL_DATA_SIZE, NETCODE_ADDRESS_IPV4, NETCODE_ADDRESS_IPV6, NETCODE_ADDRESS_NONE,
-    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_TIMEOUT_SECONDS,
-    NETCODE_USER_DATA_BYTES, NETCODE_VERSION_INFO,
+    NETCODE_CONNECT_TOKEN_PRIVATE_BYTES, NETCODE_CONNECT_TOKEN_XNONCE_BYTES, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES,
+    NETCODE_VERSION_INFO,
 };
 use chacha20poly1305::aead::Error as CryptoError;
 
@@ -118,7 +118,7 @@ impl ConnectToken {
             server_addresses: private_connect_token.server_addresses,
             client_to_server_key: private_connect_token.client_to_server_key,
             server_to_client_key: private_connect_token.server_to_client_key,
-            timeout_seconds: NETCODE_TIMEOUT_SECONDS,
+            timeout_seconds,
         })
     }
 

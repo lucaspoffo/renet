@@ -7,9 +7,6 @@ use renet::{RenetClient, RenetServer, ServerEvent};
 #[cfg(feature = "transport")]
 pub mod transport;
 
-#[cfg(feature = "steam")]
-pub mod steam;
-
 /// This system set is where all transports receive messages
 ///
 /// If you want to ensure data has arrived in the [`RenetClient`] or [`RenetServer`], then schedule your
@@ -35,11 +32,12 @@ pub struct RenetClientPlugin;
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Events<ServerEvent>>();
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>()));
+        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>));
         app.add_systems(
             PreUpdate,
             Self::emit_server_events_system
-                .run_if(resource_exists::<RenetServer>())
+                .in_set(RenetReceive)
+                .run_if(resource_exists::<RenetServer>)
                 .after(Self::update_system),
         );
     }
@@ -59,7 +57,7 @@ impl RenetServerPlugin {
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetClient>()));
+        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetClient>));
     }
 }
 
@@ -69,43 +67,39 @@ impl RenetClientPlugin {
     }
 }
 
-pub fn client_connected() -> impl FnMut(Option<Res<RenetClient>>) -> bool {
-    |client| match client {
+pub fn client_connected(client: Option<Res<RenetClient>>) -> bool {
+    match client {
         Some(client) => client.is_connected(),
         None => false,
     }
 }
 
-pub fn client_disconnected() -> impl FnMut(Option<Res<RenetClient>>) -> bool {
-    |client| match client {
+pub fn client_disconnected(client: Option<Res<RenetClient>>) -> bool {
+    match client {
         Some(client) => client.is_disconnected(),
         None => true,
     }
 }
 
-pub fn client_connecting() -> impl FnMut(Option<Res<RenetClient>>) -> bool {
-    |client| match client {
+pub fn client_connecting(client: Option<Res<RenetClient>>) -> bool {
+    match client {
         Some(client) => client.is_connecting(),
         None => false,
     }
 }
 
-pub fn client_just_connected() -> impl FnMut(Local<bool>, Option<Res<RenetClient>>) -> bool {
-    |mut last_connected: Local<bool>, client| {
-        let connected = client.map(|client| client.is_connected()).unwrap_or(false);
+pub fn client_just_connected(mut last_connected: Local<bool>, client: Option<Res<RenetClient>>) -> bool {
+    let connected = client.map(|client| client.is_connected()).unwrap_or(false);
 
-        let just_connected = !*last_connected && connected;
-        *last_connected = connected;
-        just_connected
-    }
+    let just_connected = !*last_connected && connected;
+    *last_connected = connected;
+    just_connected
 }
 
-pub fn client_just_disconnected() -> impl FnMut(Local<bool>, Option<Res<RenetClient>>) -> bool {
-    |mut last_connected: Local<bool>, client| {
-        let disconnected = client.map(|client| client.is_disconnected()).unwrap_or(true);
+pub fn client_just_disconnected(mut last_connected: Local<bool>, client: Option<Res<RenetClient>>) -> bool {
+    let disconnected = client.map(|client| client.is_disconnected()).unwrap_or(true);
 
-        let just_disconnected = *last_connected && disconnected;
-        *last_connected = !disconnected;
-        just_disconnected
-    }
+    let just_disconnected = *last_connected && disconnected;
+    *last_connected = !disconnected;
+    just_disconnected
 }

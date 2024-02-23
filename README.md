@@ -33,7 +33,7 @@ let send_type = SendType::ReliableOrdered {
     resend_time: Duration::from_millis(300)
 };
 
-// Garantee of message delivery but not order
+// Guarantee of message delivery but not order
 let send_type = SendType::ReliableUnordered {
     resend_time: Duration::from_millis(300)
 };
@@ -189,6 +189,8 @@ Simple chat application made with egui to demonstrate how you could handle error
 ## Plugins
 
 Checkout [bevy_renet](https://github.com/lucaspoffo/renet/tree/master/bevy_renet) if you want to use renet as a plugin with the [Bevy engine](https://bevyengine.org/).
+
+Checkout [renet_steam](https://github.com/lucaspoffo/renet/tree/master/renet_steam) if you want to use the steam transport layer instead of the default one.
 
 ## Visualizer
 
