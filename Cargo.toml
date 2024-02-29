@@ -7,5 +7,8 @@ members = [
     "bevy_renet",
     "renet_visualizer",
     "renet_steam",
+    "renet_webtransport",
+    "renet_webtransport_server",
+    "renet_webtransport/examples"
 ]
 resolver = "2"
