@@ -57,7 +57,7 @@ impl RenetServerPlugin {
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetClient>));
+        app.add_systems(PreUpdate, Self::update_system.run_if(not(client_disconnected)));
     }
 }
 
