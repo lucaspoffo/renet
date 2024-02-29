@@ -1,4 +1,4 @@
-use std::{fmt, net::SocketAddr, time::Duration};
+use std::{error::Error, fmt, net::SocketAddr, time::Duration};
 
 use crate::{
     packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
@@ -84,6 +84,8 @@ impl fmt::Display for DisconnectReason {
         }
     }
 }
+
+impl Error for DisconnectReason {}
 
 impl NetcodeClient {
     pub fn new(current_time: Duration, authentication: ClientAuthentication) -> Result<Self, NetcodeError> {
