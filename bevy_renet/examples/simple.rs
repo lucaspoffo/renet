@@ -2,14 +2,14 @@ use bevy::{prelude::*, render::mesh::PlaneMeshBuilder};
 use bevy_renet::{
     client_connected,
     renet::{
-        transport::{ClientAuthentication, ServerAuthentication, ServerConfig},
+        transport::{ClientAuthentication, ServerAuthentication, ServerConfig, ServerSocketConfig},
         ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
     },
     transport::{NetcodeClientPlugin, NetcodeServerPlugin},
     RenetClientPlugin, RenetServerPlugin,
 };
 use renet::{
-    transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
+    transport::{NativeSocket, NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
     ClientId,
 };
 
@@ -54,11 +54,12 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
     let authentication = ClientAuthentication::Unsecure {
         client_id,
         protocol_id: PROTOCOL_ID,
+        socket_id: 0,
         server_addr,
         user_data: None,
     };
 
-    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, NativeSocket::new(socket).unwrap()).unwrap();
     let client = RenetClient::new(ConnectionConfig::default());
 
     (client, transport)
@@ -72,11 +73,11 @@ fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
         current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addresses: vec![public_addr],
+        sockets: vec![ServerSocketConfig::new(vec![public_addr])],
         authentication: ServerAuthentication::Unsecure,
     };
 
-    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    let transport = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
     let server = RenetServer::new(ConnectionConfig::default());
 
     (server, transport)

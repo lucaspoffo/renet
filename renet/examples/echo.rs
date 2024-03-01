@@ -8,7 +8,8 @@ use std::{
 
 use renet::{
     transport::{
-        ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
+        ClientAuthentication, NativeSocket, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig,
+        ServerSocketConfig, NETCODE_USER_DATA_BYTES,
     },
     ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
 };
@@ -72,12 +73,12 @@ fn server(public_addr: SocketAddr) {
         current_time,
         max_clients: 64,
         protocol_id: PROTOCOL_ID,
-        public_addresses: vec![public_addr],
+        sockets: vec![ServerSocketConfig::new(vec![public_addr])],
         authentication: ServerAuthentication::Unsecure,
     };
     let socket: UdpSocket = UdpSocket::bind(public_addr).unwrap();
 
-    let mut transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    let mut transport = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
 
     let mut usernames: HashMap<ClientId, String> = HashMap::new();
     let mut received_messages = vec![];
@@ -146,13 +147,14 @@ fn client(server_addr: SocketAddr, username: Username) {
     let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
     let client_id = current_time.as_millis() as u64;
     let authentication = ClientAuthentication::Unsecure {
+        socket_id: 0,
         server_addr,
         client_id,
         user_data: Some(username.to_netcode_user_data()),
         protocol_id: PROTOCOL_ID,
     };
 
-    let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let mut transport = NetcodeClientTransport::new(current_time, authentication, NativeSocket::new(socket).unwrap()).unwrap();
     let stdin_channel: Receiver<String> = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

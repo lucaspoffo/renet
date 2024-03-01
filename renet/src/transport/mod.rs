@@ -1,14 +1,18 @@
 use std::{error::Error, fmt};
 
 mod client;
+mod native_socket;
 mod server;
+mod transport_socket;
 
 pub use client::*;
+pub use native_socket::*;
 pub use server::*;
+pub use transport_socket::*;
 
 pub use renetcode::{
     generate_random_bytes, ClientAuthentication, ConnectToken, DisconnectReason as NetcodeDisconnectReason, NetcodeError,
-    ServerAuthentication, ServerConfig, TokenGenerationError, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES,
+    ServerAuthentication, ServerConfig, ServerSocketConfig, TokenGenerationError, NETCODE_KEY_BYTES, NETCODE_USER_DATA_BYTES,
 };
 
 #[derive(Debug)]
