@@ -57,3 +57,6 @@ const NETCODE_CONNECT_TOKEN_XNONCE_BYTES: usize = 24;
 
 const NETCODE_ADDITIONAL_DATA_SIZE: usize = 13 + 8 + 8;
 const NETCODE_SEND_RATE: Duration = Duration::from_millis(250);
+
+/// The tag size of encoded (unencrypted) packets.
+const ENCODED_PACKET_TAG_BYTES: usize = 8;

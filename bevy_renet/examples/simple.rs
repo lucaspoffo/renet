@@ -9,7 +9,7 @@ use bevy_renet::{
     RenetClientPlugin, RenetServerPlugin,
 };
 use renet::{
-    transport::{NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
+    transport::{NativeSocket, NetcodeClientTransport, NetcodeServerTransport, NetcodeTransportError},
     ClientId,
 };
 
@@ -58,7 +58,7 @@ fn new_renet_client() -> (RenetClient, NetcodeClientTransport) {
         user_data: None,
     };
 
-    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, NativeSocket::new(socket).unwrap()).unwrap();
     let client = RenetClient::new(ConnectionConfig::default());
 
     (client, transport)
@@ -76,7 +76,7 @@ fn new_renet_server() -> (RenetServer, NetcodeServerTransport) {
         authentication: ServerAuthentication::Unsecure,
     };
 
-    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    let transport = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
     let server = RenetServer::new(ConnectionConfig::default());
 
     (server, transport)

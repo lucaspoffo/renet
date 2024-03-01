@@ -6,7 +6,7 @@ use std::{
 };
 
 use renet::{
-    transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
+    transport::{NativeSocket, NetcodeServerTransport, ServerAuthentication, ServerConfig},
     ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
 };
 use renet_visualizer::RenetServerVisualizer;
@@ -38,7 +38,7 @@ impl ChatServer {
             authentication: ServerAuthentication::Unsecure,
         };
 
-        let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+        let transport = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
 
         let server: RenetServer = RenetServer::new(ConnectionConfig::default());
 

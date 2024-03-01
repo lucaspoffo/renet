@@ -4,7 +4,7 @@ use eframe::{
     epaint::PathShape,
 };
 use renet::{
-    transport::{ClientAuthentication, NetcodeClientTransport},
+    transport::{ClientAuthentication, NativeSocket, NetcodeClientTransport},
     ClientId, ConnectionConfig, DefaultChannel, RenetClient,
 };
 
@@ -267,7 +267,7 @@ fn create_renet_client(username: String, server_addr: SocketAddr) -> (RenetClien
         protocol_id: PROTOCOL_ID,
     };
 
-    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, NativeSocket::new(socket).unwrap()).unwrap();
 
     (client, transport)
 }
