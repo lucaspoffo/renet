@@ -7,7 +7,7 @@ use crate::packet::{Packet, Payload};
 use bytes::Bytes;
 use octets::OctetsMut;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
@@ -61,6 +61,20 @@ enum ChannelOrder {
     Unreliable(u8),
 }
 
+#[derive(Debug)]
+enum SendChannel {
+    Empty,
+    Unreliable(SendChannelUnreliable),
+    Reliable(SendChannelReliable),
+}
+
+#[derive(Debug)]
+enum ReceiveChannel {
+    Empty,
+    Unreliable(ReceiveChannelUnreliable),
+    Reliable(ReceiveChannelReliable),
+}
+
 /// Describes the stats of a connection.
 pub struct NetworkInfo {
     /// Round-trip Time
@@ -86,10 +100,8 @@ pub struct RenetClient {
     sent_packets: BTreeMap<u64, PacketSent>,
     pending_acks: Vec<Range<u64>>,
     channel_send_order: Vec<ChannelOrder>,
-    send_unreliable_channels: HashMap<u8, SendChannelUnreliable>,
-    receive_unreliable_channels: HashMap<u8, ReceiveChannelUnreliable>,
-    send_reliable_channels: HashMap<u8, SendChannelReliable>,
-    receive_reliable_channels: HashMap<u8, ReceiveChannelReliable>,
+    send_channels: Vec<SendChannel>,
+    receive_channels: Vec<ReceiveChannel>,
     stats: ConnectionStats,
     available_bytes_per_tick: u64,
     connection_status: RenetConnectionStatus,
@@ -131,46 +143,62 @@ impl RenetClient {
         send_channels_config: Vec<ChannelConfig>,
         receive_channels_config: Vec<ChannelConfig>,
     ) -> Self {
-        let mut send_unreliable_channels = HashMap::new();
-        let mut send_reliable_channels = HashMap::new();
+        let mut max_send_channel = 0;
+        let mut max_receive_channel = 0;
+        for channel_config in send_channels_config.iter() {
+            max_send_channel = max_send_channel.max(channel_config.channel_id);
+        }
+        for channel_config in receive_channels_config.iter() {
+            max_receive_channel = max_receive_channel.max(channel_config.channel_id);
+        }
+
+        let mut send_channels = Vec::new();
+        send_channels.resize_with(max_send_channel as usize + 1, || SendChannel::Empty);
         let mut channel_send_order: Vec<ChannelOrder> = Vec::with_capacity(send_channels_config.len());
         for channel_config in send_channels_config.iter() {
+            let send_channel = &mut send_channels[channel_config.channel_id as usize];
+            assert!(
+                matches!(send_channel, SendChannel::Empty),
+                "already exists send channel {}",
+                channel_config.channel_id
+            );
+
             match channel_config.send_type {
                 SendType::Unreliable => {
-                    let channel = SendChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
-                    let old = send_unreliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(old.is_none(), "already exists send channel {}", channel_config.channel_id);
-
                     channel_send_order.push(ChannelOrder::Unreliable(channel_config.channel_id));
+                    let channel = SendChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
+                    *send_channel = SendChannel::Unreliable(channel);
                 }
                 SendType::ReliableOrdered { resend_time } | SendType::ReliableUnordered { resend_time } => {
-                    let channel = SendChannelReliable::new(channel_config.channel_id, resend_time, channel_config.max_memory_usage_bytes);
-                    let old = send_reliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(old.is_none(), "already exists send channel {}", channel_config.channel_id);
-
                     channel_send_order.push(ChannelOrder::Reliable(channel_config.channel_id));
+                    let channel = SendChannelReliable::new(channel_config.channel_id, resend_time, channel_config.max_memory_usage_bytes);
+                    *send_channel = SendChannel::Reliable(channel);
                 }
             }
         }
 
-        let mut receive_unreliable_channels = HashMap::new();
-        let mut receive_reliable_channels = HashMap::new();
+        let mut receive_channels = Vec::new();
+        receive_channels.resize_with(max_receive_channel as usize + 1, || ReceiveChannel::Empty);
         for channel_config in receive_channels_config.iter() {
+            let receive_channel = &mut receive_channels[channel_config.channel_id as usize];
+            assert!(
+                matches!(receive_channel, ReceiveChannel::Empty),
+                "already exists receive channel {}",
+                channel_config.channel_id
+            );
+
             match channel_config.send_type {
                 SendType::Unreliable => {
                     let channel = ReceiveChannelUnreliable::new(channel_config.channel_id, channel_config.max_memory_usage_bytes);
-                    let old = receive_unreliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
+                    *receive_channel = ReceiveChannel::Unreliable(channel);
                 }
                 SendType::ReliableOrdered { .. } => {
                     let channel = ReceiveChannelReliable::new(channel_config.max_memory_usage_bytes, true);
-                    let old = receive_reliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
+                    *receive_channel = ReceiveChannel::Reliable(channel);
                 }
                 SendType::ReliableUnordered { .. } => {
                     let channel = ReceiveChannelReliable::new(channel_config.max_memory_usage_bytes, false);
-                    let old = receive_reliable_channels.insert(channel_config.channel_id, channel);
-                    assert!(old.is_none(), "already exists receive channel {}", channel_config.channel_id);
+                    *receive_channel = ReceiveChannel::Reliable(channel);
                 }
             }
         }
@@ -181,10 +209,8 @@ impl RenetClient {
             sent_packets: BTreeMap::new(),
             pending_acks: Vec::new(),
             channel_send_order,
-            send_unreliable_channels,
-            receive_unreliable_channels,
-            send_reliable_channels,
-            receive_reliable_channels,
+            send_channels,
+            receive_channels,
             stats: ConnectionStats::new(),
             rtt: 0.0,
             available_bytes_per_tick,
@@ -295,24 +321,24 @@ impl RenetClient {
     /// Returns the available memory in bytes for the given channel.
     pub fn channel_available_memory<I: Into<u8>>(&self, channel_id: I) -> usize {
         let channel_id = channel_id.into();
-        if let Some(reliable_channel) = self.send_reliable_channels.get(&channel_id) {
-            reliable_channel.available_memory()
-        } else if let Some(unreliable_channel) = self.send_unreliable_channels.get(&channel_id) {
-            unreliable_channel.available_memory()
-        } else {
-            panic!("Called 'channel_available_memory' with invalid channel {channel_id}");
+        match self.send_channels.get(channel_id as usize) {
+            None | Some(SendChannel::Empty) => {
+                panic!("Called 'channel_available_memory' with invalid channel {channel_id}");
+            }
+            Some(SendChannel::Reliable(reliable_channel)) => reliable_channel.available_memory(),
+            Some(SendChannel::Unreliable(unreliable_channel)) => unreliable_channel.available_memory(),
         }
     }
 
     /// Checks if the channel can send a message with the given size in bytes.
     pub fn can_send_message<I: Into<u8>>(&self, channel_id: I, size_bytes: usize) -> bool {
         let channel_id = channel_id.into();
-        if let Some(reliable_channel) = self.send_reliable_channels.get(&channel_id) {
-            reliable_channel.can_send_message(size_bytes)
-        } else if let Some(unreliable_channel) = self.send_unreliable_channels.get(&channel_id) {
-            unreliable_channel.can_send_message(size_bytes)
-        } else {
-            panic!("Called 'can_send_message' with invalid channel {channel_id}");
+        match self.send_channels.get(channel_id as usize) {
+            None | Some(SendChannel::Empty) => {
+                panic!("Called 'can_send_message' with invalid channel {channel_id}");
+            }
+            Some(SendChannel::Reliable(reliable_channel)) => reliable_channel.can_send_message(size_bytes),
+            Some(SendChannel::Unreliable(unreliable_channel)) => unreliable_channel.can_send_message(size_bytes),
         }
     }
 
@@ -323,14 +349,18 @@ impl RenetClient {
         }
 
         let channel_id = channel_id.into();
-        if let Some(reliable_channel) = self.send_reliable_channels.get_mut(&channel_id) {
-            if let Err(error) = reliable_channel.send_message(message.into()) {
-                self.disconnect_with_reason(DisconnectReason::SendChannelError { channel_id, error });
+        match self.send_channels.get_mut(channel_id as usize) {
+            None | Some(SendChannel::Empty) => {
+                panic!("Called 'send_message' with invalid channel {channel_id}");
             }
-        } else if let Some(unreliable_channel) = self.send_unreliable_channels.get_mut(&channel_id) {
-            unreliable_channel.send_message(message.into());
-        } else {
-            panic!("Called 'send_message' with invalid channel {channel_id}");
+            Some(SendChannel::Reliable(reliable_channel)) => {
+                if let Err(error) = reliable_channel.send_message(message.into()) {
+                    self.disconnect_with_reason(DisconnectReason::SendChannelError { channel_id, error });
+                }
+            }
+            Some(SendChannel::Unreliable(unreliable_channel)) => {
+                unreliable_channel.send_message(message.into());
+            }
         }
     }
 
@@ -341,12 +371,12 @@ impl RenetClient {
         }
 
         let channel_id = channel_id.into();
-        if let Some(reliable_channel) = self.receive_reliable_channels.get_mut(&channel_id) {
-            reliable_channel.receive_message()
-        } else if let Some(unreliable_channel) = self.receive_unreliable_channels.get_mut(&channel_id) {
-            unreliable_channel.receive_message()
-        } else {
-            panic!("Called 'receive_message' with invalid channel {channel_id}");
+        match self.receive_channels.get_mut(channel_id as usize) {
+            None | Some(ReceiveChannel::Empty) => {
+                panic!("Called 'receive_message' with invalid channel {channel_id}");
+            }
+            Some(ReceiveChannel::Reliable(reliable_channel)) => reliable_channel.receive_message(),
+            Some(ReceiveChannel::Unreliable(unreliable_channel)) => unreliable_channel.receive_message(),
         }
     }
 
@@ -356,7 +386,10 @@ impl RenetClient {
         self.current_time += duration;
         self.stats.update(self.current_time);
 
-        for unreliable_channel in self.receive_unreliable_channels.values_mut() {
+        for unreliable_channel in self.receive_channels.iter_mut() {
+            let ReceiveChannel::Unreliable(unreliable_channel) = unreliable_channel else {
+                continue;
+            };
             unreliable_channel.discard_incomplete_old_slices(self.current_time);
         }
 
@@ -401,7 +434,7 @@ impl RenetClient {
 
         match packet {
             Packet::SmallReliable { channel_id, messages, .. } => {
-                let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
+                let Some(ReceiveChannel::Reliable(channel)) = self.receive_channels.get_mut(channel_id as usize) else {
                     self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
@@ -414,7 +447,7 @@ impl RenetClient {
                 }
             }
             Packet::SmallUnreliable { channel_id, messages, .. } => {
-                let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
+                let Some(ReceiveChannel::Unreliable(channel)) = self.receive_channels.get_mut(channel_id as usize) else {
                     self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
@@ -424,7 +457,7 @@ impl RenetClient {
                 }
             }
             Packet::ReliableSlice { channel_id, slice, .. } => {
-                let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
+                let Some(ReceiveChannel::Reliable(channel)) = self.receive_channels.get_mut(channel_id as usize) else {
                     self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
@@ -434,7 +467,7 @@ impl RenetClient {
                 }
             }
             Packet::UnreliableSlice { channel_id, slice, .. } => {
-                let Some(channel) = self.receive_unreliable_channels.get_mut(&channel_id) else {
+                let Some(ReceiveChannel::Unreliable(channel)) = self.receive_channels.get_mut(channel_id as usize) else {
                     self.disconnect_with_reason(DisconnectReason::ReceivedInvalidChannelId(channel_id));
                     return;
                 };
@@ -467,9 +500,11 @@ impl RenetClient {
 
                     match sent_packet.info {
                         PacketSentInfo::ReliableMessages { channel_id, message_ids } => {
-                            let reliable_channel = self.send_reliable_channels.get_mut(&channel_id).unwrap();
+                            let SendChannel::Reliable(channel) = self.send_channels.get_mut(channel_id as usize).unwrap() else {
+                                panic!("Acked packet has invalid channel {channel_id}");
+                            };
                             for message_id in message_ids {
-                                reliable_channel.process_message_ack(message_id);
+                                channel.process_message_ack(message_id);
                             }
                         }
                         PacketSentInfo::ReliableSliceMessage {
@@ -477,8 +512,10 @@ impl RenetClient {
                             message_id,
                             slice_index,
                         } => {
-                            let reliable_channel = self.send_reliable_channels.get_mut(&channel_id).unwrap();
-                            reliable_channel.process_slice_message_ack(message_id, slice_index);
+                            let SendChannel::Reliable(channel) = self.send_channels.get_mut(channel_id as usize).unwrap() else {
+                                panic!("Acked packet has invalid channel {channel_id}");
+                            };
+                            channel.process_slice_message_ack(message_id, slice_index);
                         }
                         PacketSentInfo::Ack { largest_acked_packet } => {
                             self.acked_largest(largest_acked_packet);
@@ -504,11 +541,15 @@ impl RenetClient {
         for order in self.channel_send_order.iter() {
             match order {
                 ChannelOrder::Reliable(channel_id) => {
-                    let channel = self.send_reliable_channels.get_mut(channel_id).unwrap();
+                    let SendChannel::Reliable(channel) = self.send_channels.get_mut(*channel_id as usize).unwrap() else {
+                        panic!("Packet to send has invalid channel {channel_id}");
+                    };
                     packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence, &mut available_bytes, self.current_time));
                 }
                 ChannelOrder::Unreliable(channel_id) => {
-                    let channel = self.send_unreliable_channels.get_mut(channel_id).unwrap();
+                    let SendChannel::Unreliable(channel) = self.send_channels.get_mut(*channel_id as usize).unwrap() else {
+                        panic!("Packet to send has invalid channel {channel_id}");
+                    };
                     packets.append(&mut channel.get_packets_to_send(&mut self.packet_sequence, &mut available_bytes));
                 }
             }
