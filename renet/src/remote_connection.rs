@@ -143,14 +143,8 @@ impl RenetClient {
         send_channels_config: Vec<ChannelConfig>,
         receive_channels_config: Vec<ChannelConfig>,
     ) -> Self {
-        let mut max_send_channel = 0;
-        let mut max_receive_channel = 0;
-        for channel_config in send_channels_config.iter() {
-            max_send_channel = max_send_channel.max(channel_config.channel_id);
-        }
-        for channel_config in receive_channels_config.iter() {
-            max_receive_channel = max_receive_channel.max(channel_config.channel_id);
-        }
+        let max_send_channel = send_channels_config.iter().map(|c| c.channel_id).max().unwrap_or_default();
+        let max_receive_channel = receive_channels_config.iter().map(|c| c.channel_id).max().unwrap_or_default();
 
         let mut send_channels = Vec::new();
         send_channels.resize_with(max_send_channel as usize + 1, || SendChannel::Empty);
