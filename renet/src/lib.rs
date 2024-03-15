@@ -16,7 +16,7 @@ pub use server::{RenetServer, ServerEvent};
 pub use bytes::Bytes;
 
 /// Unique identifier for clients.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct ClientId(u64);
 
 impl ClientId {
