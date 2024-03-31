@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use std::{fmt, ops::Range};
+use std::{fmt, ops::Range, time::Duration};
 
 pub type Payload = Vec<u8>;
 
@@ -44,6 +44,7 @@ pub enum Packet {
     // Acks are saved in multiples ranges, all values in the ranges are considered acked.
     Ack {
         sequence: u64,
+        ack_delay: Duration,
         ack_ranges: Vec<Range<u64>>,
     },
 }
@@ -90,6 +91,10 @@ impl Packet {
             | Packet::ReliableSlice { sequence, .. }
             | Packet::Ack { sequence, .. } => *sequence,
         }
+    }
+
+    pub fn is_ack_eliciting(&self) -> bool {
+        matches!(self, Packet::SmallReliable { .. } | Packet::ReliableSlice { .. })
     }
 
     pub fn to_bytes(&self, b: &mut octets::OctetsMut) -> Result<usize, SerializationError> {
@@ -153,9 +158,14 @@ impl Packet {
                 b.put_varint(slice.payload.len() as u64)?;
                 b.put_bytes(&slice.payload)?;
             }
-            Packet::Ack { sequence, ack_ranges } => {
+            Packet::Ack {
+                sequence,
+                ack_ranges,
+                ack_delay,
+            } => {
                 b.put_u8(4)?;
                 b.put_varint(*sequence)?;
+                b.put_u32(ack_delay.as_micros() as u32)?;
 
                 // Consider this ranges:
                 // [20010..20020   ,  20035..20040]
@@ -305,6 +315,8 @@ impl Packet {
             4 => {
                 // Ack
                 let sequence = b.get_varint()?;
+                let packet_delay_microsecs = b.get_u32()?;
+                let ack_delay = Duration::from_micros(packet_delay_microsecs as u64);
 
                 let first_range_end = b.get_varint()?;
                 let first_range_size = b.get_varint()?;
@@ -344,7 +356,11 @@ impl Packet {
 
                 ack_ranges.reverse();
 
-                Ok(Packet::Ack { sequence, ack_ranges })
+                Ok(Packet::Ack {
+                    sequence,
+                    ack_ranges,
+                    ack_delay,
+                })
             }
             _ => Err(SerializationError::InvalidPacketType),
         }
@@ -441,6 +457,7 @@ mod tests {
 
         let packet = Packet::Ack {
             sequence: 0,
+            ack_delay: Duration::ZERO,
             ack_ranges: vec![3..7, 10..20, 30..100],
         };
 
