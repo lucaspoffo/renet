@@ -3,7 +3,7 @@ use renet::{
     RenetClient, RenetServer,
 };
 
-use bevy::{app::AppExit, prelude::*};
+use bevy::{app::AppExit, prelude::*, window::exit_on_all_closed};
 
 use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
@@ -27,7 +27,7 @@ impl Plugin for NetcodeServerPlugin {
 
         app.add_systems(
             PostUpdate,
-            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit.after(exit_on_all_closed))
                 .run_if(resource_exists::<NetcodeServerTransport>)
                 .run_if(resource_exists::<RenetServer>),
         );
@@ -71,7 +71,7 @@ impl Plugin for NetcodeClientPlugin {
         );
         app.add_systems(
             PostUpdate,
-            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
+            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit.after(exit_on_all_closed))
                 .run_if(resource_exists::<NetcodeClientTransport>)
                 .run_if(resource_exists::<RenetClient>),
         );
