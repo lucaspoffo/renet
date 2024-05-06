@@ -6,7 +6,7 @@ use std::time::Duration;
 
 pub(crate) use slice_constructor::SliceConstructor;
 
-/// Delivery garantee of a channel
+/// Delivery guarantee of a channel
 #[derive(Debug, Clone)]
 pub enum SendType {
     // Messages can be lost or received out of order.
@@ -32,7 +32,7 @@ pub struct ChannelConfig {
     /// Unreliable channels will drop new messages when this value is reached.
     /// Reliable channels will cause a disconnect when this value is reached.
     pub max_memory_usage_bytes: usize,
-    /// Delivery garantee of the channel.
+    /// Delivery guarantee of the channel.
     pub send_type: SendType,
 }
 
