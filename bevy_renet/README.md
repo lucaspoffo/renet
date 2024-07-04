@@ -27,7 +27,7 @@ let server_config = ServerConfig {
     current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
     max_clients: 64, 
     protocol_id: 0,
-    server_addresses: vec![server_addr], 
+    public_addresses: vec![server_addr], 
     authentication: ServerAuthentication::Unsecure
 };
 let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
