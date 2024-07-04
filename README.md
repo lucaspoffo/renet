@@ -9,25 +9,25 @@ Renet is a network library for Server/Client games written in rust. It is focuse
 Provides the following features:
 
 - Client/Server connection management
-- Message based communication using channels, they can have different garantees:
-    - ReliableOrdered: garantee of message delivery and order
-    - ReliableUnordered: garantee of message delivery but not order
-    - Unreliable: no garantee of message delivery or order
-- Packet fragmention and reassembly
+- Message based communication using channels, they can have different guarantees:
+    - ReliableOrdered: guarantee of message delivery and order
+    - ReliableUnordered: guarantee of message delivery but not order
+    - Unreliable: no guarantee of message delivery or order
+- Packet fragmentation and reassembly
 - Authentication and encryption, using [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
     - The transport layer can be customizable. The default transport can be disabled and replaced with a custom one
 
 ## Channels
 
 Renet communication is message based, and channels describe how the messages should be delivered.
-Channels are unilateral, `ConnectionConfig.client_channels_config` describes the channels that the clients sends to the server, and `ConnectionConfig.server_channels_config` describes the channels that the server sends to the clients.
+Channels are unidirectional, `ConnectionConfig.client_channels_config` describes the channels that the clients sends to the server, and `ConnectionConfig.server_channels_config` describes the channels that the server sends to the clients.
 
 Each channel has its own configuration `ChannelConfig`:
 
 ```rust
-// No garantee of message delivery or order
+// No guarantee of message delivery or order
 let send_type = SendType::Unreliable;
-// Garantee of message delivery and order
+// guarantee of message delivery and order
 let send_type = SendType::ReliableOrdered {
     // If a message is lost, it will be resent after this duration
     resend_time: Duration::from_millis(300)
@@ -50,7 +50,7 @@ let channel_config = ChannelConfig {
 
 ## Usage
 
-Renet aims to have a simple API that is easy to integrate with any code base. Pool for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to the client/server.
+Renet aims to have a simple API that is easy to integrate with any code base. Poll for new messages at the start of a frame with `update`. Call `send_packets` from the transport layer to send packets to the client/server.
 
 ### Server
 
