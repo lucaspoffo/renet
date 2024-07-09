@@ -7,13 +7,10 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    client_connected,
     renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
-use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
+use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
@@ -222,7 +219,7 @@ fn client_sync_players(
                 println!("Player {} connected.", id);
                 let mut client_entity = commands.spawn(PbrBundle {
                     mesh: meshes.add(Mesh::from(Capsule3d::default())),
-                    material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
+                    material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
                     transform: Transform::from_xyz(translation[0], translation[1], translation[2]),
                     ..Default::default()
                 });
@@ -252,7 +249,7 @@ fn client_sync_players(
             ServerMessages::SpawnProjectile { entity, translation } => {
                 let projectile_entity = commands.spawn(PbrBundle {
                     mesh: meshes.add(Mesh::from(Sphere::new(0.1))),
-                    material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
+                    material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
                     transform: Transform::from_translation(translation.into()),
                     ..Default::default()
                 });
@@ -294,7 +291,7 @@ fn update_target_system(
     let mut target_transform = target_query.single_mut();
     if let Some(cursor_pos) = primary_window.single().cursor_position() {
         if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
-            if let Some(distance) = ray.intersect_plane(Vec3::Y, Plane3d::new(Vec3::Y)) {
+            if let Some(distance) = ray.intersect_plane(Vec3::Y, InfinitePlane3d::new(Vec3::Y)) {
                 target_transform.translation = ray.direction * distance + ray.origin;
             }
         }
@@ -321,7 +318,7 @@ fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut ma
     commands
         .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(Sphere::new(0.1))),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
+            material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
             transform: Transform::from_xyz(0.0, 0., 0.0),
             ..Default::default()
         })

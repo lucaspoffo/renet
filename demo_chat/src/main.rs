@@ -76,7 +76,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
-            Box::<ChatApp>::default()
+            Ok(Box::<ChatApp>::default())
         }),
     )
 }

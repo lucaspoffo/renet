@@ -22,7 +22,7 @@ pub struct PlayerInput {
     pub right: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Component, Event)]
+#[derive(Debug, Serialize, Deserialize, Event)]
 pub enum PlayerCommand {
     BasicAttack { cast_at: Vec3 },
 }
@@ -134,7 +134,7 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
     // plane
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(Cuboid::new(40., 1., 40.))),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
+        material: materials.add(Color::srgb(0.3, 0.5, 0.3)),
         transform: Transform::from_xyz(0.0, -1.0, 0.0),
         ..Default::default()
     });
@@ -171,7 +171,7 @@ pub fn spawn_fireball(
     commands
         .spawn(PbrBundle {
             mesh: meshes.add(Sphere { radius: 0.1 }),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
+            material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
             transform: Transform::from_translation(translation),
             ..Default::default()
         })
