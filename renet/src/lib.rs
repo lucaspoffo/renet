@@ -59,5 +59,5 @@ impl<'de> serde::Deserialize<'de> for ClientId {
 
 #[cfg(feature = "bevy")]
 impl bevy_ecs::component::Component for ClientId {
-    type Storage = bevy_ecs::component::TableStorage;
+    const STORAGE_TYPE: bevy_ecs::component::StorageType = bevy_ecs::component::StorageType::Table;
 }
