@@ -21,7 +21,7 @@ required-features = ["serde", "transport"]
 
 [dependencies]
 bevy = {version = "0.14", default-features = false}
-renet = {path = "../renet", version = "0.0.15", default-features=false, features = ["bevy"]}
+renet = {path = "../renet", version = "0.0.16", default-features=false, features = ["bevy"]}
 
 [dev-dependencies]
 bevy = {version = "0.14", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd"]}
