@@ -1,6 +1,9 @@
 pub use renet;
 
-use bevy::prelude::*;
+use bevy::{
+    ecs::{intern::Interned, schedule::ScheduleLabel},
+    prelude::*,
+};
 
 use renet::{RenetClient, RenetServer, ServerEvent};
 
@@ -25,18 +28,46 @@ pub struct RenetReceive;
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RenetSend;
 
-pub struct RenetServerPlugin;
-
-pub struct RenetClientPlugin;
+#[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CoreSet {
+    Pre,
+    Post,
+}
+#[derive(Clone, Copy)]
+pub struct NetSchedules {
+    pub pre: Interned<dyn ScheduleLabel>,
+    pub post: Interned<dyn ScheduleLabel>,
+}
+impl Default for NetSchedules {
+    fn default() -> Self {
+        Self {
+            pre: PreUpdate.intern(),
+            post: PostUpdate.intern(),
+        }
+    }
+}
+#[derive(Default)]
+pub struct RenetServerPlugin {
+    pub schedules: NetSchedules,
+}
+#[derive(Default)]
+pub struct RenetClientPlugin {
+    pub schedules: NetSchedules,
+}
 
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Events<ServerEvent>>();
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>));
         app.add_systems(
-            PreUpdate,
+            self.schedules.pre,
+            Self::update_system.in_set(CoreSet::Pre).run_if(resource_exists::<RenetServer>),
+        );
+        app.add_systems(
+            self.schedules.pre,
             Self::emit_server_events_system
                 .in_set(RenetReceive)
+                .run_if(resource_exists::<RenetServer>)
+                .in_set(CoreSet::Pre)
                 .run_if(resource_exists::<RenetServer>)
                 .after(Self::update_system),
         );
@@ -57,7 +88,10 @@ impl RenetServerPlugin {
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetClient>));
+        app.add_systems(
+            self.schedules.pre,
+            Self::update_system.in_set(CoreSet::Pre).run_if(resource_exists::<RenetClient>),
+        );
     }
 }
 

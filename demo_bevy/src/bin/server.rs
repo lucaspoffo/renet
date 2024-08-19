@@ -90,7 +90,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
 
-    app.add_plugins(RenetServerPlugin);
+    app.add_plugins(RenetServerPlugin::default());
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);

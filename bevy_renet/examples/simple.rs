@@ -98,8 +98,8 @@ fn main() {
     app.init_resource::<Lobby>();
 
     if is_host {
-        app.add_plugins(RenetServerPlugin);
-        app.add_plugins(NetcodeServerPlugin);
+        app.add_plugins(RenetServerPlugin::default());
+        app.add_plugins(NetcodeServerPlugin::default());
         let (server, transport) = new_renet_server();
         app.insert_resource(server);
         app.insert_resource(transport);
@@ -109,8 +109,8 @@ fn main() {
             (server_update_system, server_sync_players, move_players_system).run_if(resource_exists::<RenetServer>),
         );
     } else {
-        app.add_plugins(RenetClientPlugin);
-        app.add_plugins(NetcodeClientPlugin);
+        app.add_plugins(RenetClientPlugin::default());
+        app.add_plugins(NetcodeClientPlugin::default());
         app.init_resource::<PlayerInput>();
         let (client, transport) = new_renet_client();
         app.insert_resource(client);
