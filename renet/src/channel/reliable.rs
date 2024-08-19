@@ -350,18 +350,14 @@ impl ReceiveChannelReliable {
     pub fn receive_message(&mut self) -> Option<Bytes> {
         match &mut self.reliable_order {
             ReliableOrder::Ordered => {
-                let Some(message) = self.messages.remove(&self.oldest_pending_message_id) else {
-                    return None;
-                };
+                let message = self.messages.remove(&self.oldest_pending_message_id)?;
 
                 self.oldest_pending_message_id += 1;
                 self.memory_usage_bytes -= message.len();
                 Some(message)
             }
             ReliableOrder::Unordered { received_messages, .. } => {
-                let Some((message_id, message)) = self.messages.pop_first() else {
-                    return None;
-                };
+                let (message_id, message) = self.messages.pop_first()?;
 
                 if self.oldest_pending_message_id == message_id {
                     // Remove all next items that could have been received out of order,

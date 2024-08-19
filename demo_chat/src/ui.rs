@@ -1,7 +1,7 @@
 use bincode::Options;
 use eframe::{
     egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2},
-    epaint::PathShape,
+    epaint::{PathShape, PathStroke},
 };
 use renet::{
     transport::{ClientAuthentication, NetcodeClientTransport},
@@ -40,7 +40,7 @@ pub fn draw_loader(ctx: &egui::Context) {
             points,
             closed: false,
             fill: Color32::TRANSPARENT,
-            stroke: egui::Stroke::new(2.0, ui.visuals().text_color()),
+            stroke: PathStroke::new(2.0, ui.visuals().text_color()),
         });
     });
 }
@@ -77,7 +77,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
 
 pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
-        egui::Area::new("buttons")
+        egui::Area::new("buttons".into())
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ui.ctx(), |ui| {
                 ui.set_width(300.);

@@ -35,8 +35,7 @@ impl Plugin for NetcodeServerPlugin {
             self.schedules.post,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeServerTransport>)
-                .run_if(resource_exists::<RenetServer>)
-                .in_set(CoreSet::Post),
+                .run_if(resource_exists::<RenetServer>).in_set(CoreSet::Post),
         );
         if self.schedules.post == self.schedules.pre {
             app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post).chain());
@@ -77,15 +76,13 @@ impl Plugin for NetcodeClientPlugin {
                 .in_set(RenetReceive)
                 .run_if(resource_exists::<NetcodeClientTransport>)
                 .run_if(resource_exists::<RenetClient>)
-                .after(RenetClientPlugin::update_system)
-                .in_set(CoreSet::Pre),
+                .after(RenetClientPlugin::update_system).in_set(CoreSet::Pre),
         );
         app.add_systems(
             self.schedules.post,
             (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
                 .run_if(resource_exists::<NetcodeClientTransport>)
-                .run_if(resource_exists::<RenetClient>)
-                .in_set(CoreSet::Post),
+                .run_if(resource_exists::<RenetClient>).in_set(CoreSet::Post),
         );
     }
 }

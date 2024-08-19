@@ -15,7 +15,7 @@ transport = ["bevy_renet/transport"]
 steam = ["dep:renet_steam", "steamworks"]
 
 [dependencies]
-bevy = { version = "0.13", default-features = false, features = [
+bevy = { version = "0.14", default-features = false, features = [
     "bevy_core_pipeline",
     "bevy_render",
     "bevy_asset",
@@ -24,13 +24,14 @@ bevy = { version = "0.13", default-features = false, features = [
     "tonemapping_luts",
     "ktx2",
     "zstd",
+    "serialize",
 ] }
 bevy_renet = { path = "../bevy_renet", features = ["serde"] }
 renet_steam = { path = "../renet_steam", features = ["bevy"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
-bevy_egui = "0.25"
+bevy_egui = "0.28"
 renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
-smooth-bevy-cameras = "0.11"
+smooth-bevy-cameras = "0.12"
 fastrand = "2.0"
 steamworks = { version = "0.11", optional = true }

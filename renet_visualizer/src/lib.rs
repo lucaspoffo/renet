@@ -358,7 +358,7 @@ fn show_graph(
             TextFormat::Normal => format!("{:.2}", last_value).into(),
             TextFormat::Percentage => format!("{:.1}%", last_value * 100.).into(),
         };
-        let galley = last_text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
+        let galley = last_text.into_galley(ui, Some(egui::TextWrapMode::Wrap), f32::INFINITY, TextStyle::Button);
         let (outer_rect, _) = ui.allocate_exact_size(Vec2::new(style.width + galley.size().x + spacing_x, style.height), Sense::hover());
         let rect = Rect::from_min_size(outer_rect.left_top(), vec2(style.width, style.height));
         let text_pos = rect.right_center() + vec2(spacing_x / 2.0, -galley.size().y / 2.);
@@ -371,6 +371,7 @@ fn show_graph(
             stroke: style.rectangle_stroke,
             uv: Rect::ZERO,
             fill_texture_id: egui::TextureId::Managed(0),
+            blur_width: 0.0,
         });
         ui.painter().add(body);
         let init_point = rect.left_bottom();
@@ -395,7 +396,7 @@ fn show_graph(
                 TextFormat::Normal => format!("{:.0}", max).into(),
                 TextFormat::Percentage => format!("{:.0}%", max * 100.).into(),
             };
-            let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
+            let galley = text.into_galley(ui, Some(egui::TextWrapMode::Wrap), f32::INFINITY, TextStyle::Button);
             let text_pos = rect.left_top() + Vec2::new(0.0, galley.size().y / 2.) + vec2(spacing_x, 0.0);
             ui.painter().with_clip_rect(outer_rect).galley(text_pos, galley, style.text_color);
         }
@@ -404,7 +405,7 @@ fn show_graph(
                 TextFormat::Normal => format!("{:.0}", min).into(),
                 TextFormat::Percentage => format!("{:.0}%", min * 100.).into(),
             };
-            let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
+            let galley = text.into_galley(ui, Some(egui::TextWrapMode::Wrap), f32::INFINITY, TextStyle::Button);
             let text_pos = rect.left_bottom() - Vec2::new(0.0, galley.size().y * 1.5) + vec2(spacing_x, 0.0);
             ui.painter().with_clip_rect(outer_rect).galley(text_pos, galley, style.text_color);
         }

@@ -1,5 +1,41 @@
 # CHANGELOGS
 
+## 0.0.16 - 20-07-2014
+
+### BevyRenet
+
+* Update to bevy 0.14. [(PR)](https://github.com/lucaspoffo/renet/pull/161) by [raffaeleragni](https://github.com/raffaeleragni)
+
+### Renetcode
+
+* Implement Error for DisconnectReason. [(PR)](https://github.com/lucaspoffo/renet/pull/152) by [Shatur](https://github.com/Shatur)
+
+### RenetVisualizer
+
+* Update to egui 0.28. [(PR)](https://github.com/lucaspoffo/renet/pull/161) by [raffaeleragni](https://github.com/raffaeleragni)
+
+## 0.0.15 - 21-02-2014
+
+### RenetSteam
+
+* Released version 0.0.1. Checkout the [README](https://github.com/lucaspoffo/renet/tree/master/renet_steam) or the [Bevy Demo](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) to see how to use it. 
+
+### Renetcode
+
+* Use timeout given from ConnectToken instead of fixed 15 secs. [(commit)](https://github.com/lucaspoffo/renet/commit/9add0a326098f69a6a7489554c05f85dbec8c530)
+
+### BevyRenet
+
+* Implement Component for ClientId. [(PR)](https://github.com/lucaspoffo/renet/pull/140) by [SylvKT](https://github.com/SylvKT)
+* Add emit_server_events_system, now, transports can update and disconnect clients before events are emitted. [(commit)](https://github.com/lucaspoffo/renet/commit/c8485040e32de483a6c7f398a22cdedf72088c0d)
+* Removed steam feature, now to use steam, you add `renet_steam` with the bevy feature. [(commit)](https://github.com/lucaspoffo/renet/commit/9584c6972496f985eef853079552a83e913f0641)
+* Update to bevy 0.13. [(PR)](https://github.com/lucaspoffo/renet/pull/147) by [dgsantana](https://github.com/dgsantana)
+* Make all systems public, this makes possible to manually add the systems and use them for ordering. [(commit)](https://github.com/lucaspoffo/renet/commit/b9d88f94fc7a84f8febdf12f8788d286f73d6157)
+
+### RenetVisualizer
+
+* Update egui to 0.26
+
 ## 0.0.14 - 12-11-2023
 
 ### Renet

@@ -144,7 +144,7 @@ fn server_update_system(
                 let player_entity = commands
                     .spawn(PbrBundle {
                         mesh: meshes.add(Cuboid::from_size(Vec3::splat(1.0))),
-                        material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
+                        material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
                         transform: Transform::from_xyz(0.0, 0.5, 0.0),
                         ..Default::default()
                     })
@@ -211,7 +211,7 @@ fn client_sync_players(
                 let player_entity = commands
                     .spawn(PbrBundle {
                         mesh: meshes.add(Cuboid::from_size(Vec3::splat(1.0))),
-                        material: materials.add(Color::rgb(0.8, 0.7, 0.6)),
+                        material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
                         transform: Transform::from_xyz(0.0, 0.5, 0.0),
                         ..Default::default()
                     })
@@ -247,18 +247,17 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     // plane
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(PlaneMeshBuilder::from_size(Vec2::splat(5.0)))),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
+        material: materials.add(Color::srgb(0.3, 0.5, 0.3)),
         ..Default::default()
     });
     // light
     commands.spawn(PointLightBundle {
         point_light: PointLight {
-            intensity: 1500.0,
             shadows_enabled: true,
-            ..Default::default()
+            ..default()
         },
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..Default::default()
+        ..default()
     });
     // camera
     commands.spawn(Camera3dBundle {
