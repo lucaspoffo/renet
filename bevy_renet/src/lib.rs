@@ -1,6 +1,9 @@
 pub use renet;
 
-use bevy::{ecs::schedule::ScheduleLabel, prelude::*, utils::intern::Interned};
+use bevy::{
+    ecs::{intern::Interned, schedule::ScheduleLabel},
+    prelude::*,
+};
 
 use renet::{RenetClient, RenetServer, ServerEvent};
 
@@ -62,9 +65,10 @@ impl Plugin for RenetServerPlugin {
         app.add_systems(
             self.schedules.pre,
             Self::emit_server_events_system
-            .in_set(RenetReceive)
-            .run_if(resource_exists::<RenetServer>)
-            .in_set(CoreSet::Pre).run_if(resource_exists::<RenetServer>())
+                .in_set(RenetReceive)
+                .run_if(resource_exists::<RenetServer>)
+                .in_set(CoreSet::Pre)
+                .run_if(resource_exists::<RenetServer>)
                 .after(Self::update_system),
         );
     }
@@ -84,7 +88,10 @@ impl RenetServerPlugin {
 
 impl Plugin for RenetClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(self.schedules.pre, Self::update_system.in_set(CoreSet::Pre).run_if(resource_exists::<RenetClient>()));
+        app.add_systems(
+            self.schedules.pre,
+            Self::update_system.in_set(CoreSet::Pre).run_if(resource_exists::<RenetClient>),
+        );
     }
 }
 
