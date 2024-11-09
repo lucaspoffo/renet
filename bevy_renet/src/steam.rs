@@ -33,8 +33,10 @@ impl Plugin for SteamServerPlugin {
 
         app.add_systems(
             PostUpdate,
-            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit).run_if(resource_exists::<RenetServer>),
+            Self::send_packets.in_set(RenetSend).run_if(resource_exists::<RenetServer>),
         );
+
+        app.add_systems(Last, Self::disconnect_on_exit.run_if(resource_exists::<RenetServer>));
     }
 }
 
@@ -78,7 +80,15 @@ impl Plugin for SteamClientPlugin {
         );
         app.add_systems(
             PostUpdate,
-            (Self::send_packets.in_set(RenetSend), Self::disconnect_on_exit)
+            Self::send_packets
+                .in_set(RenetSend)
+                .run_if(resource_exists::<SteamClientTransport>)
+                .run_if(resource_exists::<RenetClient>),
+        );
+
+        app.add_systems(
+            Last,
+            Self::disconnect_on_exit
                 .run_if(resource_exists::<SteamClientTransport>)
                 .run_if(resource_exists::<RenetClient>),
         );
