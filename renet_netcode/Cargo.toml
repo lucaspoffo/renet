@@ -2,6 +2,10 @@
 name = "renet_netcode"
 version = "0.0.1"
 edition = "2021"
+keywords = ["gamedev", "networking", "transport"]
+description = "netcode transport for the renet crate: Server/Client network library for multiplayer games"
+repository = "https://github.com/lucaspoffo/renet"
+license = "MIT OR Apache-2.0"
 
 [features]
 bevy = ["dep:bevy_ecs"]
