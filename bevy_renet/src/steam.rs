@@ -3,9 +3,9 @@ use bevy_ecs::prelude::*;
 use renet::{RenetClient, RenetServer};
 use steamworks::SteamError;
 
-use bevy_renet::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
+use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
 
-pub use crate::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
+pub use renet_steam::*;
 
 pub struct SteamServerPlugin;
 

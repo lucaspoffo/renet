@@ -11,8 +11,8 @@ name = "server"
 path = "src/bin/server.rs"
 
 [features]
-transport = ["bevy_renet/transport"]
-steam = ["dep:renet_steam", "steamworks"]
+netcode = ["bevy_renet/netcode"]
+steam = ["bevy_renet/steam"]
 
 [dependencies]
 bevy = { version = "0.14", default-features = false, features = [
@@ -25,9 +25,9 @@ bevy = { version = "0.14", default-features = false, features = [
     "ktx2",
     "zstd",
     "serialize",
-] }
-bevy_renet = { path = "../bevy_renet", features = ["serde"] }
-renet_steam = { path = "../renet_steam", features = ["bevy"], optional = true }
+]}
+
+bevy_renet = { path = "../bevy_renet", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
 bevy_egui = "0.28"

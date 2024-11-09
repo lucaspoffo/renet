@@ -11,17 +11,21 @@ version = "0.0.12"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["transport"]
-serde = ["renet/serde"]
-transport = ["renet/transport"]
+default = ["netcode"]
+netcode = ["dep:renet_netcode"]
+steam = ["dep:renet_steam"]
 
 [[example]]
 name = "simple"
-required-features = ["serde", "transport"]
+required-features = ["netcode"]
 
 [dependencies]
-bevy = {version = "0.14", default-features = false}
-renet = {path = "../renet", version = "0.0.16", default-features=false, features = ["bevy"]}
+bevy_app = "0.14"
+bevy_ecs = "0.14"
+bevy_time = "0.14"
+renet = { path="../renet", version = "0.0.16", features = ["bevy"] }
+renet_netcode = { path="../renet_netcode", version = "0.0.1", features = ["bevy"], optional = true }
+renet_steam = { path="../renet_steam", version = "0.0.2", features = ["bevy"], optional = true }
 
 [dev-dependencies]
 bevy = {version = "0.14", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd"]}

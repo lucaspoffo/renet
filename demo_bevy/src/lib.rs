@@ -4,9 +4,9 @@ use bevy::prelude::*;
 use bevy_renet::renet::{ChannelConfig, ClientId, ConnectionConfig, SendType};
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "transport")]
-pub const PRIVATE_KEY: &[u8; bevy_renet::renet::transport::NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
-#[cfg(feature = "transport")]
+#[cfg(feature = "netcode")]
+pub const PRIVATE_KEY: &[u8; bevy_renet::netcode::NETCODE_KEY_BYTES] = b"an example very very secret key."; // 32-bytes
+#[cfg(feature = "netcode")]
 pub const PROTOCOL_ID: u64 = 7;
 
 #[derive(Debug, Component)]

@@ -6,13 +6,10 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use renet::{
-    transport::{
-        ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
-    },
-    ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent,
+use renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
+use renet_netcode::{
+    ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
 };
-
 // Helper struct to pass an username in the user data
 struct Username(String);
 

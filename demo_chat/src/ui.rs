@@ -3,10 +3,8 @@ use eframe::{
     egui::{self, lerp, Color32, Layout, Pos2, Ui, Vec2},
     epaint::{PathShape, PathStroke},
 };
-use renet::{
-    transport::{ClientAuthentication, NetcodeClientTransport},
-    ClientId, ConnectionConfig, DefaultChannel, RenetClient,
-};
+use renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient};
+use renet_netcode::{ClientAuthentication, NetcodeClientTransport};
 
 use std::{
     collections::HashMap,

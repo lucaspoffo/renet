@@ -11,7 +11,7 @@ fn test_remote_connection_reliable_channel() {
     let mut server = RenetServer::new(ConnectionConfig::default());
     let mut client = RenetClient::new(ConnectionConfig::default());
 
-    let client_id = ClientId::from_raw(0);
+    let client_id: ClientId = 0;
     server.add_connection(client_id);
     assert_eq!(server.connected_clients(), 1);
     assert!(server.has_connections());

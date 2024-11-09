@@ -8,7 +8,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-renet = { path = "../renet", features = ["transport", "serde"] }
+renet = { path = "../renet" }
+renet_netcode = { path = "../renet_netcode" }
 renet_visualizer = { path = "../renet_visualizer" }
 eframe = "0.28"
 serde = { version = "1.0", features = ["derive"] }

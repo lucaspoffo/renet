@@ -5,18 +5,16 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use renet::{
-    transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
-    ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent,
-};
+use renet::{ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent};
+use renet_netcode::{NetcodeServerTransport, ServerAuthentication, ServerConfig};
 use renet_visualizer::RenetServerVisualizer;
 
 use crate::{ClientMessages, Message, ServerMessages, Username, PROTOCOL_ID};
 use bincode::Options;
 use log::info;
 
-pub const SYSTEM_MESSAGE_CLIENT_ID: ClientId = ClientId::from_raw(0);
-pub const HOST_CLIENT_ID: ClientId = ClientId::from_raw(1);
+pub const SYSTEM_MESSAGE_CLIENT_ID: ClientId = 0;
+pub const HOST_CLIENT_ID: ClientId = 1;
 
 pub struct ChatServer {
     pub server: RenetServer,

@@ -40,13 +40,13 @@ struct CurrentClientId(u64);
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Connected;
 
-#[cfg(feature = "transport")]
+#[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::renet::transport::{ClientAuthentication, NetcodeClientTransport, NetcodeTransportError};
+    use bevy_renet::netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeTransportError};
     use demo_bevy::PROTOCOL_ID;
     use std::{net::UdpSocket, time::SystemTime};
 
-    app.add_plugins(bevy_renet::transport::NetcodeClientPlugin);
+    app.add_plugins(NetcodeClientPlugin);
 
     app.configure_sets(Update, Connected.run_if(client_connected));
 
@@ -82,7 +82,7 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use renet_steam::bevy::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
     use steamworks::{SingleClient, SteamId};
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
@@ -130,7 +130,7 @@ fn main() {
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
 
-    #[cfg(feature = "transport")]
+    #[cfg(feature = "netcode")]
     add_netcode_network(&mut app);
 
     #[cfg(feature = "steam")]
@@ -227,7 +227,7 @@ fn client_sync_players(
                     ..Default::default()
                 });
 
-                if client_id == id.raw() {
+                if client_id == id {
                     client_entity.insert(ControlledPlayer);
                 }
 

@@ -15,7 +15,7 @@ pub use renetcode::{
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Event))]
 pub enum NetcodeTransportError {
     Netcode(NetcodeError),
-    Renet(crate::DisconnectReason),
+    Renet(renet::DisconnectReason),
     IO(std::io::Error),
 }
 
@@ -43,8 +43,8 @@ impl From<renetcode::TokenGenerationError> for NetcodeTransportError {
     }
 }
 
-impl From<crate::DisconnectReason> for NetcodeTransportError {
-    fn from(inner: crate::DisconnectReason) -> Self {
+impl From<renet::DisconnectReason> for NetcodeTransportError {
+    fn from(inner: renet::DisconnectReason) -> Self {
         NetcodeTransportError::Renet(inner)
     }
 }

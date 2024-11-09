@@ -30,10 +30,9 @@ struct Bot {
 #[derive(Debug, Resource)]
 struct BotId(u64);
 
-#[cfg(feature = "transport")]
+#[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::renet::transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig};
-    use bevy_renet::transport::NetcodeServerPlugin;
+    use bevy_renet::netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig};
     use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
 
@@ -59,9 +58,8 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
+    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
     use demo_bevy::connection_config;
-    use renet_steam::bevy::{SteamServerConfig, SteamServerPlugin, SteamServerTransport};
-    use renet_steam::AccessPermission;
     use steamworks::SingleClient;
 
     let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
@@ -100,7 +98,7 @@ fn main() {
 
     app.insert_resource(RenetServerVisualizer::<200>::default());
 
-    #[cfg(feature = "transport")]
+    #[cfg(feature = "netcode")]
     add_netcode_network(&mut app);
 
     #[cfg(feature = "steam")]
@@ -300,7 +298,7 @@ fn spawn_bot(
     mut commands: Commands,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        let client_id = ClientId::from_raw(bot_id.0);
+        let client_id: ClientId = bot_id.0;
         bot_id.0 += 1;
         // Spawn new player
         let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);

@@ -6,7 +6,7 @@ use std::{
 
 use renetcode::{ClientAuthentication, DisconnectReason, NetcodeClient, NetcodeError, NETCODE_MAX_PACKET_BYTES};
 
-use crate::{remote_connection::RenetClient, ClientId};
+use renet::{ClientId, RenetClient};
 
 use super::NetcodeTransportError;
 
@@ -35,7 +35,7 @@ impl NetcodeClientTransport {
     }
 
     pub fn client_id(&self) -> ClientId {
-        ClientId(self.netcode_client.client_id())
+        self.netcode_client.client_id()
     }
 
     /// Returns the duration since the client last received a packet.

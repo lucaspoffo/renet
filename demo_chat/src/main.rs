@@ -1,6 +1,7 @@
 use client::ChatApp;
 use eframe::{egui, App};
-use renet::{transport::NETCODE_USER_DATA_BYTES, ClientId};
+use renet::ClientId;
+use renet_netcode::NETCODE_USER_DATA_BYTES;
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
