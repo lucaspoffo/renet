@@ -77,6 +77,9 @@ fn test_local_client() {
     let client_id: ClientId = 0;
     let mut client = server.new_local_client(client_id);
 
+    let connect_event = server.get_event().unwrap();
+    assert!(connect_event == ServerEvent::ClientConnected { client_id });
+
     server.send_message(client_id, DefaultChannel::ReliableOrdered, Bytes::from("test server"));
     client.send_message(DefaultChannel::ReliableOrdered, Bytes::from("test client"));
 
@@ -87,4 +90,15 @@ fn test_local_client() {
 
     let client_message = client.receive_message(DefaultChannel::ReliableOrdered).unwrap();
     assert_eq!(client_message, "test server");
+
+    server.disconnect_local_client(client_id, &mut client);
+    assert!(client.is_disconnected());
+    let disconnect_event = server.get_event().unwrap();
+    assert!(
+        disconnect_event
+            == ServerEvent::ClientDisconnected {
+                client_id,
+                reason: DisconnectReason::DisconnectedByClient
+            }
+    );
 }

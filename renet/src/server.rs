@@ -282,6 +282,21 @@ impl RenetServer {
         client
     }
 
+    /// Disconnects a local [RenetClient], created with [`Self::new_local_client`].
+    pub fn disconnect_local_client(&mut self, client_id: ClientId, client: &mut RenetClient) {
+        if client.is_disconnected() {
+            return;
+        }
+        client.disconnect();
+
+        if self.connections.remove(&client_id).is_some() {
+            self.events.push_back(ServerEvent::ClientDisconnected {
+                client_id,
+                reason: DisconnectReason::DisconnectedByClient,
+            });
+        }
+    }
+
     /// Given a local [RenetClient], receive and send packets to/from it.
     /// Use this to update local client created from [`Self::new_local_client`].
     pub fn process_local_client(&mut self, client_id: ClientId, client: &mut RenetClient) -> Result<(), ClientNotFound> {
