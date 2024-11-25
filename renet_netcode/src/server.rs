@@ -42,6 +42,15 @@ impl NetcodeServerTransport {
         self.netcode_server.max_clients()
     }
 
+    /// Update the maximum numbers of clients that can be connected.
+    ///
+    /// Changing the `max_clients` to a lower value than the current number of connect clients
+    /// does not disconnect clients. So [`NetcodeServerTransport::connected_clients()`] can
+    /// return a higher value than [`NetcodeServerTransport::max_clients()`].
+    pub fn set_max_clients(&mut self, max_clients: usize) {
+        self.netcode_server.set_max_clients(max_clients);
+    }
+
     /// Returns current number of clients connected.
     pub fn connected_clients(&self) -> usize {
         self.netcode_server.connected_clients()
