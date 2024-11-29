@@ -5,8 +5,8 @@
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
 A Bevy Plugin for the [renet](https://github.com/lucaspoffo/renet) crate.
-A network crate for Server/Client with cryptographically secure authentication and encypted packets.
-Designed for fast paced competitive multiplayer games.
+A network crate for Server/Client with cryptographically secure authentication and encrypted packets.
+Designed for fast-paced competitive multiplayer games.
 
 ## Usage
 Bevy renet is a small layer over the `renet` crate, it adds systems to call the update function from the client/server. `RenetClient`, `RenetServer`, `NetcodeClientTransport` and `NetcodeServerTransport` need to be added as a resource, so the setup is similar to `renet` itself:
