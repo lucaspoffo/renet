@@ -5,7 +5,8 @@ use bevy::{
     prelude::*,
     prelude::Vec3
 };
-use bevy_window::{Window, PrimaryWindow};
+use bevy::window::PrimaryWindow;
+use bevy::window::{Window, PrimaryWindow};
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
     client_connected,
@@ -302,7 +303,7 @@ fn update_target_system(
 
 fn setup_camera(mut commands: Commands) {
     commands
-        .spawn(LookTransformBundle {
+        .spawn(/*LookTransformBundle {
             transform: LookTransform {
                 eye: Vec3::new(0.0, 8., 2.5),
                 target: Vec3::new(0.0, 0.5, 0.0),
@@ -310,7 +311,7 @@ fn setup_camera(mut commands: Commands) {
             },
             smoother: Smoother::new(0.9),
         })
-        .insert((
+        .insert(*/(
             Camera3d::default(),
             Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
         ));
