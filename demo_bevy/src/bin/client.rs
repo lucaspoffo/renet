@@ -12,7 +12,7 @@ use demo_bevy::{
     connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
-use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
+// use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
 #[derive(Component)]
 struct ControlledPlayer;
@@ -122,7 +122,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_plugins(RenetClientPlugin);
-    app.add_plugins(LookTransformPlugin);
+    // app.add_plugins(LookTransformPlugin);
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
@@ -139,7 +139,7 @@ fn main() {
     app.insert_resource(PlayerInput::default());
     app.insert_resource(NetworkMapping::default());
 
-    app.add_systems(Update, (player_input, camera_follow, update_target_system));
+    app.add_systems(Update, (player_input, /*camera_follow,*/ update_target_system));
     app.add_systems(
         Update,
         (client_send_input, client_send_player_commands, client_sync_players).in_set(Connected),
@@ -322,7 +322,7 @@ fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut ma
         .insert(Target);
 }
 
-fn camera_follow(
+/*fn camera_follow(
     mut camera_query: Query<&mut LookTransform, (With<Camera>, Without<ControlledPlayer>)>,
     player_query: Query<&Transform, With<ControlledPlayer>>,
 ) {
@@ -333,3 +333,4 @@ fn camera_follow(
         cam_transform.target = player_transform.translation;
     }
 }
+*/
