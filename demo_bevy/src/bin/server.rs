@@ -158,12 +158,11 @@ fn server_update_system(
                 // Spawn new player
                 let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
                 let player_entity = commands
-                    .spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Capsule3d::default())),
-                        material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
+                    .spawn((
+                        Mesh3d(meshes.add(Mesh::from(Capsule3d::default()))),
+                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
                         transform,
-                        ..Default::default()
-                    })
+                    ))
                     .insert(PlayerInput::default())
                     .insert(Velocity::default())
                     .insert(Player { id: *client_id })
@@ -267,16 +266,16 @@ fn move_players_system(mut query: Query<(&mut Velocity, &PlayerInput)>) {
 
 fn apply_velocity_system(mut query: Query<(&Velocity, &mut Transform)>, time: Res<Time>) {
     for (velocity, mut transform) in query.iter_mut() {
-        transform.translation += velocity.0 * time.delta_seconds();
+        transform.translation += velocity.0 * time.delta_secs();
     }
 }
 
 pub fn setup_simple_camera(mut commands: Commands) {
     // camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-20.5, 30.0, 20.5).looking_at(Vec3::ZERO, Vec3::Y),
-        ..Default::default()
-    });
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(-20.5, 30.0, 20.5).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 fn projectile_on_removal_system(mut server: ResMut<RenetServer>, mut removed_projectiles: RemovedComponents<Projectile>) {
@@ -303,12 +302,11 @@ fn spawn_bot(
         // Spawn new player
         let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
         let player_entity = commands
-            .spawn(PbrBundle {
-                mesh: meshes.add(Mesh::from(Capsule3d::default())),
-                material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
+            .spawn((
+                Mesh3d(meshes.add(Mesh::from(Capsule3d::default()))),
+                MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
                 transform,
-                ..Default::default()
-            })
+            ))
             .insert(Player { id: client_id })
             .insert(Bot {
                 auto_cast: Timer::from_seconds(3.0, TimerMode::Repeating),

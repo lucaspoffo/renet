@@ -10,6 +10,7 @@ use octets::OctetsMut;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::time::Duration;
+use bevy_ecs::system::Resource;
 
 /// Configuration for a renet connection and its channels.
 #[derive(Debug, Clone)]
@@ -79,7 +80,7 @@ pub enum RenetConnectionStatus {
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
+#[cfg_attr(feature = "bevy", derive(Resource))]
 pub struct RenetClient {
     packet_sequence: u64,
     current_time: Duration,
