@@ -54,7 +54,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
             ui.label(format!("Address: {}", server_addr));
             let tooltip = "Click to copy the server address";
             if ui.button("📋").on_hover_text(tooltip).clicked() {
-                ui.output_mut(|output| output.copied_text = server_addr.to_string());
+                ui.ctx().copy_text(server_addr.to_string());
             }
         });
     }

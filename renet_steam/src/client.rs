@@ -11,7 +11,7 @@ enum ConnectionState {
     Disconnected { end_reason: NetConnectionEnd },
 }
 
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamClientTransport {
     networking_sockets: NetworkingSockets<ClientManager>,
     state: ConnectionState,

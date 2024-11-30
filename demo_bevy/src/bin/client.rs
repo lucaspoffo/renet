@@ -1,6 +1,8 @@
+use bevy_renet::client_connected;
+use demo_bevy::connection_config;
 use std::collections::HashMap;
 
-use bevy::window::PrimaryWindow;
+use bevy::window::{PrimaryWindow, Window};
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::Vec3,
@@ -8,13 +10,10 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    client_connected,
     renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
-use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
+use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 
 #[derive(Component)]
@@ -125,9 +124,11 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_plugins(RenetClientPlugin);
-    app.add_plugins(FrameTimeDiagnosticsPlugin);
+    app.add_plugins(FrameTimeDiagnosticsPlugin::default());
     app.add_plugins(LogDiagnosticsPlugin::default());
-    app.add_plugins(EguiPlugin);
+    app.add_plugins(EguiPlugin {
+        enable_multipass_for_primary_context: false,
+    });
 
     #[cfg(feature = "netcode")]
     add_netcode_network(&mut app);
@@ -184,10 +185,11 @@ fn player_input(
     player_input.down = keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown);
 
     if mouse_button_input.just_pressed(MouseButton::Left) {
-        let target_transform = target_query.single();
-        player_commands.send(PlayerCommand::BasicAttack {
-            cast_at: target_transform.translation,
-        });
+        if let Ok(target_transform) = target_query.single() {
+            player_commands.write(PlayerCommand::BasicAttack {
+                cast_at: target_transform.translation,
+            });
+        }
     }
 }
 
@@ -286,16 +288,17 @@ fn update_target_system(
     primary_window: Query<&Window, With<PrimaryWindow>>,
     mut target_query: Query<&mut Transform, With<Target>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-) {
-    let (camera, camera_transform) = camera_query.single();
-    let mut target_transform = target_query.single_mut();
-    if let Some(cursor_pos) = primary_window.single().cursor_position() {
+) -> Result {
+    let (camera, camera_transform) = camera_query.single()?;
+    let target_transform = target_query.single_mut();
+    if let Some(cursor_pos) = primary_window.single()?.cursor_position() {
         if let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
             if let Some(distance) = ray.intersect_plane(Vec3::Y, InfinitePlane3d::new(Vec3::Y)) {
-                target_transform.translation = ray.direction * distance + ray.origin;
+                target_transform?.translation = ray.direction * distance + ray.origin;
             }
         }
     }
+    Ok(())
 }
 
 fn setup_camera(mut commands: Commands) {
@@ -320,13 +323,15 @@ fn camera_follow(
     mut camera_query: Query<&mut Transform, (With<Camera>, Without<ControlledPlayer>)>,
     player_query: Query<&Transform, With<ControlledPlayer>>,
 ) {
-    let mut cam_transform = camera_query.single_mut();
-    if let Ok(player_transform) = player_query.get_single() {
+    let cam_transform = camera_query.single_mut();
+    if let Ok(player_transform) = player_query.single() {
         let eye = Vec3::new(player_transform.translation.x, 8., player_transform.translation.z + 2.5);
-        if eye.distance(cam_transform.translation) > 10.0 {
-            cam_transform.translation = eye;
-        } else {
-            cam_transform.translation.smooth_nudge(&eye, 8.0, time.delta_secs());
+        if let Ok(mut cam_transform) = cam_transform {
+            if eye.distance(cam_transform.translation) > 10.0 {
+                cam_transform.translation = eye;
+            } else {
+                cam_transform.translation.smooth_nudge(&eye, 8.0, time.delta_secs());
+            }
         }
     }
 }
