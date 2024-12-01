@@ -58,7 +58,7 @@ pub struct ReceiveChannelReliable {
 
 impl UnackedMessage {
     fn new_sliced(payload: Bytes) -> Self {
-        let num_slices = (payload.len() + SLICE_SIZE - 1) / SLICE_SIZE;
+        let num_slices = payload.len().div_ceil(SLICE_SIZE);
 
         Self::Sliced {
             message: payload,
