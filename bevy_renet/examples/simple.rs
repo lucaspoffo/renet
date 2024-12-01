@@ -135,12 +135,11 @@ fn server_update_system(
                 println!("Player {} connected.", client_id);
                 // Spawn player cube
                 let player_entity = commands
-                    .spawn(PbrBundle {
-                        mesh: meshes.add(Cuboid::from_size(Vec3::splat(1.0))),
-                        material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
-                        transform: Transform::from_xyz(0.0, 0.5, 0.0),
-                        ..Default::default()
-                    })
+                    .spawn((
+                        Mesh3d(meshes.add(Cuboid::from_size(Vec3::splat(1.0)))),
+                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+                        Transform::from_xyz(0.0, 0.5, 0.0),
+                    ))
                     .insert(PlayerInput::default())
                     .insert(Player { id: *client_id })
                     .id();
@@ -202,12 +201,11 @@ fn client_sync_players(
             ServerMessages::PlayerConnected { id } => {
                 println!("Player {} connected.", id);
                 let player_entity = commands
-                    .spawn(PbrBundle {
-                        mesh: meshes.add(Cuboid::from_size(Vec3::splat(1.0))),
-                        material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
-                        transform: Transform::from_xyz(0.0, 0.5, 0.0),
-                        ..Default::default()
-                    })
+                    .spawn((
+                        Mesh3d(meshes.add(Cuboid::from_size(Vec3::splat(1.0)))),
+                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+                        Transform::from_xyz(0.0, 0.5, 0.0),
+                    ))
                     .id();
 
                 lobby.players.insert(id, player_entity);
@@ -238,25 +236,23 @@ fn client_sync_players(
 /// set up a simple 3D scene
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(PlaneMeshBuilder::from_size(Vec2::splat(5.0)))),
-        material: materials.add(Color::srgb(0.3, 0.5, 0.3)),
-        ..Default::default()
-    });
+    commands.spawn((
+        Mesh3d(meshes.add(Mesh::from(PlaneMeshBuilder::from_size(Vec2::splat(5.0))))),
+        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
+    ));
     // light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    commands.spawn((
+        PointLight {
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
     // camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..Default::default()
-    });
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 fn player_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut player_input: ResMut<PlayerInput>) {

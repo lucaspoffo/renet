@@ -13,29 +13,31 @@ Bevy renet is a small layer over the `renet` crate, it adds systems to call the 
 
 #### Server
 ```rust
-let mut app = App::new();
-app.add_plugin(RenetServerPlugin);
+fn main() {
+    let mut app = App::new();
+    app.add_plugin(RenetServerPlugin);
 
-let server = RenetServer::new(ConnectionConfig::default());
-app.insert_resource(server);
+    let server = RenetServer::new(ConnectionConfig::default());
+    app.insert_resource(server);
 
-// Transport layer setup
-app.add_plugin(NetcodeServerPlugin);
-let server_addr = "127.0.0.1:5000".parse().unwrap();
-let socket = UdpSocket::bind(server_addr).unwrap();
-let server_config = ServerConfig {
-    current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
-    max_clients: 64, 
-    protocol_id: 0,
-    public_addresses: vec![server_addr], 
-    authentication: ServerAuthentication::Unsecure
-};
-let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
-app.insert_resource(transport);
+    // Transport layer setup
+    app.add_plugin(NetcodeServerPlugin);
+    let server_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket = UdpSocket::bind(server_addr).unwrap();
+    let server_config = ServerConfig {
+        current_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap(),
+        max_clients: 64,
+        protocol_id: 0,
+        public_addresses: vec![server_addr],
+        authentication: ServerAuthentication::Unsecure
+    };
+    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    app.insert_resource(transport);
 
-app.add_system(send_message_system);
-app.add_system(receive_message_system);
-app.add_system(handle_events_system);
+    app.add_system(send_message_system);
+    app.add_system(receive_message_system);
+    app.add_system(handle_events_system);
+}
 
 // Systems
 
@@ -71,29 +73,31 @@ fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
 
 #### Client
 ```rust
-let mut app = App::new();
-app.add_plugin(RenetClientPlugin);
+fn main() {
+    let mut app = App::new();
+    app.add_plugin(RenetClientPlugin);
 
-let client = RenetClient::new(ConnectionConfig::default());
-app.insert_resource(client);
+    let client = RenetClient::new(ConnectionConfig::default());
+    app.insert_resource(client);
 
-// Setup the transport layer
-app.add_plugin(NetcodeClientPlugin);
+    // Setup the transport layer
+    app.add_plugin(NetcodeClientPlugin);
 
-let authentication = ClientAuthentication::Unsecure {
-    server_addr: SERVER_ADDR,
-    client_id: 0,
-    user_data: None,
-    protocol_id: 0,
-};
-let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    let authentication = ClientAuthentication::Unsecure {
+        server_addr: SERVER_ADDR,
+        client_id: 0,
+        user_data: None,
+        protocol_id: 0,
+    };
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    let mut transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
-app.insert_resource(transport);
+    app.insert_resource(transport);
 
-app.add_system(send_message_system);
-app.add_system(receive_message_system);
+    app.add_system(send_message_system);
+    app.add_system(receive_message_system);
+}
 
 // Systems
 
@@ -113,8 +117,8 @@ fn receive_message_system(mut client: ResMut<RenetClient>) {
 
 You can run the `simple` example with:
 
-* Server: `cargo run --features="serde transport" --example simple -- server`
-* Client: `cargo run --features="serde transport" --example simple -- client`
+* Server: `cargo run --features="netcode" --example simple -- server`
+* Client: `cargo run --features="netcode" --example simple -- client`
 
 If you want a more complex example you can checkout the [demo_bevy](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) sample:
 

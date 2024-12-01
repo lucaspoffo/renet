@@ -61,7 +61,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
 
     ui.separator();
 
-    egui::ScrollArea::vertical().id_source("host_commands_scroll").show(ui, |ui| {
+    egui::ScrollArea::vertical().id_salt("host_commands_scroll").show(ui, |ui| {
         for client_id in chat_server.server.clients_id() {
             ui.horizontal(|ui| {
                 ui.label(format!("Client {}", client_id));
@@ -229,7 +229,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
     egui::CentralPanel::default().show(ctx, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
-            .id_source("client_list_scroll")
+            .id_salt("client_list_scroll")
             .show(ui, |ui| {
                 let messages = match state {
                     AppState::HostChat { chat_server: server } => &server.messages,

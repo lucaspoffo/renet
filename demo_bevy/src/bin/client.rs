@@ -3,19 +3,16 @@ use std::collections::HashMap;
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
-    window::PrimaryWindow,
+    prelude::Vec3
 };
+use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin};
-use bevy_renet::{
-    client_connected,
-    renet::{ClientId, RenetClient},
-    RenetClientPlugin,
-};
+use bevy_renet::{client_connected, renet::{ClientId, RenetClient}, RenetClientPlugin};
 use demo_bevy::{
     connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
-use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
+// use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
 #[derive(Component)]
 struct ControlledPlayer;
@@ -125,7 +122,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_plugins(RenetClientPlugin);
-    app.add_plugins(LookTransformPlugin);
+    // app.add_plugins(LookTransformPlugin);
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
@@ -142,7 +139,7 @@ fn main() {
     app.insert_resource(PlayerInput::default());
     app.insert_resource(NetworkMapping::default());
 
-    app.add_systems(Update, (player_input, camera_follow, update_target_system));
+    app.add_systems(Update, (player_input, /*camera_follow,*/ update_target_system));
     app.add_systems(
         Update,
         (client_send_input, client_send_player_commands, client_sync_players).in_set(Connected),
@@ -220,12 +217,11 @@ fn client_sync_players(
         match server_message {
             ServerMessages::PlayerCreate { id, translation, entity } => {
                 println!("Player {} connected.", id);
-                let mut client_entity = commands.spawn(PbrBundle {
-                    mesh: meshes.add(Mesh::from(Capsule3d::default())),
-                    material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
-                    transform: Transform::from_xyz(translation[0], translation[1], translation[2]),
-                    ..Default::default()
-                });
+                let mut client_entity = commands.spawn((
+                    Mesh3d(meshes.add(Mesh::from(Capsule3d::default()))),
+                    MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+                    Transform::from_xyz(translation[0], translation[1], translation[2]),
+                ));
 
                 if client_id == id {
                     client_entity.insert(ControlledPlayer);
@@ -250,12 +246,11 @@ fn client_sync_players(
                 }
             }
             ServerMessages::SpawnProjectile { entity, translation } => {
-                let projectile_entity = commands.spawn(PbrBundle {
-                    mesh: meshes.add(Mesh::from(Sphere::new(0.1))),
-                    material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
-                    transform: Transform::from_translation(translation.into()),
-                    ..Default::default()
-                });
+                let projectile_entity = commands.spawn((
+                    Mesh3d(meshes.add(Mesh::from(Sphere::new(0.1)))),
+                    MeshMaterial3d(materials.add(Color::srgb(1.0, 0.0, 0.0))),
+                    Transform::from_translation(translation.into()),
+                ));
                 network_mapping.0.insert(entity, projectile_entity.id());
             }
             ServerMessages::DespawnProjectile { entity } => {
@@ -293,7 +288,7 @@ fn update_target_system(
     let (camera, camera_transform) = camera_query.single();
     let mut target_transform = target_query.single_mut();
     if let Some(cursor_pos) = primary_window.single().cursor_position() {
-        if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
+        if let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_pos) {
             if let Some(distance) = ray.intersect_plane(Vec3::Y, InfinitePlane3d::new(Vec3::Y)) {
                 target_transform.translation = ray.direction * distance + ray.origin;
             }
@@ -303,7 +298,7 @@ fn update_target_system(
 
 fn setup_camera(mut commands: Commands) {
     commands
-        .spawn(LookTransformBundle {
+        .spawn(/*LookTransformBundle {
             transform: LookTransform {
                 eye: Vec3::new(0.0, 8., 2.5),
                 target: Vec3::new(0.0, 0.5, 0.0),
@@ -311,24 +306,23 @@ fn setup_camera(mut commands: Commands) {
             },
             smoother: Smoother::new(0.9),
         })
-        .insert(Camera3dBundle {
-            transform: Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
-            ..default()
-        });
+        .insert(*/(
+            Camera3d::default(),
+            Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
+        ));
 }
 
 fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(Sphere::new(0.1))),
-            material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
-            transform: Transform::from_xyz(0.0, 0., 0.0),
-            ..Default::default()
-        })
+        .spawn((
+            Mesh3d(meshes.add(Mesh::from(Sphere::new(0.1)))),
+            MeshMaterial3d(materials.add(Color::srgb(1.0, 0.0, 0.0))),
+            Transform::from_xyz(0.0, 0., 0.0),
+        ))
         .insert(Target);
 }
 
-fn camera_follow(
+/*fn camera_follow(
     mut camera_query: Query<&mut LookTransform, (With<Camera>, Without<ControlledPlayer>)>,
     player_query: Query<&Transform, With<ControlledPlayer>>,
 ) {
@@ -339,3 +333,4 @@ fn camera_follow(
         cam_transform.target = player_transform.translation;
     }
 }
+*/
