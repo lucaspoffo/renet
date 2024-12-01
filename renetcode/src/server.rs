@@ -556,8 +556,12 @@ impl NetcodeServer {
     /// Update the maximum numbers of clients that can be connected
     ///
     /// Changing the `max_clients` to a lower value than the current number of connect clients
-    /// does not disconnect clients. So [`NetcodeServer::connected_clients()`] can return a higher value than [`NetcodeServer::max_clients()`].
+    /// does not disconnect clients. So [`NetcodeServer::connected_clients()`] can return a
+    /// higher value than [`NetcodeServer::max_clients()`].
     pub fn set_max_clients(&mut self, max_clients: usize) {
+        let max_clients = max_clients.min(NETCODE_MAX_CLIENTS);
+        log::debug!("Netcode max_clients set to {}", max_clients);
+
         self.max_clients = max_clients;
     }
 
