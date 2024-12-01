@@ -1,18 +1,21 @@
 use std::collections::HashMap;
 
+use bevy::window::PrimaryWindow;
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    prelude::Vec3,
     prelude::*,
-    prelude::Vec3
 };
-use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin};
-use bevy_renet::{client_connected, renet::{ClientId, RenetClient}, RenetClientPlugin};
+use bevy_renet::{
+    client_connected,
+    renet::{ClientId, RenetClient},
+    RenetClientPlugin,
+};
 use demo_bevy::{
     connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
-// use smooth_bevy_cameras::{LookTransform, LookTransformBundle, LookTransformPlugin, Smoother};
 
 #[derive(Component)]
 struct ControlledPlayer;
@@ -122,7 +125,6 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_plugins(RenetClientPlugin);
-    // app.add_plugins(LookTransformPlugin);
     app.add_plugins(FrameTimeDiagnosticsPlugin);
     app.add_plugins(LogDiagnosticsPlugin::default());
     app.add_plugins(EguiPlugin);
@@ -139,7 +141,7 @@ fn main() {
     app.insert_resource(PlayerInput::default());
     app.insert_resource(NetworkMapping::default());
 
-    app.add_systems(Update, (player_input, /*camera_follow,*/ update_target_system));
+    app.add_systems(Update, (player_input, camera_follow, update_target_system));
     app.add_systems(
         Update,
         (client_send_input, client_send_player_commands, client_sync_players).in_set(Connected),
@@ -297,19 +299,10 @@ fn update_target_system(
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands
-        .spawn(/*LookTransformBundle {
-            transform: LookTransform {
-                eye: Vec3::new(0.0, 8., 2.5),
-                target: Vec3::new(0.0, 0.5, 0.0),
-                up: Vec3::Y,
-            },
-            smoother: Smoother::new(0.9),
-        })
-        .insert(*/(
-            Camera3d::default(),
-            Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
-        ));
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0., 8.0, 2.5).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
+    ));
 }
 
 fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -322,15 +315,18 @@ fn setup_target(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut ma
         .insert(Target);
 }
 
-/*fn camera_follow(
-    mut camera_query: Query<&mut LookTransform, (With<Camera>, Without<ControlledPlayer>)>,
+fn camera_follow(
+    time: Res<Time>,
+    mut camera_query: Query<&mut Transform, (With<Camera>, Without<ControlledPlayer>)>,
     player_query: Query<&Transform, With<ControlledPlayer>>,
 ) {
     let mut cam_transform = camera_query.single_mut();
     if let Ok(player_transform) = player_query.get_single() {
-        cam_transform.eye.x = player_transform.translation.x;
-        cam_transform.eye.z = player_transform.translation.z + 2.5;
-        cam_transform.target = player_transform.translation;
+        let eye = Vec3::new(player_transform.translation.x, 8., player_transform.translation.z + 2.5);
+        if eye.distance(cam_transform.translation) > 10.0 {
+            cam_transform.translation = eye;
+        } else {
+            cam_transform.translation.smooth_nudge(&eye, 8.0, time.delta_secs());
+        }
     }
 }
-*/
