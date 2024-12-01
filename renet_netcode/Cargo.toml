@@ -15,6 +15,3 @@ renet = { version = "0.0.16", path = "../renet" }
 renetcode = { path = "../renetcode", version = "0.0.12" }
 bevy_ecs = { version = "0.15", optional = true }
 log = "0.4.19"
-
-[dev-dependencies]
-env_logger = "0.11"

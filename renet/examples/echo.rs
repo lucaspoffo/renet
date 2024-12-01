@@ -10,6 +10,7 @@ use renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer
 use renet_netcode::{
     ClientAuthentication, NetcodeClientTransport, NetcodeServerTransport, ServerAuthentication, ServerConfig, NETCODE_USER_DATA_BYTES,
 };
+
 // Helper struct to pass an username in the user data
 struct Username(String);
 
