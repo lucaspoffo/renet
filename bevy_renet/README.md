@@ -1,4 +1,5 @@
 # Bevy Renet
+
 [![Latest version](https://img.shields.io/crates/v/bevy_renet.svg)](https://crates.io/crates/bevy_renet)
 [![Documentation](https://docs.rs/bevy_renet/badge.svg)](https://docs.rs/bevy_renet)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
@@ -9,9 +10,11 @@ A network crate for Server/Client with cryptographically secure authentication a
 Designed for fast-paced competitive multiplayer games.
 
 ## Usage
+
 Bevy renet is a small layer over the `renet` crate, it adds systems to call the update function from the client/server. `RenetClient`, `RenetServer`, `NetcodeClientTransport` and `NetcodeServerTransport` need to be added as a resource, so the setup is similar to `renet` itself:
 
-#### Server
+### Server
+
 ```rust
 fn main() {
     let mut app = App::new();
@@ -71,7 +74,8 @@ fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
 }
 ```
 
-#### Client
+### Client
+
 ```rust
 fn main() {
     let mut app = App::new();
@@ -136,3 +140,11 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 |0.9|0.0.6|
 |0.8|0.0.5|
 |0.7|0.0.4|
+
+## Steam
+
+By default `bevy_renet` uses `renet_netcode` as the transport layer, but you can also use the steam transport layer if you wish by enabling the `steam` feature.
+
+This adds the transport structs `SteamServerTransport`, `SteamClientTransport` and the bevy plugins `SteamServerPlugin`, `SteamClientPlugin`, the setup should be similar to default transport layer.
+
+You can check the [Bevy Demo](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) for how to use the default and steam transport switching between them using feature flags.

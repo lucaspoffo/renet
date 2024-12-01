@@ -14,8 +14,9 @@ Provides the following features:
     - ReliableUnordered: guarantee of message delivery but not order
     - Unreliable: no guarantee of message delivery or order
 - Packet fragmentation and reassembly
-- Authentication and encryption, using [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
-    - The transport layer can be customizable. The default transport can be disabled and replaced with a custom one
+- Authentication and encryption, using [renet_netcode](https://github.com/lucaspoffo/renet/tree/master/renet_netcode)
+    - You can also use [renet_steam](https://github.com/lucaspoffo/renet/tree/master/renet_steam) to use the `Steam` transport and authenticantion layer
+    - The transport/authentication layer can be customizable, you can write your own if necessary
 
 ## Channels
 

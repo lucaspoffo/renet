@@ -105,9 +105,3 @@ Only steam users connected to the lobby will be able to connect to the server. I
 - client: `cargo run --example echo client [HOST_STEAM_ID] [LOBBY_ID]`
 
 The LOBBY_ID is printed in the console when the server starts.
-
-## Bevy
-
-If you are using bevy, you can enable the `bevy` feature and instead of using the default transport that comes in `bevy_renet` you can use `SteamServerPlugin` and `SteamClientPlugin`, the setup should be similar.
-
-You can check the [Bevy Demo](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) for how to use the default and steam transport switching between them using feature flags.
