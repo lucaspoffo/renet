@@ -4,6 +4,8 @@ Simple bevy application to demonstrates how you could replicate entities and sen
 
 [Bevy Demo.webm](https://user-images.githubusercontent.com/35241085/180664609-f8c969e0-d313-45c0-9c04-8a116896d0bd.webm)
 
+## How to run
+
 Running using the netcode transport:
 
 - server: `cargo run --bin server --features netcode`
@@ -15,4 +17,14 @@ Running using the steam transport:
 - client: `cargo run --bin client --features steam -- [HOST_STEAM_ID]`
   - The `HOST_STEAM_ID` is printed in the console when the server is started
 
-You can toogle [renet_visualizer](https://github.com/lucaspoffo/renet/tree/master/renet_visualizer) with `F1` in the client.
+## Controls
+
+Client:
+
+- AWSD for movement
+- Mouse to AIM, left buttom to shoot
+- F1 to toogle [renet_visualizer](https://github.com/lucaspoffo/renet/tree/master/renet_visualizer)
+
+Server:
+
+- SPACE to spawn a bot that shoots a lot of bullets (stress test)

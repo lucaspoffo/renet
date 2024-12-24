@@ -132,6 +132,7 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 
 |bevy|bevy_renet|
 |---|---|
+|0.15|1.0|
 |0.14|0.0.12|
 |0.13|0.0.11|
 |0.12|0.0.10|
@@ -148,3 +149,7 @@ By default `bevy_renet` uses `renet_netcode` as the transport layer, but you can
 This adds the transport structs `SteamServerTransport`, `SteamClientTransport` and the bevy plugins `SteamServerPlugin`, `SteamClientPlugin`, the setup should be similar to default transport layer.
 
 You can check the [Bevy Demo](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) for how to use the default and steam transport switching between them using feature flags.
+
+# Custom Schedules
+
+If you want more control over how renet is run, instead of adding the `RenetServerPlugin`, `RenetClientPlugin`, you can manually setup the functions they implement (they are all public). Make sure to also setup the plugins for the desired Transport layer.

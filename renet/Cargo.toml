@@ -7,7 +7,7 @@ keywords = ["gamedev", "networking"]
 license = "MIT OR Apache-2.0"
 readme = "../README.md"
 repository = "https://github.com/lucaspoffo/renet"
-version = "0.0.16"
+version = "1.0.0"
 
 [features]
 bevy = ["dep:bevy_ecs"]
@@ -15,7 +15,7 @@ bevy = ["dep:bevy_ecs"]
 [dependencies]
 bevy_ecs = { version = "0.15", optional = true }
 bytes = "1.1"
-log = "0.4.17"
+log = "0.4.22"
 octets = "0.3"
 
 [dev-dependencies]
