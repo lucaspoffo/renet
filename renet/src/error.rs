@@ -7,7 +7,7 @@ use crate::packet::SerializationError;
 pub enum DisconnectReason {
     /// Connection was terminated by the transport layer
     Transport,
-    /// Connection was terminated by the server
+    /// Connection was terminated by the client
     DisconnectedByClient,
     /// Connection was terminated by the server
     DisconnectedByServer,
@@ -23,7 +23,7 @@ pub enum DisconnectReason {
     ReceiveChannelError { channel_id: u8, error: ChannelError },
 }
 
-/// Possibles errors that can occur in a channel.
+/// Possible errors that can occur in a channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelError {
     /// Reliable channel reached maximum allowed memory
@@ -37,8 +37,8 @@ impl fmt::Display for ChannelError {
         use ChannelError::*;
 
         match *self {
-            ReliableChannelMaxMemoryReached => write!(fmt, "reliable channel memory usage was exausted"),
-            InvalidSliceMessage => write!(fmt, "received an invalid slice packet"),
+            ReliableChannelMaxMemoryReached => write!(fmt, "reliable channel memory usage was exhausted"),
+            InvalidSliceMessage => write!(fmt, "received an invalid slice message"),
         }
     }
 }
@@ -69,6 +69,6 @@ impl std::error::Error for ClientNotFound {}
 
 impl fmt::Display for ClientNotFound {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "client with given id was not found")
+        write!(fmt, "client with the given id was not found")
     }
 }
