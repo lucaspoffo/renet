@@ -8,12 +8,11 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin};
 use bevy_renet::{
-    client_connected,
     renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
 use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
+    setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
 };
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 

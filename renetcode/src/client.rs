@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, net::SocketAddr, time::Duration};
+use std::{error::Error, fmt, net::SocketAddr, time::{Duration, SystemTime}};
 
 use crate::{
     packet::Packet, replay_protection::ReplayProtection, token::ConnectToken, NetcodeError, NETCODE_CHALLENGE_TOKEN_BYTES,
@@ -270,8 +270,8 @@ impl NetcodeClient {
 
     /// Update the internal state of the client, receives the duration since last updated.
     /// Might return the serve address and a protocol packet to be sent to the server.
-    pub fn update(&mut self, duration: Duration) -> Option<(&mut [u8], SocketAddr)> {
-        if let Err(e) = self.update_internal_state(duration) {
+    pub fn update(&mut self) -> Option<(&mut [u8], SocketAddr)> {
+        if let Err(e) = self.update_internal_state() {
             log::error!("Failed to update client: {}", e);
             return None;
         }
@@ -280,8 +280,9 @@ impl NetcodeClient {
         self.generate_packet()
     }
 
-    fn update_internal_state(&mut self, duration: Duration) -> Result<(), NetcodeError> {
-        self.current_time += duration;
+    fn update_internal_state(&mut self) -> Result<(), NetcodeError> {
+        self.current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+
         let connection_timed_out = self.connect_token.timeout_seconds > 0
             && (self.last_packet_received_time + Duration::from_secs(self.connect_token.timeout_seconds as u64) < self.current_time);
 
@@ -405,7 +406,7 @@ mod tests {
         let client_key = connect_token.client_to_server_key;
         let authentication = ClientAuthentication::Secure { connect_token };
         let mut client = NetcodeClient::new(Duration::ZERO, authentication).unwrap();
-        let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
+        let (packet_buffer, _) = client.update().unwrap();
 
         let (r_sequence, packet) = Packet::decode(packet_buffer, protocol_id, None, None).unwrap();
         assert_eq!(0, r_sequence);
@@ -419,7 +420,7 @@ mod tests {
         client.process_packet(&mut buffer[..len]);
         assert_eq!(ClientState::SendingConnectionResponse, client.state);
 
-        let (packet_buffer, _) = client.update(Duration::ZERO).unwrap();
+        let (packet_buffer, _) = client.update().unwrap();
         let (_, packet) = Packet::decode(packet_buffer, protocol_id, Some(&client_key), None).unwrap();
         assert!(matches!(packet, Packet::Response { .. }));
 
