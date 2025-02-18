@@ -17,7 +17,7 @@ transport = ["dep:renetcode"]
 serde = ["dep:serde"]
 
 [dependencies]
-bevy_ecs = { version = "0.15", optional = true }
+bevy_ecs = { version = "0.15.2", optional = true }
 bytes = "1.1"
 log = "0.4.17"
 octets = "0.3"
