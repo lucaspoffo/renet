@@ -7,7 +7,7 @@ use crate::packet::SerializationError;
 pub enum DisconnectReason {
     /// Connection was terminated by the transport layer
     Transport,
-    /// Connection was terminated by the server
+    /// Connection was terminated by the client
     DisconnectedByClient,
     /// Connection was terminated by the server
     DisconnectedByServer,
