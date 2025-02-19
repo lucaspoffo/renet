@@ -1,14 +1,16 @@
 pub use renet;
 
-use bevy::{
-    ecs::{intern::Interned, schedule::ScheduleLabel},
-    prelude::*,
-};
+use bevy_app::prelude::*;
+use bevy_ecs::{intern::Interned, prelude::*, schedule::ScheduleLabel};
+use bevy_time::prelude::*;
 
 use renet::{RenetClient, RenetServer, ServerEvent};
 
-#[cfg(feature = "transport")]
-pub mod transport;
+#[cfg(feature = "netcode")]
+pub mod netcode;
+
+#[cfg(feature = "steam")]
+pub mod steam;
 
 /// This system set is where all transports receive messages
 ///
@@ -27,24 +29,10 @@ pub struct RenetReceive;
 /// This system set runs in PostUpdate.
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RenetSend;
-
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CoreSet {
     Pre,
     Post,
-}
-#[derive(Clone, Copy)]
-pub struct NetSchedules {
-    pub pre: Interned<dyn ScheduleLabel>,
-    pub post: Interned<dyn ScheduleLabel>,
-}
-impl Default for NetSchedules {
-    fn default() -> Self {
-        Self {
-            pre: PreUpdate.intern(),
-            post: PostUpdate.intern(),
-        }
-    }
 }
 #[derive(Default)]
 pub struct RenetServerPlugin {
@@ -53,6 +41,20 @@ pub struct RenetServerPlugin {
 #[derive(Default)]
 pub struct RenetClientPlugin {
     pub schedules: NetSchedules,
+}
+#[derive(Copy, Clone)]
+pub struct NetSchedules {
+    pub pre: Interned<dyn ScheduleLabel>,
+    pub post: Interned<dyn ScheduleLabel>,
+}
+
+impl Default for NetSchedules {
+    fn default() -> Self {
+        Self {
+            pre: PreUpdate.intern(),
+            post: PostUpdate.intern(),
+        }
+    }
 }
 
 impl Plugin for RenetServerPlugin {
@@ -67,10 +69,12 @@ impl Plugin for RenetServerPlugin {
             Self::emit_server_events_system
                 .in_set(RenetReceive)
                 .run_if(resource_exists::<RenetServer>)
-                .in_set(CoreSet::Pre)
-                .run_if(resource_exists::<RenetServer>)
-                .after(Self::update_system),
+                .after(Self::update_system)
+                .in_set(CoreSet::Pre),
         );
+        if self.schedules.post == self.schedules.pre {
+            app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post).chain());
+        }
     }
 }
 
@@ -92,6 +96,9 @@ impl Plugin for RenetClientPlugin {
             self.schedules.pre,
             Self::update_system.in_set(CoreSet::Pre).run_if(resource_exists::<RenetClient>),
         );
+        if self.schedules.post == self.schedules.pre {
+            app.configure_sets(self.schedules.post, (CoreSet::Pre, CoreSet::Post).chain());
+        }
     }
 }
 

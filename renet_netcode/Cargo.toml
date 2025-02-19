@@ -1,0 +1,17 @@
+[package]
+name = "renet_netcode"
+version = "1.0.0"
+edition = "2021"
+keywords = ["gamedev", "networking", "transport"]
+description = "netcode transport for the renet crate: Server/Client network library for multiplayer games"
+repository = "https://github.com/lucaspoffo/renet"
+license = "MIT OR Apache-2.0"
+
+[features]
+bevy = ["dep:bevy_ecs"]
+
+[dependencies]
+renet = { version = "1.0.0", path = "../renet" }
+renetcode = { path = "../renetcode", version = "1.0.0" }
+bevy_ecs = { version = "0.15", optional = true }
+log = "0.4.22"

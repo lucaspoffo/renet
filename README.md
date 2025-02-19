@@ -14,8 +14,9 @@ Provides the following features:
     - ReliableUnordered: guarantee of message delivery but not order
     - Unreliable: no guarantee of message delivery or order
 - Packet fragmentation and reassembly
-- Authentication and encryption, using [renetcode](https://github.com/lucaspoffo/renet/tree/master/renetcode)
-    - The transport layer can be customizable. The default transport can be disabled and replaced with a custom one
+- Authentication and encryption, using [renet_netcode](https://github.com/lucaspoffo/renet/tree/master/renet_netcode)
+    - You can also use [renet_steam](https://github.com/lucaspoffo/renet/tree/master/renet_steam) to use the `Steam` transport and authenticantion layer
+    - The transport/authentication layer can be customizable, you can write your own if necessary
 
 ## Channels
 
@@ -57,7 +58,7 @@ Renet aims to have a simple API that is easy to integrate with any code base. Po
 ```rust
 let mut server = RenetServer::new(ConnectionConfig::default());
 
-// Setup transport layer
+// Setup transport layer using renet_netcode
 const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5000);
 let socket: UdpSocket = UdpSocket::bind(SERVER_ADDR).unwrap();
 let server_config = ServerConfig {
@@ -118,7 +119,7 @@ loop {
 ```rust
 let mut client = RenetClient::new(ConnectionConfig::default());
 
-// Setup transport layer
+// Setup transport layer using renet_netcode
 const server_addr: SocketAddr = "127.0.0.1:5000".parse().unwrap();
 let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
 let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
@@ -155,6 +156,12 @@ loop {
 }
 ```
 
+## Transport Layers
+
+Checkout [renet_netcode](https://github.com/lucaspoffo/renet/tree/master/renet_netcode) if you want to use  UDP with the [netcode](https://github.com/lucaspoffo/renet/tree/master/renetcode) protocol.
+
+Checkout [renet_steam](https://github.com/lucaspoffo/renet/tree/master/renet_steam) if you want to use the steam transport layer.
+
 ## Demos
 
 You can checkout the [echo example](https://github.com/lucaspoffo/renet/blob/master/renet/examples/echo.rs) for a simple usage of the library. Usage:
@@ -189,8 +196,6 @@ Simple chat application made with egui to demonstrate how you could handle error
 ## Plugins
 
 Checkout [bevy_renet](https://github.com/lucaspoffo/renet/tree/master/bevy_renet) if you want to use renet as a plugin with the [Bevy engine](https://bevyengine.org/).
-
-Checkout [renet_steam](https://github.com/lucaspoffo/renet/tree/master/renet_steam) if you want to use the steam transport layer instead of the default one.
 
 ## Visualizer
 

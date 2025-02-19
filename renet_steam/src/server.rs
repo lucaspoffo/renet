@@ -91,16 +91,14 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
             match event {
                 ListenSocketEvent::Connected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
-                        let client_id = ClientId::from_raw(steam_id.raw());
-                        server.add_connection(client_id);
-                        self.connections.insert(client_id, event.take_connection());
+                        server.add_connection(steam_id.raw());
+                        self.connections.insert(steam_id.raw(), event.take_connection());
                     }
                 }
                 ListenSocketEvent::Disconnected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
-                        let client_id = ClientId::from_raw(steam_id.raw());
-                        server.remove_connection(client_id);
-                        self.connections.remove(&client_id);
+                        server.remove_connection(steam_id.raw());
+                        self.connections.remove(&steam_id.raw());
                     }
                 }
                 ListenSocketEvent::Connecting(event) => {

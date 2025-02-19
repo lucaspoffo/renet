@@ -11,7 +11,7 @@ fn test_remote_connection_reliable_channel() {
     let mut server = RenetServer::new(ConnectionConfig::default());
     let mut client = RenetClient::new(ConnectionConfig::default());
 
-    let client_id = ClientId::from_raw(0);
+    let client_id: ClientId = 0;
     server.add_connection(client_id);
     assert_eq!(server.connected_clients(), 1);
     assert!(server.has_connections());
@@ -66,5 +66,39 @@ fn test_remote_connection_reliable_channel() {
             reason: DisconnectReason::Transport
         },
         server.get_event().unwrap()
+    );
+}
+
+#[test]
+fn test_local_client() {
+    init_log();
+    let mut server = RenetServer::new(ConnectionConfig::default());
+
+    let client_id: ClientId = 0;
+    let mut client = server.new_local_client(client_id);
+
+    let connect_event = server.get_event().unwrap();
+    assert!(connect_event == ServerEvent::ClientConnected { client_id });
+
+    server.send_message(client_id, DefaultChannel::ReliableOrdered, Bytes::from("test server"));
+    client.send_message(DefaultChannel::ReliableOrdered, Bytes::from("test client"));
+
+    server.process_local_client(client_id, &mut client).unwrap();
+
+    let server_message = server.receive_message(client_id, DefaultChannel::ReliableOrdered).unwrap();
+    assert_eq!(server_message, "test client");
+
+    let client_message = client.receive_message(DefaultChannel::ReliableOrdered).unwrap();
+    assert_eq!(client_message, "test server");
+
+    server.disconnect_local_client(client_id, &mut client);
+    assert!(client.is_disconnected());
+    let disconnect_event = server.get_event().unwrap();
+    assert!(
+        disconnect_event
+            == ServerEvent::ClientDisconnected {
+                client_id,
+                reason: DisconnectReason::DisconnectedByClient
+            }
     );
 }

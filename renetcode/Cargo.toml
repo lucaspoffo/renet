@@ -1,6 +1,6 @@
 [package]
 name = "renetcode"
-version = "0.0.12"
+version = "1.0.0"
 description = "Server/Client network protocol library for multiplayer games"
 keywords = ["gamedev", "networking", "cryptography"]
 repository = "https://github.com/lucaspoffo/renet"
@@ -12,4 +12,4 @@ edition = "2021"
 
 [dependencies]
 chacha20poly1305 = "0.10.0"
-log = "0.4.17"
+log = "0.4.22"

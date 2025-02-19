@@ -15,6 +15,7 @@ pub fn dencrypted_in_place(buffer: &mut [u8], sequence: u64, private_key: &[u8; 
 
     cipher.decrypt_in_place_detached(&nonce, aad, buffer, tag)
 }
+
 pub fn dencrypted_in_place_xnonce(buffer: &mut [u8], xnonce: &[u8; 24], private_key: &[u8; 32], aad: &[u8]) -> Result<(), CryptoError> {
     let xnonce = XNonce::from_slice(xnonce);
     let (buffer, tag) = buffer.split_at_mut(buffer.len() - NETCODE_MAC_BYTES);

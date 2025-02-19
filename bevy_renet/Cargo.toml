@@ -6,21 +6,25 @@ keywords = ["gamedev", "networking"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/lucaspoffo/renet"
-version = "0.0.12"
+version = "1.0.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["transport"]
-serde = ["renet/serde"]
-transport = ["renet/transport"]
+default = ["netcode"]
+netcode = ["dep:renet_netcode"]
+steam = ["dep:renet_steam"]
 
 [dependencies]
-bevy = {version = "0.15.2", default-features = false}
-renet = {path = "../renet", version = "0.0.16", default-features=false, features = ["bevy"]}
+bevy_app = "0.15"
+bevy_ecs = "0.15"
+bevy_time = "0.15"
+renet = { path="../renet", version = "1.0.0", features = ["bevy"] }
+renet_netcode = { path="../renet_netcode", version = "1.0.0", features = ["bevy"], optional = true }
+renet_steam = { path="../renet_steam", version = "1.0.0", features = ["bevy"], optional = true }
 
 [dev-dependencies]
-bevy = {version = "0.15.2", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd"]}
-bincode = "1.3.1"
-env_logger = "0.11.0"
+bevy = {version = "0.15.0", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd", "bevy_window"]}
+bincode = "1.3"
+env_logger = "0.11"
 serde = {version = "1.0", features = ["derive"]}

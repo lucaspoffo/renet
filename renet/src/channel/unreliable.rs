@@ -63,7 +63,7 @@ impl SendChannelUnreliable {
 
             *available_bytes -= message.len() as u64;
             if message.len() > SLICE_SIZE {
-                let num_slices = (message.len() + SLICE_SIZE - 1) / SLICE_SIZE;
+                let num_slices = message.len().div_ceil(SLICE_SIZE);
 
                 for slice_index in 0..num_slices {
                     let start = slice_index * SLICE_SIZE;
