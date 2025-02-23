@@ -382,7 +382,7 @@ fn show_graph(
             .enumerate()
             .map(|(i, value)| {
                 let x = remap(i as f32, 0.0..=size as f32, 0.0..=style.width);
-                let y = remap(*value, min..=max, 0.0..=style.height);
+                let y = if max == 0.0 { 0.0 } else { remap(*value, min..=max, 0.0..=style.height) };
 
                 pos2(x + init_point.x, init_point.y - y)
             })
