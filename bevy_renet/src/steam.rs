@@ -106,7 +106,7 @@ impl SteamClientPlugin {
         mut transport_errors: EventWriter<SteamTransportError>,
     ) {
         if let Err(e) = transport.send_packets(&mut client) {
-            transport_errors.send(SteamTransportError(e));
+            transport_errors.write(SteamTransportError(e));
         }
     }
 
