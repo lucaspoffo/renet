@@ -23,12 +23,26 @@ required-features = ["netcode"]
 bevy_app = "0.16"
 bevy_ecs = "0.16"
 bevy_time = "0.16"
-renet = { path="../renet", version = "1.0.0", features = ["bevy"] }
-renet_netcode = { path="../renet_netcode", version = "1.0.0", features = ["bevy"], optional = true }
-renet_steam = { path="../renet_steam", version = "1.0.0", features = ["bevy"], optional = true }
+renet = { path = "../renet", version = "1.0.0", features = ["bevy"] }
+renet_netcode = { path = "../renet_netcode", version = "1.0.0", features = [
+    "bevy",
+], optional = true }
+renet_steam = { path = "../renet_steam", version = "1.0.0", features = [
+    "bevy",
+], optional = true }
 
 [dev-dependencies]
-bevy = { version = "0.16", default-features = false, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "bevy_pbr", "x11", "tonemapping_luts", "ktx2", "zstd", "bevy_window"] }
+bevy = { version = "0.16", default-features = false, features = [
+    "bevy_core_pipeline",
+    "bevy_render",
+    "bevy_asset",
+    "bevy_pbr",
+    "x11",
+    "tonemapping_luts",
+    "ktx2",
+    "zstd",
+    "bevy_window",
+] }
 bincode = "1.3"
 env_logger = "0.11"
 serde = { version = "1.0", features = ["derive"] }
