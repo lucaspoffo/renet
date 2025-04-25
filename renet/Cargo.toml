@@ -13,9 +13,9 @@ version = "1.0.0"
 bevy = ["dep:bevy_ecs"]
 
 [dependencies]
-bevy_ecs = { version = "0.15", optional = true }
-bytes = "1.1"
-log = "0.4.22"
+bevy_ecs = { version = "0.16", optional = true }
+bytes = "1"
+log = "0.4"
 octets = "0.3"
 
 [dev-dependencies]

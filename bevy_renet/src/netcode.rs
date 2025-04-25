@@ -50,7 +50,7 @@ impl NetcodeServerPlugin {
         mut transport_errors: EventWriter<NetcodeTransportError>,
     ) {
         if let Err(e) = transport.update(time.delta(), &mut server) {
-            transport_errors.send(e);
+            transport_errors.write(e);
         }
     }
 
@@ -102,7 +102,7 @@ impl NetcodeClientPlugin {
         mut transport_errors: EventWriter<NetcodeTransportError>,
     ) {
         if let Err(e) = transport.update(time.delta(), &mut client) {
-            transport_errors.send(e);
+            transport_errors.write(e);
         }
     }
 
@@ -112,7 +112,7 @@ impl NetcodeClientPlugin {
         mut transport_errors: EventWriter<NetcodeTransportError>,
     ) {
         if let Err(e) = transport.send_packets(&mut client) {
-            transport_errors.send(e);
+            transport_errors.write(e);
         }
     }
 

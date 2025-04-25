@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use egui::{
-    epaint::{PathShape, RectShape},
-    pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText,
+    epaint::{PathShape, RectShape}, pos2, remap, vec2, Color32, Rect, Rgba, RichText, Rounding, Sense, Shape, Stroke, TextStyle, Vec2, WidgetText
 };
 
 use renet::{ClientId, NetworkInfo, RenetServer};
@@ -16,7 +15,7 @@ mod circular_buffer;
 ///
 /// N: determines how many values are shown in the graph.
 /// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct RenetClientVisualizer<const N: usize> {
     rtt: CircularBuffer<N, f32>,
     sent_bandwidth_kbps: CircularBuffer<N, f32>,
@@ -30,7 +29,7 @@ pub struct RenetClientVisualizer<const N: usize> {
 ///
 /// N: determines how many values are shown in the graph.
 /// 200 is a good value, if updated at 60 fps the graphs would hold 3 seconds of data.
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct RenetServerVisualizer<const N: usize> {
     show_all_clients: bool,
     selected_client: Option<ClientId>,

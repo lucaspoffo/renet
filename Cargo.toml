@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "renet",
-    "demo_chat",
-    "demo_bevy",
     "renetcode",
     "bevy_renet",
     "renet_visualizer",
