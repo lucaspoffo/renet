@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use egui::{epaint::{PathShape, RectShape}, pos2, remap, vec2, Color32, CornerRadius, Rect, Rgba, RichText, Sense, Shape, Stroke, StrokeKind, TextStyle, Vec2, WidgetText};
+use egui::{
+    epaint::{PathShape, RectShape},
+    pos2, remap, vec2, Color32, CornerRadius, Rect, Rgba, RichText, Sense, Shape, Stroke, StrokeKind, TextStyle, Vec2, WidgetText,
+};
 
 use renet::{ClientId, NetworkInfo, RenetServer};
 
