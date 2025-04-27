@@ -17,7 +17,7 @@ bevy = ["dep:bevy_ecs"]
 renet = { version = "1.0.0", path = "../renet" }
 steamworks = "0.11"
 log = "0.4.22"
-bevy_ecs = { version = "0.15", optional = true }
+bevy_ecs = { version = "0.16", optional = true }
 
 [dev-dependencies]
 env_logger = "0.11"

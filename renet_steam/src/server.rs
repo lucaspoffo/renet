@@ -27,7 +27,7 @@ pub struct SteamServerConfig {
     pub access_permission: AccessPermission,
 }
 
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::system::Resource))]
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamServerTransport<Manager = ClientManager> {
     listen_socket: ListenSocket<Manager>,
     matchmaking: Matchmaking<Manager>,

@@ -29,6 +29,7 @@ pub struct RenetReceive;
 /// This system set runs in PostUpdate.
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RenetSend;
+
 #[derive(Debug, SystemSet, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CoreSet {
     Pre,
@@ -85,7 +86,7 @@ impl RenetServerPlugin {
 
     pub fn emit_server_events_system(mut server: ResMut<RenetServer>, mut server_events: EventWriter<ServerEvent>) {
         while let Some(event) = server.get_event() {
-            server_events.send(event);
+            server_events.write(event);
         }
     }
 }
