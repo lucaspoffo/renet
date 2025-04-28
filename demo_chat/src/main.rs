@@ -76,7 +76,7 @@ fn main() -> eframe::Result<()> {
         "Renet Demo Chat",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            cc.egui_ctx.set_theme(egui::Theme::Dark);
             Ok(Box::<ChatApp>::default())
         }),
     )
