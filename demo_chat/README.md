@@ -10,4 +10,4 @@ This app demonstrate how to use [renet](https://github.com/lucaspoffo/renet) and
 - Loading <-> Connected <-> Disconnected states
 - Client self host
 
-You can run the application with `cargo run`. You need two running applications to test.
+You can run the application with `cargo run` from the [demo_chat](.) directory. You need two running applications to test.
