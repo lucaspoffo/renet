@@ -94,7 +94,6 @@ fn main() {
     app.add_plugins(EguiPlugin {
         enable_multipass_for_primary_context: false,
     });
-    app.add_event::<bevy::picking::backend::PointerHits>(); // initialize picking
     app.insert_resource(ServerLobby::default());
     app.insert_resource(BotId(0));
 

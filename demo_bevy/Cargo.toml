@@ -17,7 +17,6 @@ steam = ["bevy_renet/steam"]
 [dependencies]
 bevy = { version = "0.16", default-features = false, features = [
     "bevy_core_pipeline",
-    "bevy_picking",
     "bevy_render",
     "bevy_asset",
     "bevy_pbr",
