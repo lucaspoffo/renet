@@ -127,7 +127,7 @@ impl ConnectToken {
         writer.write_all(&self.xnonce)?;
         writer.write_all(&self.private_data)?;
         writer.write_all(&self.timeout_seconds.to_le_bytes())?;
-        write_server_adresses(writer, &self.server_addresses)?;
+        write_server_addresses(writer, &self.server_addresses)?;
         writer.write_all(&self.client_to_server_key)?;
         writer.write_all(&self.server_to_client_key)?;
 
@@ -208,7 +208,7 @@ impl PrivateConnectToken {
     fn write(&self, writer: &mut impl io::Write) -> Result<(), io::Error> {
         writer.write_all(&self.client_id.to_le_bytes())?;
         writer.write_all(&self.timeout_seconds.to_le_bytes())?;
-        write_server_adresses(writer, &self.server_addresses)?;
+        write_server_addresses(writer, &self.server_addresses)?;
         writer.write_all(&self.client_to_server_key)?;
         writer.write_all(&self.server_to_client_key)?;
         writer.write_all(&self.user_data)?;
@@ -274,7 +274,7 @@ impl PrivateConnectToken {
     }
 }
 
-fn write_server_adresses(writer: &mut impl io::Write, server_addresses: &[Option<SocketAddr>; 32]) -> Result<(), io::Error> {
+fn write_server_addresses(writer: &mut impl io::Write, server_addresses: &[Option<SocketAddr>; 32]) -> Result<(), io::Error> {
     let num_server_addresses: u32 = server_addresses.iter().filter(|a| a.is_some()).count() as u32;
     writer.write_all(&num_server_addresses.to_le_bytes())?;
 
