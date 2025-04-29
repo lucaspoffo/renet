@@ -175,7 +175,6 @@ fn client(authentication: ClientAuthentication) {
     let stdin_channel = spawn_stdin_channel();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
 
-    let mut last_updated = Instant::now();
     loop {
         if let Some(err) = client.disconnect_reason() {
             panic!("Client error: {:?}", err);
@@ -212,10 +211,9 @@ fn client(authentication: ClientAuthentication) {
             };
         }
 
-        if let Some((packet, addr)) = client.update(Instant::now() - last_updated) {
+        if let Some((packet, addr)) = client.update() {
             udp_socket.send_to(packet, addr).unwrap();
         }
-        last_updated = Instant::now();
         thread::sleep(Duration::from_millis(50));
     }
 }

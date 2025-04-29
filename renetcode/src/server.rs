@@ -762,7 +762,7 @@ mod tests {
         .unwrap();
         let client_auth = ClientAuthentication::Secure { connect_token };
         let mut client = NetcodeClient::new(Duration::ZERO, client_auth).unwrap();
-        let (client_packet, _) = client.update(Duration::ZERO).unwrap();
+        let (client_packet, _) = client.update().unwrap();
 
         let result = server.process_packet(client_addr, client_packet);
         assert!(matches!(result, ServerResult::PacketToSend { .. }));
@@ -772,7 +772,7 @@ mod tests {
         };
 
         assert!(!client.is_connected());
-        let (client_packet, _) = client.update(Duration::ZERO).unwrap();
+        let (client_packet, _) = client.update().unwrap();
         let result = server.process_packet(client_addr, client_packet);
 
         match result {
