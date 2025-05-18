@@ -38,6 +38,7 @@ pub struct ChannelConfig {
 
 /// Utility enumerator when using the default channels configuration.
 /// The default configuration has 3 channels: unreliable, reliable ordered, and reliable unordered.
+#[derive(Debug, Clone)]
 pub enum DefaultChannel {
     Unreliable,
     ReliableOrdered,
