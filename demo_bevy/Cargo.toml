@@ -12,7 +12,7 @@ path = "src/bin/server.rs"
 
 [features]
 netcode = ["bevy_renet/netcode"]
-steam = ["bevy_renet/steam"]
+steam = ["bevy_renet/steam", "dep:steamworks"]
 
 [dependencies]
 bevy = { version = "0.16", default-features = false, features = [

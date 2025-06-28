@@ -4,7 +4,7 @@ mod client;
 mod server;
 
 pub use client::SteamClientTransport;
-pub use server::{AccessPermission, SteamServerConfig, SteamServerTransport};
+pub use server::{AccessPermission, SteamServerConfig, SteamServerSocketOptions, SteamServerTransport};
 
 #[doc(hidden)]
 pub use steamworks;
