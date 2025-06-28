@@ -58,7 +58,7 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
+    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerSocketOptions, SteamServerTransport};
     use demo_bevy::connection_config;
     use steamworks::SingleClient;
 
@@ -70,7 +70,13 @@ fn add_steam_network(app: &mut App) {
         max_clients: 10,
         access_permission: AccessPermission::Public,
     };
-    let transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
+    let transport = SteamServerTransport::new(
+        &steam_client,
+        steam_transport_config,
+        // Can connect both to the server's steam ID and using its localhost address.
+        SteamServerSocketOptions::new_p2p().with_address("127.0.0.1:5000".parse().unwrap()),
+    )
+    .unwrap();
 
     app.add_plugins(SteamServerPlugin);
     app.insert_resource(server);

@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+};
 
 use renet::{ClientId, RenetServer};
 use steamworks::{
@@ -29,7 +32,7 @@ pub struct SteamServerConfig {
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamServerTransport<Manager = ClientManager> {
-    listen_socket: ListenSocket<Manager>,
+    listen_socket: Vec<ListenSocket<Manager>>,
     matchmaking: Matchmaking<Manager>,
     friends: Friends<Manager>,
     max_clients: usize,
@@ -37,10 +40,56 @@ pub struct SteamServerTransport<Manager = ClientManager> {
     connections: HashMap<ClientId, NetConnection<Manager>>,
 }
 
+pub struct SteamServerSocketOptions {
+    p2p: bool,
+    socket_addr: Option<SocketAddr>,
+}
+
+impl Default for SteamServerSocketOptions {
+    fn default() -> Self {
+        Self::new_p2p()
+    }
+}
+
+impl SteamServerSocketOptions {
+    pub fn new_p2p() -> Self {
+        Self {
+            p2p: true,
+            socket_addr: None,
+        }
+    }
+
+    pub fn new_address(socket_addr: SocketAddr) -> Self {
+        Self {
+            p2p: false,
+            socket_addr: Some(socket_addr),
+        }
+    }
+
+    pub fn with_p2p(mut self) -> Self {
+        self.p2p = true;
+        self
+    }
+
+    pub fn with_address(mut self, socket_addr: SocketAddr) -> Self {
+        self.socket_addr = Some(socket_addr);
+        self
+    }
+}
+
 impl<T: Manager + 'static> SteamServerTransport<T> {
-    pub fn new(client: &Client<T>, config: SteamServerConfig) -> Result<Self, InvalidHandle> {
+    pub fn new(client: &Client<T>, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
-        let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
+        let networking = client.networking_sockets();
+
+        let mut listen_socket = vec![];
+        if socket_options.p2p {
+            listen_socket.push(networking.create_listen_socket_p2p(0, options.clone())?);
+        }
+        if let Some(addr) = socket_options.socket_addr {
+            listen_socket.push(networking.create_listen_socket_ip(addr, options.clone())?);
+        }
+
         let matchmaking = client.matchmaking();
         let friends = client.friends();
 
@@ -87,51 +136,53 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
 
     /// Update server connections, and receive packets from the network.
     pub fn update(&mut self, server: &mut RenetServer) {
-        while let Some(event) = self.listen_socket.try_receive_event() {
-            match event {
-                ListenSocketEvent::Connected(event) => {
-                    if let Some(steam_id) = event.remote().steam_id() {
-                        server.add_connection(steam_id.raw());
-                        self.connections.insert(steam_id.raw(), event.take_connection());
-                    }
-                }
-                ListenSocketEvent::Disconnected(event) => {
-                    if let Some(steam_id) = event.remote().steam_id() {
-                        server.remove_connection(steam_id.raw());
-                        self.connections.remove(&steam_id.raw());
-                    }
-                }
-                ListenSocketEvent::Connecting(event) => {
-                    if server.connected_clients() >= self.max_clients {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
-                        continue;
-                    }
-
-                    let Some(steam_id) = event.remote().steam_id() else {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Invalid steam id"));
-                        continue;
-                    };
-
-                    let permitted = match &self.access_permission {
-                        AccessPermission::Public => true,
-                        AccessPermission::Private => false,
-                        AccessPermission::FriendsOnly => {
-                            let friend = self.friends.get_friend(steam_id);
-                            friend.has_friend(FriendFlags::IMMEDIATE)
+        for listen_socket in self.listen_socket.iter() {
+            while let Some(event) = listen_socket.try_receive_event() {
+                match event {
+                    ListenSocketEvent::Connected(event) => {
+                        if let Some(steam_id) = event.remote().steam_id() {
+                            server.add_connection(steam_id.raw());
+                            self.connections.insert(steam_id.raw(), event.take_connection());
                         }
-                        AccessPermission::InList(list) => list.contains(&steam_id),
-                        AccessPermission::InLobby(lobby) => {
-                            let users_in_lobby = self.matchmaking.lobby_members(*lobby);
-                            users_in_lobby.contains(&steam_id)
+                    }
+                    ListenSocketEvent::Disconnected(event) => {
+                        if let Some(steam_id) = event.remote().steam_id() {
+                            server.remove_connection(steam_id.raw());
+                            self.connections.remove(&steam_id.raw());
                         }
-                    };
+                    }
+                    ListenSocketEvent::Connecting(event) => {
+                        if server.connected_clients() >= self.max_clients {
+                            event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
+                            continue;
+                        }
 
-                    if permitted {
-                        if let Err(e) = event.accept() {
-                            log::error!("Failed to accept connection from {steam_id:?}: {e}");
+                        let Some(steam_id) = event.remote().steam_id() else {
+                            event.reject(NetConnectionEnd::AppGeneric, Some("Invalid steam id"));
+                            continue;
+                        };
+
+                        let permitted = match &self.access_permission {
+                            AccessPermission::Public => true,
+                            AccessPermission::Private => false,
+                            AccessPermission::FriendsOnly => {
+                                let friend = self.friends.get_friend(steam_id);
+                                friend.has_friend(FriendFlags::IMMEDIATE)
+                            }
+                            AccessPermission::InList(list) => list.contains(&steam_id),
+                            AccessPermission::InLobby(lobby) => {
+                                let users_in_lobby = self.matchmaking.lobby_members(*lobby);
+                                users_in_lobby.contains(&steam_id)
+                            }
+                        };
+
+                        if permitted {
+                            if let Err(e) = event.accept() {
+                                log::error!("Failed to accept connection from {steam_id:?}: {e}");
+                            }
+                        } else {
+                            event.reject(NetConnectionEnd::AppGeneric, Some("Not allowed"));
                         }
-                    } else {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Not allowed"));
                     }
                 }
             }

@@ -1,4 +1,7 @@
+use std::net::SocketAddr;
+
 use super::MAX_MESSAGE_BATCH_SIZE;
+use log::info;
 use renet::RenetClient;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection, NetworkingSockets},
@@ -18,13 +21,22 @@ pub struct SteamClientTransport {
 }
 
 impl SteamClientTransport {
-    pub fn new(client: &steamworks::Client<ClientManager>, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+    pub fn new_p2p(client: &steamworks::Client<ClientManager>, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
         let options = Vec::new();
-        let connection = client
-            .networking_sockets()
-            .connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, options)?;
+        let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, options)?;
+        Ok(Self {
+            networking_sockets,
+            state: ConnectionState::Connected { connection },
+        })
+    }
+
+    pub fn new_ip(client: &steamworks::Client<ClientManager>, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
+        let networking_sockets = client.networking_sockets();
+
+        let options = Vec::new();
+        let connection = networking_sockets.connect_by_ip_address(socket_addr, options)?;
         Ok(Self {
             networking_sockets,
             state: ConnectionState::Connected { connection },
@@ -87,6 +99,7 @@ impl SteamClientTransport {
     }
 
     pub fn disconnect(&mut self) {
+        info!("Disconnect called!");
         if matches!(self.state, ConnectionState::Disconnected { .. }) {
             return;
         }
@@ -102,6 +115,7 @@ impl SteamClientTransport {
 
     pub fn update(&mut self, client: &mut RenetClient) {
         if self.is_disconnected() {
+            info!("Mark DC called!");
             // Mark the client as disconnected if an error occured in the transport layer
             client.disconnect_due_to_transport();
 
