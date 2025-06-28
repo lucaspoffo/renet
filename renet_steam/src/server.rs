@@ -43,6 +43,7 @@ pub struct SteamServerTransport<Manager = ClientManager> {
 pub struct SteamServerSocketOptions {
     p2p: bool,
     socket_addr: Option<SocketAddr>,
+    configs: Vec<NetworkingConfigEntry>,
 }
 
 impl Default for SteamServerSocketOptions {
@@ -56,6 +57,7 @@ impl SteamServerSocketOptions {
         Self {
             p2p: true,
             socket_addr: None,
+            configs: vec![],
         }
     }
 
@@ -63,6 +65,7 @@ impl SteamServerSocketOptions {
         Self {
             p2p: false,
             socket_addr: Some(socket_addr),
+            configs: vec![],
         }
     }
 
@@ -75,11 +78,16 @@ impl SteamServerSocketOptions {
         self.socket_addr = Some(socket_addr);
         self
     }
+
+    pub fn with_config(mut self, config_option: NetworkingConfigEntry) -> Self {
+        self.configs.push(config_option);
+        self
+    }
 }
 
 impl<T: Manager + 'static> SteamServerTransport<T> {
     pub fn new(client: &Client<T>, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
-        let options: Vec<NetworkingConfigEntry> = Vec::new();
+        let options = socket_options.configs;
         let networking = client.networking_sockets();
 
         let mut listen_socket = vec![];
