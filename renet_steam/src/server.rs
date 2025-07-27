@@ -5,7 +5,6 @@ use std::{
 
 use renet::{ClientId, RenetServer};
 use steamworks::{
-    networking_messages,
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, NetworkingIdentity, SendFlags},
     networking_utils::NetworkingUtils,
@@ -77,7 +76,11 @@ impl SteamServerSocketOptions {
     }
 }
 
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
+struct ConnectionInformation {
+    net_connection: NetConnection,
+    listen_socket_index: usize,
+}
+
 pub struct SteamServerTransport {
     listen_socket: Vec<ListenSocket>,
     networking_utils: NetworkingUtils,
@@ -85,12 +88,12 @@ pub struct SteamServerTransport {
     friends: Friends,
     max_clients: usize,
     access_permission: AccessPermission,
-    connections: HashMap<ClientId, NetConnection>,
+    connections: HashMap<ClientId, ConnectionInformation>,
 }
 
 // It's so fine
-unsafe impl Send for SteamServerTransport {}
-unsafe impl Sync for SteamServerTransport {}
+// unsafe impl Send for SteamServerTransport {}
+// unsafe impl Sync for SteamServerTransport {}
 
 impl SteamServerTransport {
     pub fn new(client: &Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
@@ -133,7 +136,9 @@ impl SteamServerTransport {
     /// Disconnects a client from the server.
     pub fn disconnect_client(&mut self, client_id: ClientId, server: &mut RenetServer, flush_last_packets: bool) {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
-            let _ = value.close(NetConnectionEnd::MiscGeneric, Some("Client was kicked"), flush_last_packets);
+            let _ = value
+                .net_connection
+                .close(NetConnectionEnd::MiscGeneric, Some("Client was kicked"), flush_last_packets);
         }
         server.remove_connection(client_id);
     }
@@ -142,7 +147,7 @@ impl SteamServerTransport {
     pub fn disconnect_all(&mut self, server: &mut RenetServer, flush_last_packets: bool) {
         let keys = self.connections.keys().cloned().collect::<Vec<ClientId>>();
         for client_id in keys {
-            let _ = self.connections.remove_entry(&client_id).unwrap().1.close(
+            let _ = self.connections.remove_entry(&client_id).unwrap().1.net_connection.close(
                 NetConnectionEnd::MiscGeneric,
                 Some("Client was kicked"),
                 flush_last_packets,
@@ -153,13 +158,19 @@ impl SteamServerTransport {
 
     /// Update server connections, and receive packets from the network.
     pub fn update(&mut self, server: &mut RenetServer) {
-        for listen_socket in self.listen_socket.iter() {
+        for (listen_socket_index, listen_socket) in self.listen_socket.iter().enumerate() {
             while let Some(event) = listen_socket.try_receive_event() {
                 match event {
                     ListenSocketEvent::Connected(event) => {
                         if let Some(steam_id) = event.remote().steam_id() {
                             server.add_connection(steam_id.raw());
-                            self.connections.insert(steam_id.raw(), event.take_connection());
+                            self.connections.insert(
+                                steam_id.raw(),
+                                ConnectionInformation {
+                                    net_connection: event.take_connection(),
+                                    listen_socket_index,
+                                },
+                            );
                         }
                     }
                     ListenSocketEvent::Disconnected(event) => {
@@ -207,7 +218,7 @@ impl SteamServerTransport {
 
         for (client_id, connection) in self.connections.iter_mut() {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
-            if let Ok(messages) = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
+            if let Ok(messages) = connection.net_connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
                 messages.iter().for_each(|message| {
                     if let Err(e) = server.process_packet_from(message.data(), *client_id) {
                         log::error!("Error while processing payload for {}: {}", client_id, e);
@@ -220,15 +231,20 @@ impl SteamServerTransport {
     /// Send packets to connected clients.
     pub fn send_packets(&mut self, server: &mut RenetServer) {
         for client_id in server.clients_id() {
-            // let Some(connection) = self.connections.get(&client_id) else {
-            //     log::error!("Error while sending packet: connection not found");
-            //     continue;
-            // };
-            let identity = NetworkingIdentity::new_steam_id(SteamId::from_raw(client_id));
+            let Some(connection_info) = self.connections.get(&client_id) else {
+                log::error!("Error while sending packet: connection not found");
+                continue;
+            };
 
             let packets = server.get_packets_to_send(client_id).unwrap();
-            // TODO: while this works fine we should probaly use the send_messages function from the listen_socket
-            println!("# packets to send: {}", packets.len());
+            // println!("# packets to send: {}", packets.len());
+            // for packet in packets {
+            //     let _ = connection_info.net_connection.send_message(&packet, SendFlags::UNRELIABLE);
+            // }
+
+            println!("{client_id:?}");
+
+            let identity = NetworkingIdentity::new_steam_id(SteamId::from_raw(client_id));
 
             let messages_to_send = packets.into_iter().map(|data| {
                 let mut msg = self.networking_utils.allocate_message(data.len());
@@ -238,11 +254,11 @@ impl SteamServerTransport {
                 msg
             });
 
-            for s in self.listen_socket.iter() {
-                let results = s.send_messages(messages_to_send.clone());
-                for err in results.into_iter().flat_map(|x| x.err()) {
-                    log::error!("Failed flush message for {client_id}: {err}");
-                }
+            let listen_socket = &self.listen_socket[connection_info.listen_socket_index];
+            let results = listen_socket.send_messages(messages_to_send);
+
+            for err in results.into_iter().flat_map(|x| x.err()) {
+                log::error!("Failed flush message for {client_id}: {err}");
             }
         }
     }

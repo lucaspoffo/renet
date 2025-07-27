@@ -118,6 +118,7 @@ fn add_steam_network(app: &mut App) {
     app.configure_sets(Update, Connected.run_if(client_connected));
 
     fn steam_callbacks(client: Res<SteamClient>) {
+        println!("Ran callbacks!");
         client.0.run_callbacks();
     }
 
