@@ -5,7 +5,7 @@ use std::{
 };
 
 use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
-use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
+use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerSocketOptions, SteamServerTransport};
 use steamworks::{Client, LobbyId, LobbyType, SteamId};
 
 fn main() {
@@ -22,13 +22,13 @@ fn main() {
     let exec_type = &args[1];
     match exec_type.as_str() {
         "client" => {
-            let server_steam_id: u64 = args[2].parse().unwrap();
+            let server_steam_id = args.get(2).map(|x| x.parse::<u64>().unwrap());
             let mut lobby_id: Option<LobbyId> = None;
             if let Some(lobby) = args.get(3) {
                 let id: u64 = lobby.parse().unwrap();
                 lobby_id = Some(LobbyId::from_raw(id));
             }
-            run_client(steam_client, SteamId::from_raw(server_steam_id), lobby_id);
+            run_client(steam_client, server_steam_id.map(SteamId::from_raw), lobby_id);
         }
         "server" => {
             let mut with_lobby = false;
@@ -74,7 +74,11 @@ fn run_server(steam_client: Client, with_lobby: bool) {
         max_clients: 10,
         access_permission,
     };
-    let mut transport = SteamServerTransport::new(&steam_client, steam_transport_config, Default::default()).unwrap();
+
+    // Allows for both p2p steam ID connections and connections via IP.
+    // Both methods require the client to be authenticated through steam.
+    let socket_options = SteamServerSocketOptions::new_p2p().with_address("0.0.0.0:5000".parse().unwrap());
+    let mut transport = SteamServerTransport::new(&steam_client, steam_transport_config, socket_options).unwrap();
 
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
@@ -119,7 +123,7 @@ fn run_server(steam_client: Client, with_lobby: bool) {
     }
 }
 
-fn run_client(steam_client: Client, server_steam_id: SteamId, lobby_id: Option<LobbyId>) {
+fn run_client(steam_client: Client, server_steam_id: Option<SteamId>, lobby_id: Option<LobbyId>) {
     // Connect to lobby
     if let Some(lobby_id) = lobby_id {
         let (sender_join_lobby, receiver_join_lobby) = mpsc::channel();
@@ -144,7 +148,12 @@ fn run_client(steam_client: Client, server_steam_id: SteamId, lobby_id: Option<L
     let connection_config = ConnectionConfig::default();
     let mut client = RenetClient::new(connection_config);
 
-    let mut transport = SteamClientTransport::new_p2p(&steam_client, &server_steam_id).unwrap();
+    let mut transport = if let Some(server_steam_id) = server_steam_id {
+        SteamClientTransport::new_p2p(&steam_client, &server_steam_id).unwrap()
+    } else {
+        SteamClientTransport::new_ip(&steam_client, "127.0.0.1:5000".parse().unwrap()).unwrap()
+    };
+
     let stdin_channel: Receiver<String> = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();

@@ -237,24 +237,19 @@ impl SteamServerTransport {
             };
 
             let packets = server.get_packets_to_send(client_id).unwrap();
-            // println!("# packets to send: {}", packets.len());
-            // for packet in packets {
-            //     let _ = connection_info.net_connection.send_message(&packet, SendFlags::UNRELIABLE);
-            // }
 
-            println!("{client_id:?}");
-
+            let listen_socket = &self.listen_socket[connection_info.listen_socket_index];
             let identity = NetworkingIdentity::new_steam_id(SteamId::from_raw(client_id));
 
             let messages_to_send = packets.into_iter().map(|data| {
                 let mut msg = self.networking_utils.allocate_message(data.len());
+                msg.set_connection(&connection_info.net_connection);
                 msg.set_send_flags(SendFlags::UNRELIABLE);
                 msg.set_identity_peer(identity.clone());
                 msg.copy_data_into_buffer(&data).expect("Failed to copy packet data into buffer!");
                 msg
             });
 
-            let listen_socket = &self.listen_socket[connection_info.listen_socket_index];
             let results = listen_socket.send_messages(messages_to_send);
 
             for err in results.into_iter().flat_map(|x| x.err()) {

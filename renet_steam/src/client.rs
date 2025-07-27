@@ -143,20 +143,14 @@ impl SteamClientTransport {
             unreachable!()
         };
 
-        println!("Checking for messages");
-
         match connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
             Ok(messages) => {
-                if messages.is_empty() {
-                    println!("NONE");
-                }
                 messages.iter().for_each(|message| {
-                    println!("GOT PACKET!");
                     client.process_packet(message.data());
                 });
             }
             Err(e) => {
-                println!("{e:?}");
+                log::error!("Client Message Receive Error: {e:?}");
             }
         }
     }
