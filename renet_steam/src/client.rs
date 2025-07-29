@@ -5,7 +5,7 @@ use log::info;
 use renet::RenetClient;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection, NetworkingSockets},
-    networking_types::{NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
+    networking_types::{NetConnectionEnd, NetworkingConfigEntry, NetworkingConnectionState, NetworkingIdentity, SendFlags},
     SteamError, SteamId,
 };
 
@@ -22,21 +22,35 @@ pub struct SteamClientTransport {
 
 impl SteamClientTransport {
     pub fn new_p2p(client: &steamworks::Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+        Self::new_p2p_with_config(client, steam_id, vec![])
+    }
+
+    pub fn new_ip(client: &steamworks::Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
+        Self::new_ip_with_config(client, socket_addr, vec![])
+    }
+
+    pub fn new_p2p_with_config(
+        client: &steamworks::Client,
+        steam_id: &SteamId,
+        config: Vec<NetworkingConfigEntry>,
+    ) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
-        let options = Vec::new();
-        let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, options)?;
+        let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, config)?;
         Ok(Self {
             networking_sockets,
             state: ConnectionState::Connected { connection },
         })
     }
 
-    pub fn new_ip(client: &steamworks::Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
+    pub fn new_ip_with_config(
+        client: &steamworks::Client,
+        socket_addr: SocketAddr,
+        config: Vec<NetworkingConfigEntry>,
+    ) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
-        let options = Vec::new();
-        let connection = networking_sockets.connect_by_ip_address(socket_addr, options)?;
+        let connection = networking_sockets.connect_by_ip_address(socket_addr, config)?;
         Ok(Self {
             networking_sockets,
             state: ConnectionState::Connected { connection },
