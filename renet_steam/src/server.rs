@@ -11,7 +11,7 @@ use steamworks::{
     Client, FriendFlags, Friends, LobbyId, Matchmaking, SteamId,
 };
 
-use super::MAX_MESSAGE_BATCH_SIZE;
+use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
 
 pub enum AccessPermission {
     /// Everyone can connect
@@ -35,6 +35,7 @@ pub struct SteamServerSocketOptions {
     p2p: bool,
     socket_addr: Option<SocketAddr>,
     configs: Vec<NetworkingConfigEntry>,
+    max_batch_size: usize,
 }
 
 impl Default for SteamServerSocketOptions {
@@ -49,6 +50,7 @@ impl SteamServerSocketOptions {
             p2p: true,
             socket_addr: None,
             configs: vec![],
+            max_batch_size: DEFAULT_MAX_MESSAGE_BATCH_SIZE,
         }
     }
 
@@ -57,6 +59,7 @@ impl SteamServerSocketOptions {
             p2p: false,
             socket_addr: Some(socket_addr),
             configs: vec![],
+            max_batch_size: DEFAULT_MAX_MESSAGE_BATCH_SIZE,
         }
     }
 
@@ -74,6 +77,11 @@ impl SteamServerSocketOptions {
         self.configs.push(config_option);
         self
     }
+
+    pub fn with_max_batch_size(mut self, size: usize) -> Self {
+        self.max_batch_size = size;
+        self
+    }
 }
 
 struct ConnectionInformation {
@@ -89,6 +97,7 @@ pub struct SteamServerTransport {
     max_clients: usize,
     access_permission: AccessPermission,
     connections: HashMap<ClientId, ConnectionInformation>,
+    max_batch_size: usize,
 }
 
 // It's so fine
@@ -120,6 +129,7 @@ impl SteamServerTransport {
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
+            max_batch_size: socket_options.max_batch_size,
         })
     }
 
@@ -218,7 +228,8 @@ impl SteamServerTransport {
 
         for (client_id, connection) in self.connections.iter_mut() {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
-            if let Ok(messages) = connection.net_connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
+            if let Ok(messages) = connection.net_connection.receive_messages(DEFAULT_MAX_MESSAGE_BATCH_SIZE) {
+                println!("N MESSAGES: {}", messages.len());
                 messages.iter().for_each(|message| {
                     if let Err(e) = server.process_packet_from(message.data(), *client_id) {
                         log::error!("Error while processing payload for {}: {}", client_id, e);

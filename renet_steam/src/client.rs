@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use super::MAX_MESSAGE_BATCH_SIZE;
+use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
 use log::info;
 use renet::RenetClient;
 use steamworks::{
@@ -18,42 +18,76 @@ enum ConnectionState {
 pub struct SteamClientTransport {
     networking_sockets: NetworkingSockets,
     state: ConnectionState,
+    max_batch_size: usize,
+}
+
+#[derive(Clone)]
+pub struct SteamClientTransportConfig {
+    configs: Vec<NetworkingConfigEntry>,
+    max_batch_size: usize,
+}
+
+impl Default for SteamClientTransportConfig {
+    fn default() -> Self {
+        Self {
+            configs: vec![],
+            max_batch_size: DEFAULT_MAX_MESSAGE_BATCH_SIZE,
+        }
+    }
+}
+
+impl SteamClientTransportConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_config(mut self, config: NetworkingConfigEntry) -> Self {
+        self.configs.push(config);
+        self
+    }
+
+    pub fn with_max_batch_size(mut self, max_batch_size: usize) -> Self {
+        self.max_batch_size = max_batch_size;
+        self
+    }
 }
 
 impl SteamClientTransport {
     pub fn new_p2p(client: &steamworks::Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
-        Self::new_p2p_with_config(client, steam_id, vec![])
+        Self::new_p2p_with_config(client, steam_id, Default::default())
     }
 
     pub fn new_ip(client: &steamworks::Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
-        Self::new_ip_with_config(client, socket_addr, vec![])
+        Self::new_ip_with_config(client, socket_addr, Default::default())
     }
 
     pub fn new_p2p_with_config(
         client: &steamworks::Client,
         steam_id: &SteamId,
-        config: Vec<NetworkingConfigEntry>,
+        config: SteamClientTransportConfig,
     ) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
-        let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, config)?;
+        let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, config.configs)?;
         Ok(Self {
             networking_sockets,
             state: ConnectionState::Connected { connection },
+            max_batch_size: config.max_batch_size,
         })
     }
 
     pub fn new_ip_with_config(
         client: &steamworks::Client,
         socket_addr: SocketAddr,
-        config: Vec<NetworkingConfigEntry>,
+        config: SteamClientTransportConfig,
     ) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
-        let connection = networking_sockets.connect_by_ip_address(socket_addr, config)?;
+        let connection = networking_sockets.connect_by_ip_address(socket_addr, config.configs)?;
         Ok(Self {
             networking_sockets,
             state: ConnectionState::Connected { connection },
+            max_batch_size: config.max_batch_size,
         })
     }
 
@@ -157,8 +191,9 @@ impl SteamClientTransport {
             unreachable!()
         };
 
-        match connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
+        match connection.receive_messages(DEFAULT_MAX_MESSAGE_BATCH_SIZE) {
             Ok(messages) => {
+                println!("N MESSAGES: {}", messages.len());
                 messages.iter().for_each(|message| {
                     client.process_packet(message.data());
                 });
