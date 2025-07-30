@@ -228,8 +228,7 @@ impl SteamServerTransport {
 
         for (client_id, connection) in self.connections.iter_mut() {
             // TODO this allocates on the side of steamworks.rs and should be avoided, PR needed
-            if let Ok(messages) = connection.net_connection.receive_messages(DEFAULT_MAX_MESSAGE_BATCH_SIZE) {
-                println!("N MESSAGES: {}", messages.len());
+            if let Ok(messages) = connection.net_connection.receive_messages(self.max_batch_size) {
                 messages.iter().for_each(|message| {
                     if let Err(e) = server.process_packet_from(message.data(), *client_id) {
                         log::error!("Error while processing payload for {}: {}", client_id, e);

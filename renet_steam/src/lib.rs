@@ -1,4 +1,4 @@
-const DEFAULT_MAX_MESSAGE_BATCH_SIZE: usize = 1000000;
+const DEFAULT_MAX_MESSAGE_BATCH_SIZE: usize = 1000;
 
 mod client;
 mod server;

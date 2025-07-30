@@ -191,9 +191,8 @@ impl SteamClientTransport {
             unreachable!()
         };
 
-        match connection.receive_messages(DEFAULT_MAX_MESSAGE_BATCH_SIZE) {
+        match connection.receive_messages(self.max_batch_size) {
             Ok(messages) => {
-                println!("N MESSAGES: {}", messages.len());
                 messages.iter().for_each(|message| {
                     client.process_packet(message.data());
                 });
