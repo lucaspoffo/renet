@@ -159,6 +159,13 @@ impl SteamServerTransport {
                 });
             }
         }
+
+        for disconnection_id in server.disconnections_id() {
+            server.remove_connection(disconnection_id);
+            if let Some(connection) = self.connections.remove(&disconnection_id) {
+                connection.close(NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()), Some("Renet"), false);
+            }
+        }
     }
 
     /// Send packets to connected clients.
