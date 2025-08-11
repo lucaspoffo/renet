@@ -100,6 +100,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(client);
     app.insert_resource(transport);
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
+    app.insert_non_send_resource(steam_client);
 
     app.configure_sets(Update, Connected.run_if(client_connected));
 
