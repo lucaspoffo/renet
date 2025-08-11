@@ -93,15 +93,15 @@ loop {
 
 You can try the steam echo example with (steam needs to be running in the background):
 
-- server: `cargo run --example echo server`
-- client: `cargo run --example echo client [HOST_STEAM_ID]`
+- server: `cargo run --example echo_steam server`
+- client: `cargo run --example echo_steam client [HOST_STEAM_ID]`
 
 The HOST_STEAM_ID is printed in the console when the server starts.
 
 You can also run the echo example using steam lobbies.
 Only steam users connected to the lobby will be able to connect to the server. In the echo example, they will first try connect to the steam lobby and later to the renet server:
 
-- server: `cargo run --example echo server lobby`
-- client: `cargo run --example echo client [HOST_STEAM_ID] [LOBBY_ID]`
+- server: `cargo run --example echo_steam server lobby`
+- client: `cargo run --example echo_steam client [HOST_STEAM_ID] [LOBBY_ID]`
 
 The LOBBY_ID is printed in the console when the server starts.

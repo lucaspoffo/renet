@@ -6,11 +6,11 @@ use std::{
 
 use renet::{ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
 use renet_steam::{AccessPermission, SteamClientTransport, SteamServerConfig, SteamServerTransport};
-use steamworks::{Client, ClientManager, LobbyId, LobbyType, SingleClient, SteamId};
+use steamworks::{Client, LobbyId, LobbyType, SteamId};
 
 fn main() {
     env_logger::init();
-    let (steam_client, single) = Client::init_app(480).unwrap();
+    let steam_client = Client::init_app(480).unwrap();
     steam_client.networking_utils().init_relay_network_access();
 
     println!("Usage:");
@@ -28,14 +28,14 @@ fn main() {
                 let id: u64 = lobby.parse().unwrap();
                 lobby_id = Some(LobbyId::from_raw(id));
             }
-            run_client(steam_client, single, SteamId::from_raw(server_steam_id), lobby_id);
+            run_client(steam_client, SteamId::from_raw(server_steam_id), lobby_id);
         }
         "server" => {
             let mut with_lobby = false;
             if let Some(lobby) = args.get(2) {
                 with_lobby = lobby.as_str() == "lobby";
             }
-            run_server(steam_client, single, with_lobby);
+            run_server(steam_client, with_lobby);
         }
         _ => {
             println!("Invalid argument, first one must be \"client\" or \"server\".");
@@ -43,7 +43,7 @@ fn main() {
     }
 }
 
-fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lobby: bool) {
+fn run_server(steam_client: Client, with_lobby: bool) {
     // Create lobby if necessary
     let access_permission = if with_lobby {
         let (sender_create_lobby, receiver_create_lobby) = mpsc::channel();
@@ -57,7 +57,7 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lo
         });
 
         loop {
-            single.run_callbacks();
+            steam_client.run_callbacks();
             if let Ok(lobby) = receiver_create_lobby.try_recv() {
                 println!("Created lobby with id: {}", lobby.raw());
                 break AccessPermission::InLobby(lobby);
@@ -80,7 +80,7 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lo
     let mut last_updated = Instant::now();
 
     loop {
-        single.run_callbacks();
+        steam_client.run_callbacks();
         let now = Instant::now();
         let duration = now - last_updated;
         last_updated = now;
@@ -119,7 +119,7 @@ fn run_server(steam_client: Client<ClientManager>, single: SingleClient, with_lo
     }
 }
 
-fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_steam_id: SteamId, lobby_id: Option<LobbyId>) {
+fn run_client(steam_client: Client, server_steam_id: SteamId, lobby_id: Option<LobbyId>) {
     // Connect to lobby
     if let Some(lobby_id) = lobby_id {
         let (sender_join_lobby, receiver_join_lobby) = mpsc::channel();
@@ -133,7 +133,7 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
         });
 
         loop {
-            single.run_callbacks();
+            steam_client.run_callbacks();
             if let Ok(lobby) = receiver_join_lobby.try_recv() {
                 println!("Joined lobby with id: {}", lobby.raw());
                 break;
@@ -149,7 +149,7 @@ fn run_client(steam_client: Client<ClientManager>, single: SingleClient, server_
 
     let mut last_updated = Instant::now();
     loop {
-        single.run_callbacks();
+        steam_client.run_callbacks();
         let now = Instant::now();
         let duration = now - last_updated;
         last_updated = now;

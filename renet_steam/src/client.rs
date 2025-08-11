@@ -2,23 +2,23 @@ use super::MAX_MESSAGE_BATCH_SIZE;
 use renet::RenetClient;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection, NetworkingSockets},
-    networking_types::{NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
-    ClientManager, SteamError, SteamId,
+    networking_types::{AppNetConnectionEnd, NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
+    SteamError, SteamId,
 };
 
 enum ConnectionState {
-    Connected { connection: NetConnection<ClientManager> },
+    Connected { connection: NetConnection },
     Disconnected { end_reason: NetConnectionEnd },
 }
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamClientTransport {
-    networking_sockets: NetworkingSockets<ClientManager>,
+    networking_sockets: NetworkingSockets,
     state: ConnectionState,
 }
 
 impl SteamClientTransport {
-    pub fn new(client: &steamworks::Client<ClientManager>, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+    pub fn new(client: &steamworks::Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
         let options = Vec::new();
@@ -82,7 +82,7 @@ impl SteamClientTransport {
         None
     }
 
-    pub fn client_id(&self, steam_client: &steamworks::Client<ClientManager>) -> u64 {
+    pub fn client_id(&self, steam_client: &steamworks::Client) -> u64 {
         steam_client.user().steam_id().raw()
     }
 
@@ -92,11 +92,11 @@ impl SteamClientTransport {
         }
 
         let disconnect_state = ConnectionState::Disconnected {
-            end_reason: NetConnectionEnd::AppGeneric,
+            end_reason: NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
         };
         let old_state = std::mem::replace(&mut self.state, disconnect_state);
         if let ConnectionState::Connected { connection } = old_state {
-            connection.close(NetConnectionEnd::AppGeneric, Some("Client disconnected"), false);
+            connection.close(NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()), Some("Client disconnected"), false);
         }
     }
 
@@ -111,7 +111,7 @@ impl SteamClientTransport {
                     .get_connection_info(connection)
                     .map(|info| info.end_reason())
                     .unwrap_or_default()
-                    .unwrap_or(NetConnectionEnd::AppGeneric);
+                    .unwrap_or(NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()));
 
                 self.state = ConnectionState::Disconnected { end_reason };
             }
