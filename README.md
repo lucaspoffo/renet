@@ -100,7 +100,7 @@ loop {
     // Send a text message for all clients
     server.broadcast_message(DefaultChannel::ReliableOrdered, "server message");
 
-    let client_id = ClientId::from_raw(0);
+    let client_id: ClientId = 0;
     // Send a text message for all clients except for Client 0
     server.broadcast_message_except(client_id, DefaultChannel::ReliableOrdered, "server message");
     

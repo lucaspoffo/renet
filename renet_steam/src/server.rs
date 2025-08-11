@@ -1,10 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use renet::{ClientId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
-    networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
-    Client, ClientManager, FriendFlags, Friends, LobbyId, Manager, Matchmaking, SteamId,
+    networking_types::{AppNetConnectionEnd, ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
+    Client, FriendFlags, LobbyId, SteamId,
 };
 
 use super::MAX_MESSAGE_BATCH_SIZE;
@@ -28,26 +31,22 @@ pub struct SteamServerConfig {
 }
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
-pub struct SteamServerTransport<Manager = ClientManager> {
-    listen_socket: ListenSocket<Manager>,
-    matchmaking: Matchmaking<Manager>,
-    friends: Friends<Manager>,
+pub struct SteamServerTransport {
+    client: Client,
+    listen_socket: Mutex<ListenSocket>,
     max_clients: usize,
     access_permission: AccessPermission,
-    connections: HashMap<ClientId, NetConnection<Manager>>,
+    connections: HashMap<ClientId, NetConnection>,
 }
 
-impl<T: Manager + 'static> SteamServerTransport<T> {
-    pub fn new(client: &Client<T>, config: SteamServerConfig) -> Result<Self, InvalidHandle> {
+impl SteamServerTransport {
+    pub fn new(client: Client, config: SteamServerConfig) -> Result<Self, InvalidHandle> {
         let options: Vec<NetworkingConfigEntry> = Vec::new();
         let listen_socket = client.networking_sockets().create_listen_socket_p2p(0, options)?;
-        let matchmaking = client.matchmaking();
-        let friends = client.friends();
 
         Ok(Self {
-            listen_socket,
-            matchmaking,
-            friends,
+            client,
+            listen_socket: Mutex::new(listen_socket),
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
@@ -67,7 +66,11 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
     /// Disconnects a client from the server.
     pub fn disconnect_client(&mut self, client_id: ClientId, server: &mut RenetServer, flush_last_packets: bool) {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
-            let _ = value.close(NetConnectionEnd::AppGeneric, Some("Client was kicked"), flush_last_packets);
+            let _ = value.close(
+                NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
+                Some("Client was kicked"),
+                flush_last_packets,
+            );
         }
         server.remove_connection(client_id);
     }
@@ -77,7 +80,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
         let keys = self.connections.keys().cloned().collect::<Vec<ClientId>>();
         for client_id in keys {
             let _ = self.connections.remove_entry(&client_id).unwrap().1.close(
-                NetConnectionEnd::AppGeneric,
+                NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
                 Some("Client was kicked"),
                 flush_last_packets,
             );
@@ -87,7 +90,8 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
 
     /// Update server connections, and receive packets from the network.
     pub fn update(&mut self, server: &mut RenetServer) {
-        while let Some(event) = self.listen_socket.try_receive_event() {
+        let listen_socket = self.listen_socket.lock().unwrap();
+        while let Some(event) = listen_socket.try_receive_event() {
             match event {
                 ListenSocketEvent::Connected(event) => {
                     if let Some(steam_id) = event.remote().steam_id() {
@@ -103,25 +107,33 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                 }
                 ListenSocketEvent::Connecting(event) => {
                     if server.connected_clients() >= self.max_clients {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Too many clients"));
+                        event.reject(
+                            NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
+                            Some("Too many clients"),
+                        );
                         continue;
                     }
 
                     let Some(steam_id) = event.remote().steam_id() else {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Invalid steam id"));
+                        event.reject(
+                            NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
+                            Some("Invalid steam id"),
+                        );
                         continue;
                     };
 
+                    let friends = self.client.friends();
+                    let matchmaking = self.client.matchmaking();
                     let permitted = match &self.access_permission {
                         AccessPermission::Public => true,
                         AccessPermission::Private => false,
                         AccessPermission::FriendsOnly => {
-                            let friend = self.friends.get_friend(steam_id);
+                            let friend = friends.get_friend(steam_id);
                             friend.has_friend(FriendFlags::IMMEDIATE)
                         }
                         AccessPermission::InList(list) => list.contains(&steam_id),
                         AccessPermission::InLobby(lobby) => {
-                            let users_in_lobby = self.matchmaking.lobby_members(*lobby);
+                            let users_in_lobby = matchmaking.lobby_members(*lobby);
                             users_in_lobby.contains(&steam_id)
                         }
                     };
@@ -131,7 +143,7 @@ impl<T: Manager + 'static> SteamServerTransport<T> {
                             log::error!("Failed to accept connection from {steam_id:?}: {e}");
                         }
                     } else {
-                        event.reject(NetConnectionEnd::AppGeneric, Some("Not allowed"));
+                        event.reject(NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()), Some("Not allowed"));
                     }
                 }
             }
