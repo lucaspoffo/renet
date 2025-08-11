@@ -60,9 +60,8 @@ fn add_netcode_network(app: &mut App) {
 fn add_steam_network(app: &mut App) {
     use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
     use demo_bevy::connection_config;
-    use steamworks::SingleClient;
 
-    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+    let steam_client = steamworks::Client::init_app(480).unwrap();
 
     let server: RenetServer = RenetServer::new(connection_config());
 
@@ -70,14 +69,14 @@ fn add_steam_network(app: &mut App) {
         max_clients: 10,
         access_permission: AccessPermission::Public,
     };
-    let transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
+    let transport = SteamServerTransport::new(steam_client.clone(), steam_transport_config).unwrap();
 
     app.add_plugins(SteamServerPlugin);
     app.insert_resource(server);
     app.insert_non_send_resource(transport);
-    app.insert_non_send_resource(single);
+    app.insert_non_send_resource(steam_client);
 
-    fn steam_callbacks(client: NonSend<SingleClient>) {
+    fn steam_callbacks(client: NonSend<steamworks::Client>) {
         client.run_callbacks();
     }
 

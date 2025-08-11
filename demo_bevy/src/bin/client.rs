@@ -83,9 +83,9 @@ fn add_netcode_network(app: &mut App) {
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
     use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
-    use steamworks::{SingleClient, SteamId};
+    use steamworks::SteamId;
 
-    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+    let steam_client = steamworks::Client::init_app(480).unwrap();
 
     steam_client.networking_utils().init_relay_network_access();
 
@@ -94,7 +94,7 @@ fn add_steam_network(app: &mut App) {
     let server_steam_id = SteamId::from_raw(server_steam_id);
 
     let client = RenetClient::new(connection_config());
-    let transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
+    let transport = SteamClientTransport::new(steam_client.clone(), &server_steam_id).unwrap();
 
     app.add_plugins(SteamClientPlugin);
     app.insert_resource(client);
@@ -103,8 +103,7 @@ fn add_steam_network(app: &mut App) {
 
     app.configure_sets(Update, Connected.run_if(client_connected));
 
-    app.insert_non_send_resource(single);
-    fn steam_callbacks(client: NonSend<SingleClient>) {
+    fn steam_callbacks(client: NonSend<steamworks::Client>) {
         client.run_callbacks();
     }
 

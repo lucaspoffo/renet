@@ -74,7 +74,7 @@ fn run_server(steam_client: Client, with_lobby: bool) {
         max_clients: 10,
         access_permission,
     };
-    let mut transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
+    let mut transport = SteamServerTransport::new(steam_client.clone(), steam_transport_config).unwrap();
 
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();
@@ -144,7 +144,7 @@ fn run_client(steam_client: Client, server_steam_id: SteamId, lobby_id: Option<L
     let connection_config = ConnectionConfig::default();
     let mut client = RenetClient::new(connection_config);
 
-    let mut transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
+    let mut transport = SteamClientTransport::new(steam_client.clone(), &server_steam_id).unwrap();
     let stdin_channel: Receiver<String> = spawn_stdin_channel();
 
     let mut last_updated = Instant::now();
