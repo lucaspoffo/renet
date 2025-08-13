@@ -23,6 +23,8 @@ pub enum DisconnectReason {
     ReceiveChannelError { channel_id: u8, error: ChannelError },
 }
 
+impl std::error::Error for DisconnectReason {}
+
 /// Possibles errors that can occur in a channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelError {
