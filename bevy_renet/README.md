@@ -60,7 +60,7 @@ fn receive_message_system(mut server: ResMut<RenetServer>) {
     }
 }
 
-fn handle_events_system(mut server_events: EventReader<ServerEvent>) {
+fn handle_events_system(mut server_events: MessageReader<ServerEvent>) {
     for event in server_events.read() {
         match event {
             ServerEvent::ClientConnected { client_id } => {
