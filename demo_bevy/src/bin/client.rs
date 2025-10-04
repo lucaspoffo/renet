@@ -71,7 +71,7 @@ fn add_netcode_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: EventReader<NetcodeTransportError>) {
+    fn panic_on_error_system(mut renet_error: MessageReader<NetcodeTransportError>) {
         for e in renet_error.read() {
             panic!("{}", e);
         }
@@ -112,7 +112,7 @@ fn add_steam_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
+    fn panic_on_error_system(mut renet_error: MessageReader<SteamTransportError>) {
         for e in renet_error.read() {
             panic!("{}", e);
         }
@@ -127,9 +127,7 @@ fn main() {
     app.add_plugins(RenetClientPlugin);
     app.add_plugins(FrameTimeDiagnosticsPlugin::default());
     app.add_plugins(LogDiagnosticsPlugin::default());
-    app.add_plugins(EguiPlugin {
-        enable_multipass_for_primary_context: false,
-    });
+    app.add_plugins(EguiPlugin::default());
 
     #[cfg(feature = "netcode")]
     add_netcode_network(&mut app);
@@ -137,7 +135,7 @@ fn main() {
     #[cfg(feature = "steam")]
     add_steam_network(&mut app);
 
-    app.add_event::<PlayerCommand>();
+    app.add_message::<PlayerCommand>();
 
     app.insert_resource(ClientLobby::default());
     app.insert_resource(PlayerInput::default());
@@ -152,25 +150,27 @@ fn main() {
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
 
     app.add_systems(Startup, (setup_level, setup_camera, setup_target));
-    app.add_systems(Update, update_visulizer_system);
+    app.add_systems(Update, update_visualizer_system);
 
     app.run();
 }
 
-fn update_visulizer_system(
+fn update_visualizer_system(
     mut egui_contexts: EguiContexts,
     mut visualizer: ResMut<RenetClientVisualizer<200>>,
     client: Res<RenetClient>,
     mut show_visualizer: Local<bool>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-) {
+) -> Result<()> {
     visualizer.add_network_info(client.network_info());
     if keyboard_input.just_pressed(KeyCode::F1) {
         *show_visualizer = !*show_visualizer;
     }
     if *show_visualizer {
-        visualizer.show_window(egui_contexts.ctx_mut());
+        visualizer.show_window(egui_contexts.ctx_mut()?);
     }
+
+    Ok(())
 }
 
 fn player_input(
@@ -178,7 +178,7 @@ fn player_input(
     mut player_input: ResMut<PlayerInput>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     target_transform: Single<&Transform, With<Target>>,
-    mut player_commands: EventWriter<PlayerCommand>,
+    mut player_commands: MessageWriter<PlayerCommand>,
 ) {
     player_input.left = keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft);
     player_input.right = keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight);
@@ -198,7 +198,7 @@ fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetCli
     client.send_message(ClientChannel::Input, input_message);
 }
 
-fn client_send_player_commands(mut player_commands: EventReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
+fn client_send_player_commands(mut player_commands: MessageReader<PlayerCommand>, mut client: ResMut<RenetClient>) {
     for command in player_commands.read() {
         let command_message = bincode::serialize(command).unwrap();
         client.send_message(ClientChannel::Command, command_message);
