@@ -15,7 +15,7 @@ netcode = ["bevy_renet/netcode"]
 steam = ["bevy_renet/steam", "steamworks"]
 
 [dependencies]
-bevy = { version = "0.16", default-features = false, features = [
+bevy = { version = "0.17", default-features = false, features = [
     "bevy_core_pipeline",
     "bevy_render",
     "bevy_asset",
@@ -23,7 +23,7 @@ bevy = { version = "0.16", default-features = false, features = [
     "x11",
     "tonemapping_luts",
     "ktx2",
-    "zstd",
+    "zstd_rust",
     "serialize",
     "bevy_window"
 ]}
@@ -31,7 +31,7 @@ bevy = { version = "0.16", default-features = false, features = [
 bevy_renet = { path = "../bevy_renet", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
-bevy_egui = "0.34"
+bevy_egui = "0.37"
 renet_visualizer = { path = "../renet_visualizer", features = ["bevy"] }
 fastrand = "2.0"
 steamworks = { version = "0.12.2", optional = true }
