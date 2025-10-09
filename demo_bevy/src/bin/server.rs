@@ -4,7 +4,7 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
 };
-use bevy_egui::{EguiContexts, EguiPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{
     renet::{ClientId, RenetServer, ServerEvent},
     RenetServerPlugin,
@@ -109,11 +109,12 @@ fn main() {
             server_network_sync,
             move_players_system,
             update_projectiles_system,
-            update_visualizer_system,
             spawn_bot,
             bot_autocast,
         ),
     );
+
+    app.add_systems(EguiPrimaryContextPass, update_visualizer_system);
 
     app.add_systems(FixedUpdate, apply_velocity_system);
 

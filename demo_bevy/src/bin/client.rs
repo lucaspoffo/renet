@@ -6,7 +6,7 @@ use bevy::{
     prelude::Vec3,
     prelude::*,
 };
-use bevy_egui::{EguiContexts, EguiPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{
     client_connected,
     renet::{ClientId, RenetClient},
@@ -150,7 +150,7 @@ fn main() {
     app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
 
     app.add_systems(Startup, (setup_level, setup_camera, setup_target));
-    app.add_systems(Update, update_visualizer_system);
+    app.add_systems(EguiPrimaryContextPass, update_visualizer_system);
 
     app.run();
 }
