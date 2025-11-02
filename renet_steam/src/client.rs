@@ -4,9 +4,11 @@ use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
 use log::info;
 use renet::RenetClient;
 use steamworks::{
-    networking_sockets::{InvalidHandle, NetConnection, NetworkingSockets},
-    networking_types::{NetConnectionEnd, NetworkingConfigEntry, NetworkingConnectionState, NetworkingIdentity, SendFlags},
-    SteamError, SteamId,
+    networking_sockets::NetworkingSockets,
+    networking_sockets::{InvalidHandle, NetConnection},
+    networking_types::NetworkingConfigEntry,
+    networking_types::{AppNetConnectionEnd, NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
+    Client, SteamError, SteamId,
 };
 
 enum ConnectionState {
@@ -16,7 +18,7 @@ enum ConnectionState {
 
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamClientTransport {
-    networking_sockets: NetworkingSockets,
+    client: Client,
     state: ConnectionState,
     max_batch_size: usize,
 }
@@ -53,31 +55,32 @@ impl SteamClientTransportConfig {
 }
 
 impl SteamClientTransport {
-    pub fn new_p2p(client: &steamworks::Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+    pub fn new_p2p(client: steamworks::Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         Self::new_p2p_with_config(client, steam_id, Default::default())
     }
 
-    pub fn new_ip(client: &steamworks::Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
+    pub fn new_ip(client: steamworks::Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
         Self::new_ip_with_config(client, socket_addr, Default::default())
     }
 
     pub fn new_p2p_with_config(
-        client: &steamworks::Client,
+        client: steamworks::Client,
         steam_id: &SteamId,
         config: SteamClientTransportConfig,
     ) -> Result<Self, InvalidHandle> {
         let networking_sockets = client.networking_sockets();
 
         let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, config.configs)?;
+
         Ok(Self {
-            networking_sockets,
+            client,
             state: ConnectionState::Connected { connection },
             max_batch_size: config.max_batch_size,
         })
     }
 
     pub fn new_ip_with_config(
-        client: &steamworks::Client,
+        client: steamworks::Client,
         socket_addr: SocketAddr,
         config: SteamClientTransportConfig,
     ) -> Result<Self, InvalidHandle> {
@@ -85,7 +88,7 @@ impl SteamClientTransport {
 
         let connection = networking_sockets.connect_by_ip_address(socket_addr, config.configs)?;
         Ok(Self {
-            networking_sockets,
+            client,
             state: ConnectionState::Connected { connection },
             max_batch_size: config.max_batch_size,
         })
@@ -117,7 +120,7 @@ impl SteamClientTransport {
             }
         };
 
-        let Ok(info) = self.networking_sockets.get_connection_info(connection) else {
+        let Ok(info) = self.client.networking_sockets().get_connection_info(connection) else {
             return NetworkingConnectionState::None;
         };
 
@@ -135,7 +138,7 @@ impl SteamClientTransport {
             }
         };
 
-        if let Ok(info) = self.networking_sockets.get_connection_info(connection) {
+        if let Ok(info) = self.client.networking_sockets().get_connection_info(connection) {
             return info.end_reason();
         }
 
@@ -153,11 +156,15 @@ impl SteamClientTransport {
         }
 
         let disconnect_state = ConnectionState::Disconnected {
-            end_reason: NetConnectionEnd::MiscGeneric,
+            end_reason: NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
         };
         let old_state = std::mem::replace(&mut self.state, disconnect_state);
         if let ConnectionState::Connected { connection } = old_state {
-            connection.close(NetConnectionEnd::MiscGeneric, Some("Client disconnected"), false);
+            connection.close(
+                NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
+                Some("Client disconnected"),
+                false,
+            );
         }
     }
 
@@ -169,11 +176,12 @@ impl SteamClientTransport {
 
             if let ConnectionState::Connected { connection } = &self.state {
                 let end_reason = self
-                    .networking_sockets
+                    .client
+                    .networking_sockets()
                     .get_connection_info(connection)
                     .map(|info| info.end_reason())
                     .unwrap_or_default()
-                    .unwrap_or(NetConnectionEnd::MiscGeneric);
+                    .unwrap_or(NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()));
 
                 self.state = ConnectionState::Disconnected { end_reason };
             }

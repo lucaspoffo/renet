@@ -1,12 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
+    sync::Mutex,
 };
 
 use renet::{ClientId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
-    networking_types::{ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, NetworkingIdentity, SendFlags},
+    networking_types::NetworkingIdentity,
+    networking_types::{AppNetConnectionEnd, ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
     networking_utils::NetworkingUtils,
     Client, FriendFlags, Friends, LobbyId, Matchmaking, SteamId,
 };
@@ -100,12 +102,8 @@ pub struct SteamServerTransport {
     max_batch_size: usize,
 }
 
-// It's so fine
-// unsafe impl Send for SteamServerTransport {}
-// unsafe impl Sync for SteamServerTransport {}
-
 impl SteamServerTransport {
-    pub fn new(client: &Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
+    pub fn new(client: Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
         let options = socket_options.configs;
         let networking = client.networking_sockets();
 
@@ -123,9 +121,9 @@ impl SteamServerTransport {
 
         Ok(Self {
             listen_socket,
-            matchmaking,
-            friends,
             networking_utils,
+            friends,
+            matchmaking,
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
@@ -146,9 +144,11 @@ impl SteamServerTransport {
     /// Disconnects a client from the server.
     pub fn disconnect_client(&mut self, client_id: ClientId, server: &mut RenetServer, flush_last_packets: bool) {
         if let Some((_key, value)) = self.connections.remove_entry(&client_id) {
-            let _ = value
-                .net_connection
-                .close(NetConnectionEnd::MiscGeneric, Some("Client was kicked"), flush_last_packets);
+            let _ = value.net_connection.close(
+                NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
+                Some("Client was kicked"),
+                flush_last_packets,
+            );
         }
         server.remove_connection(client_id);
     }
@@ -158,7 +158,7 @@ impl SteamServerTransport {
         let keys = self.connections.keys().cloned().collect::<Vec<ClientId>>();
         for client_id in keys {
             let _ = self.connections.remove_entry(&client_id).unwrap().1.net_connection.close(
-                NetConnectionEnd::MiscGeneric,
+                NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()),
                 Some("Client was kicked"),
                 flush_last_packets,
             );
@@ -234,6 +234,15 @@ impl SteamServerTransport {
                         log::error!("Error while processing payload for {}: {}", client_id, e);
                     };
                 });
+            }
+        }
+
+        for disconnection_id in server.disconnections_id() {
+            server.remove_connection(disconnection_id);
+            if let Some(connection) = self.connections.remove(&disconnection_id) {
+                connection
+                    .net_connection
+                    .close(NetConnectionEnd::App(AppNetConnectionEnd::generic_normal()), Some("Renet"), false);
             }
         }
     }

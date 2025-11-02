@@ -78,7 +78,7 @@ fn run_server(steam_client: Client, with_lobby: bool) {
     // Allows for both p2p steam ID connections and connections via IP.
     // Both methods require the client to be authenticated through steam.
     let socket_options = SteamServerSocketOptions::new_p2p().with_address("0.0.0.0:5000".parse().unwrap());
-    let mut transport = SteamServerTransport::new(&steam_client, steam_transport_config, socket_options).unwrap();
+    let mut transport = SteamServerTransport::new(steam_client.clone(), steam_transport_config, socket_options).unwrap();
 
     let mut received_messages = vec![];
     let mut last_updated = Instant::now();

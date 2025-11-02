@@ -22,7 +22,7 @@ pub struct PlayerInput {
     pub right: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Event)]
+#[derive(Debug, Serialize, Deserialize, Message)]
 pub enum PlayerCommand {
     BasicAttack { cast_at: Vec3 },
 }

@@ -11,7 +11,7 @@ pub struct SteamServerPlugin;
 
 pub struct SteamClientPlugin;
 
-#[derive(Debug, Event)]
+#[derive(Debug, Message)]
 pub struct SteamTransportError(pub SteamError);
 
 impl std::fmt::Display for SteamTransportError {
@@ -54,7 +54,7 @@ impl SteamServerPlugin {
     }
 
     pub fn disconnect_on_exit(
-        exit: EventReader<AppExit>,
+        exit: MessageReader<AppExit>,
         mut transport: Option<NonSendMut<SteamServerTransport>>,
         mut server: ResMut<RenetServer>,
     ) {
@@ -68,7 +68,7 @@ impl SteamServerPlugin {
 
 impl Plugin for SteamClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<SteamTransportError>();
+        app.add_message::<SteamTransportError>();
 
         app.add_systems(
             PreUpdate,
@@ -103,7 +103,7 @@ impl SteamClientPlugin {
     pub fn send_packets(
         mut transport: ResMut<SteamClientTransport>,
         mut client: ResMut<RenetClient>,
-        mut transport_errors: EventWriter<SteamTransportError>,
+        mut transport_errors: MessageWriter<SteamTransportError>,
     ) {
         if let Err(e) = transport.send_packets(&mut client) {
             println!("ERROR SENDING PACKET - {e:?}");
@@ -111,7 +111,7 @@ impl SteamClientPlugin {
         }
     }
 
-    pub fn disconnect_on_exit(exit: EventReader<AppExit>, mut transport: ResMut<SteamClientTransport>) {
+    pub fn disconnect_on_exit(exit: MessageReader<AppExit>, mut transport: ResMut<SteamClientTransport>) {
         if !exit.is_empty() {
             transport.disconnect();
         }
