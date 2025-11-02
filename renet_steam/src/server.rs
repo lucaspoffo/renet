@@ -91,11 +91,10 @@ struct ConnectionInformation {
     listen_socket_index: usize,
 }
 
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamServerTransport {
-    listen_socket: Vec<ListenSocket>,
-    networking_utils: NetworkingUtils,
-    matchmaking: Matchmaking,
-    friends: Friends,
+    client: Client,
+    listen_socket: Mutex<Vec<ListenSocket>>,
     max_clients: usize,
     access_permission: AccessPermission,
     connections: HashMap<ClientId, ConnectionInformation>,
@@ -115,15 +114,9 @@ impl SteamServerTransport {
             listen_socket.push(networking.create_listen_socket_ip(addr, options.clone())?);
         }
 
-        let matchmaking = client.matchmaking();
-        let friends = client.friends();
-        let networking_utils = client.networking_utils();
-
         Ok(Self {
-            listen_socket,
-            networking_utils,
-            friends,
-            matchmaking,
+            listen_socket: Mutex::new(listen_socket),
+            client,
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
@@ -168,7 +161,7 @@ impl SteamServerTransport {
 
     /// Update server connections, and receive packets from the network.
     pub fn update(&mut self, server: &mut RenetServer) {
-        for (listen_socket_index, listen_socket) in self.listen_socket.iter().enumerate() {
+        for (listen_socket_index, listen_socket) in self.listen_socket.lock().unwrap().iter().enumerate() {
             while let Some(event) = listen_socket.try_receive_event() {
                 match event {
                     ListenSocketEvent::Connected(event) => {
@@ -204,12 +197,12 @@ impl SteamServerTransport {
                             AccessPermission::Public => true,
                             AccessPermission::Private => false,
                             AccessPermission::FriendsOnly => {
-                                let friend = self.friends.get_friend(steam_id);
+                                let friend = self.client.friends().get_friend(steam_id);
                                 friend.has_friend(FriendFlags::IMMEDIATE)
                             }
                             AccessPermission::InList(list) => list.contains(&steam_id),
                             AccessPermission::InLobby(lobby) => {
-                                let users_in_lobby = self.matchmaking.lobby_members(*lobby);
+                                let users_in_lobby = self.client.matchmaking().lobby_members(*lobby);
                                 users_in_lobby.contains(&steam_id)
                             }
                         };
@@ -257,11 +250,11 @@ impl SteamServerTransport {
 
             let packets = server.get_packets_to_send(client_id).unwrap();
 
-            let listen_socket = &self.listen_socket[connection_info.listen_socket_index];
+            let listen_socket = &self.listen_socket.lock().unwrap()[connection_info.listen_socket_index];
             let identity = NetworkingIdentity::new_steam_id(SteamId::from_raw(client_id));
 
             let messages_to_send = packets.into_iter().map(|data| {
-                let mut msg = self.networking_utils.allocate_message(data.len());
+                let mut msg = self.client.networking_utils().allocate_message(data.len());
                 msg.set_connection(&connection_info.net_connection);
                 msg.set_send_flags(SendFlags::UNRELIABLE);
                 msg.set_identity_peer(identity.clone());

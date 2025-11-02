@@ -149,9 +149,9 @@ fn run_client(steam_client: Client, server_steam_id: Option<SteamId>, lobby_id: 
     let mut client = RenetClient::new(connection_config);
 
     let mut transport = if let Some(server_steam_id) = server_steam_id {
-        SteamClientTransport::new_p2p(&steam_client, &server_steam_id).unwrap()
+        SteamClientTransport::new_p2p(steam_client.clone(), &server_steam_id).unwrap()
     } else {
-        SteamClientTransport::new_ip(&steam_client, "127.0.0.1:5000".parse().unwrap()).unwrap()
+        SteamClientTransport::new_ip(steam_client.clone(), "127.0.0.1:5000".parse().unwrap()).unwrap()
     };
 
     let stdin_channel: Receiver<String> = spawn_stdin_channel();
