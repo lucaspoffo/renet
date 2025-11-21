@@ -14,5 +14,5 @@ bevy = ["dep:bevy_ecs"]
 
 [dependencies]
 renet = { path = "../renet", version = "1.2.0" }
-egui = "0.32"
+egui = "0.33"
 bevy_ecs = { version = "0.17", optional = true }
