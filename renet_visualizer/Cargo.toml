@@ -13,6 +13,6 @@ edition = "2021"
 bevy = ["dep:bevy_ecs"]
 
 [dependencies]
-renet = { path = "../renet", version = "1.2.0" }
-egui = "0.32"
-bevy_ecs = { version = "0.17", optional = true }
+renet = { path = "../renet" }
+egui.workspace = true
+bevy_ecs = { workspace = true, optional = true }

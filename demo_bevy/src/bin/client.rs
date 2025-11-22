@@ -8,13 +8,10 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{
-    client_connected,
     renet::{ClientId, RenetClient},
-    RenetClientPlugin,
+    RenetClientPlugin
 };
-use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
+use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 
 #[derive(Component)]
@@ -42,8 +39,9 @@ struct Connected;
 
 #[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
+    use bevy_renet::client_connected;
     use bevy_renet::netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeTransportError};
-    use demo_bevy::PROTOCOL_ID;
+    use demo_bevy::{connection_config, PROTOCOL_ID};
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(NetcodeClientPlugin);
@@ -82,7 +80,9 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
+    use bevy_renet::client_connected;
     use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use demo_bevy::connection_config;
     use steamworks::SteamId;
 
     let steam_client = steamworks::Client::init_app(480).unwrap();

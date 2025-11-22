@@ -14,10 +14,10 @@ edition = "2021"
 bevy = ["dep:bevy_ecs"]
 
 [dependencies]
-renet = { version = "1.2.0", path = "../renet" }
-steamworks = "0.12.2"
-log = "0.4.22"
-bevy_ecs = { version = "0.17", optional = true }
+renet = { path = "../renet" }
+steamworks.workspace = true
+log.workspace = true
+bevy_ecs = { workspace = true, optional = true }
 
 [dev-dependencies]
-env_logger = "0.11"
+env_logger.workspace = true
