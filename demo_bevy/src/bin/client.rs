@@ -9,7 +9,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{
     renet::{ClientId, RenetClient},
-    RenetClientPlugin
+    RenetClientPlugin,
 };
 use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
