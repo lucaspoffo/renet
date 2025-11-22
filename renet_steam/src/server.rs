@@ -7,10 +7,9 @@ use std::{
 use renet::{ClientId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
-    networking_types::NetworkingIdentity,
-    networking_types::{AppNetConnectionEnd, ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, SendFlags},
+    networking_types::{AppNetConnectionEnd, ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, NetworkingIdentity, SendFlags},
     networking_utils::NetworkingUtils,
-    Client, FriendFlags, Friends, LobbyId, Matchmaking, SteamId,
+    Client, FriendFlags, Friends, LobbyId, Matchmaking, Server, SteamId,
 };
 
 use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
@@ -91,9 +90,14 @@ struct ConnectionInformation {
     listen_socket_index: usize,
 }
 
+enum ServerType {
+    Client(Client),
+    Server { server: Server, client: Client },
+}
+
 #[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamServerTransport {
-    client: Client,
+    server_type: ServerType,
     listen_socket: Mutex<Vec<ListenSocket>>,
     max_clients: usize,
     access_permission: AccessPermission,
@@ -116,7 +120,34 @@ impl SteamServerTransport {
 
         Ok(Self {
             listen_socket: Mutex::new(listen_socket),
-            client,
+            server_type: ServerType::Client(client),
+            max_clients: config.max_clients,
+            access_permission: config.access_permission,
+            connections: HashMap::new(),
+            max_batch_size: socket_options.max_batch_size,
+        })
+    }
+
+    pub fn new_server(
+        server: Server,
+        client: Client,
+        config: SteamServerConfig,
+        socket_options: SteamServerSocketOptions,
+    ) -> Result<Self, InvalidHandle> {
+        let options = socket_options.configs;
+        let networking = server.networking_sockets();
+
+        let mut listen_socket = vec![];
+        if socket_options.p2p {
+            listen_socket.push(networking.create_listen_socket_p2p(0, options.clone())?);
+        }
+        if let Some(addr) = socket_options.socket_addr {
+            listen_socket.push(networking.create_listen_socket_ip(addr, options.clone())?);
+        }
+
+        Ok(Self {
+            listen_socket: Mutex::new(listen_socket),
+            server_type: ServerType::Server { client, server },
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
@@ -196,15 +227,21 @@ impl SteamServerTransport {
                         let permitted = match &self.access_permission {
                             AccessPermission::Public => true,
                             AccessPermission::Private => false,
-                            AccessPermission::FriendsOnly => {
-                                let friend = self.client.friends().get_friend(steam_id);
-                                friend.has_friend(FriendFlags::IMMEDIATE)
-                            }
+                            AccessPermission::FriendsOnly => match &self.server_type {
+                                ServerType::Client(client) => {
+                                    let friend = client.friends().get_friend(steam_id);
+                                    friend.has_friend(FriendFlags::IMMEDIATE)
+                                }
+                                ServerType::Server { server: _, client: _ } => true,
+                            },
                             AccessPermission::InList(list) => list.contains(&steam_id),
-                            AccessPermission::InLobby(lobby) => {
-                                let users_in_lobby = self.client.matchmaking().lobby_members(*lobby);
-                                users_in_lobby.contains(&steam_id)
-                            }
+                            AccessPermission::InLobby(lobby) => match &self.server_type {
+                                ServerType::Client(client) => {
+                                    let users_in_lobby = client.matchmaking().lobby_members(*lobby);
+                                    users_in_lobby.contains(&steam_id)
+                                }
+                                ServerType::Server { server: _, client: _ } => true,
+                            },
                         };
 
                         if permitted {
@@ -254,7 +291,12 @@ impl SteamServerTransport {
             let identity = NetworkingIdentity::new_steam_id(SteamId::from_raw(client_id));
 
             let messages_to_send = packets.into_iter().map(|data| {
-                let mut msg = self.client.networking_utils().allocate_message(data.len());
+                let client = match &self.server_type {
+                    ServerType::Client(client) => client,
+                    ServerType::Server { server: _, client } => client,
+                };
+
+                let mut msg = client.networking_utils().allocate_message(data.len());
                 msg.set_connection(&connection_info.net_connection);
                 msg.set_send_flags(SendFlags::UNRELIABLE);
                 msg.set_identity_peer(identity.clone());
