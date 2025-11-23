@@ -8,10 +8,11 @@ allow = [
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "Zlib",
     "ISC",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
     "CC0-1.0",
     "BSL-1.0",
  ]
