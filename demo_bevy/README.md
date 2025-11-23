@@ -6,10 +6,10 @@ Simple bevy application to demonstrates how you could replicate entities and sen
 
 ## How to run
 
-Running using the netcode transport:
+Running using the netcode transport (default):
 
-- server: `cargo run --bin server --features netcode`
-- client: `cargo run --bin client --features netcode`
+- server: `cargo run --bin server`
+- client: `cargo run --bin client`
 
 Running using the steam transport:
 
