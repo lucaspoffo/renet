@@ -79,7 +79,6 @@ pub enum RenetConnectionStatus {
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct RenetClient {
     packet_sequence: u64,
     current_time: Duration,

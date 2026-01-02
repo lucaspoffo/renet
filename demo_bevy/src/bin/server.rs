@@ -6,8 +6,8 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{
-    renet::{ClientId, RenetServer, ServerEvent},
-    RenetServerPlugin,
+    renet::{self, ClientId},
+    RenetServer, RenetServerPlugin, ServerEvent,
 };
 use demo_bevy::{
     setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
@@ -137,10 +137,10 @@ fn server_update_system(
     players: Query<(Entity, &Player, &Transform)>,
 ) {
     for event in server_events.read() {
-        match event {
-            ServerEvent::ClientConnected { client_id } => {
+        match **event {
+            renet::ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
-                visualizer.add_client(*client_id);
+                visualizer.add_client(client_id);
 
                 // Initialize other players for this new client
                 for (entity, player, transform) in players.iter() {
@@ -151,7 +151,7 @@ fn server_update_system(
                         translation,
                     })
                     .unwrap();
-                    server.send_message(*client_id, ServerChannel::ServerMessages, message);
+                    server.send_message(client_id, ServerChannel::ServerMessages, message);
                 }
 
                 // Spawn new player
@@ -164,28 +164,28 @@ fn server_update_system(
                     ))
                     .insert(PlayerInput::default())
                     .insert(Velocity::default())
-                    .insert(Player { id: *client_id })
+                    .insert(Player { id: client_id })
                     .id();
 
-                lobby.players.insert(*client_id, player_entity);
+                lobby.players.insert(client_id, player_entity);
 
                 let translation: [f32; 3] = transform.translation.into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {
-                    id: *client_id,
+                    id: client_id,
                     entity: player_entity,
                     translation,
                 })
                 .unwrap();
                 server.broadcast_message(ServerChannel::ServerMessages, message);
             }
-            ServerEvent::ClientDisconnected { client_id, reason } => {
+            renet::ServerEvent::ClientDisconnected { client_id, reason } => {
                 println!("Player {} disconnected: {}", client_id, reason);
-                visualizer.remove_client(*client_id);
-                if let Some(player_entity) = lobby.players.remove(client_id) {
+                visualizer.remove_client(client_id);
+                if let Some(player_entity) = lobby.players.remove(&client_id) {
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: client_id }).unwrap();
                 server.broadcast_message(ServerChannel::ServerMessages, message);
             }
         }

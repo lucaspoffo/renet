@@ -7,11 +7,7 @@ description = "netcode transport for the renet crate: Server/Client network libr
 repository = "https://github.com/lucaspoffo/renet"
 license = "MIT OR Apache-2.0"
 
-[features]
-bevy = ["dep:bevy_ecs"]
-
 [dependencies]
 renet = { version = "1.2.0", path = "../renet" }
 renetcode = { path = "../renetcode", version = "1.0.0" }
-bevy_ecs = { version = "0.18.0-rc.1", optional = true }
 log = "0.4.22"

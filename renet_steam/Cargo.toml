@@ -10,14 +10,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-bevy = ["dep:bevy_ecs"]
-
 [dependencies]
 renet = { version = "1.2.0", path = "../renet" }
 steamworks = "0.12.2"
 log = "0.4.22"
-bevy_ecs = { version = "0.18.0-rc.1", optional = true }
 
 [dev-dependencies]
 env_logger = "0.11"

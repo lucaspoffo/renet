@@ -1,11 +1,14 @@
 use bevy::mesh::PlaneMeshBuilder;
 use bevy::prelude::*;
-use bevy_renet::netcode::{
-    ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport, NetcodeTransportError,
-    ServerAuthentication, ServerConfig,
+use bevy_renet::{
+    client_connected,
+    netcode::{
+        renet_netcode::{ClientAuthentication, ServerAuthentication, ServerConfig},
+        NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport, NetcodeTransportError,
+    },
+    renet::{self, ClientId, ConnectionConfig, DefaultChannel},
+    RenetClient, RenetClientPlugin, RenetServer, RenetServerPlugin, ServerEvent,
 };
-use bevy_renet::renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
-use bevy_renet::{client_connected, RenetClientPlugin, RenetServerPlugin};
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -131,8 +134,8 @@ fn server_update_system(
     mut server: ResMut<RenetServer>,
 ) {
     for event in server_events.read() {
-        match event {
-            ServerEvent::ClientConnected { client_id } => {
+        match **event {
+            renet::ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
                 // Spawn player cube
                 let player_entity = commands
@@ -142,28 +145,28 @@ fn server_update_system(
                         Transform::from_xyz(0.0, 0.5, 0.0),
                     ))
                     .insert(PlayerInput::default())
-                    .insert(Player { id: *client_id })
+                    .insert(Player { id: client_id })
                     .id();
 
                 // We could send an InitState with all the players id and positions for the client
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
                     let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(*client_id, DefaultChannel::ReliableOrdered, message);
+                    server.send_message(client_id, DefaultChannel::ReliableOrdered, message);
                 }
 
-                lobby.players.insert(*client_id, player_entity);
+                lobby.players.insert(client_id, player_entity);
 
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
-            ServerEvent::ClientDisconnected { client_id, reason } => {
+            renet::ServerEvent::ClientDisconnected { client_id, reason } => {
                 println!("Player {} disconnected: {}", client_id, reason);
-                if let Some(player_entity) = lobby.players.remove(client_id) {
+                if let Some(player_entity) = lobby.players.remove(&client_id) {
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
         }

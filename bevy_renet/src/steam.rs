@@ -1,24 +1,20 @@
+use std::fmt::{self, Display, Formatter};
+
+pub use renet_steam;
+
 use bevy_app::{prelude::*, AppExit};
+use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
-use renet::{RenetClient, RenetServer};
-use steamworks::SteamError;
+use renet_steam::{
+    steamworks::{networking_sockets::InvalidHandle, Client, SteamError, SteamId},
+    SteamServerConfig,
+};
 
-use crate::{RenetClientPlugin, RenetReceive, RenetSend, RenetServerPlugin};
-
-pub use renet_steam::*;
+use crate::{RenetClient, RenetClientPlugin, RenetReceive, RenetSend, RenetServer, RenetServerPlugin};
 
 pub struct SteamServerPlugin;
 
 pub struct SteamClientPlugin;
-
-#[derive(Debug, Message)]
-pub struct SteamTransportError(pub SteamError);
-
-impl std::fmt::Display for SteamTransportError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "{}", self.0)
-    }
-}
 
 impl Plugin for SteamServerPlugin {
     fn build(&self, app: &mut App) {
@@ -43,13 +39,13 @@ impl Plugin for SteamServerPlugin {
 impl SteamServerPlugin {
     pub fn update_system(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
         if let Some(transport) = transport.as_mut() {
-            transport.update(&mut server);
+            transport.update(&mut **server);
         }
     }
 
     pub fn send_packets(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
         if let Some(transport) = transport.as_mut() {
-            transport.send_packets(&mut server);
+            transport.send_packets(&mut *server);
         }
     }
 
@@ -114,5 +110,32 @@ impl SteamClientPlugin {
         if !exit.is_empty() {
             transport.disconnect();
         }
+    }
+}
+
+#[derive(Resource, Deref, DerefMut)]
+pub struct SteamClientTransport(pub renet_steam::SteamClientTransport);
+
+impl SteamClientTransport {
+    pub fn new(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamClientTransport::new(client, steam_id).map(Self)
+    }
+}
+
+#[derive(Resource, Deref, DerefMut)]
+pub struct SteamServerTransport(pub renet_steam::SteamServerTransport);
+
+impl SteamServerTransport {
+    pub fn new(client: Client, config: SteamServerConfig) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamServerTransport::new(client, config).map(Self)
+    }
+}
+
+#[derive(Debug, Message)]
+pub struct SteamTransportError(pub SteamError);
+
+impl Display for SteamTransportError {
+    fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.0)
     }
 }

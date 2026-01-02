@@ -1,16 +1,13 @@
 use std::collections::HashMap;
 
-use bevy::window::{PrimaryWindow, Window};
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::Vec3,
     prelude::*,
+    window::{PrimaryWindow, Window},
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
-use bevy_renet::{
-    renet::{ClientId, RenetClient},
-    RenetClientPlugin,
-};
+use bevy_renet::{renet::ClientId, RenetClient, RenetClientPlugin};
 use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 

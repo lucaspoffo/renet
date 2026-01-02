@@ -1,10 +1,10 @@
 pub use renet;
 
 use bevy_app::prelude::*;
+use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_time::prelude::*;
-
-use renet::{RenetClient, RenetServer, ServerEvent};
+use renet::ConnectionConfig;
 
 #[cfg(feature = "netcode")]
 pub mod netcode;
@@ -55,7 +55,7 @@ impl RenetServerPlugin {
 
     pub fn emit_server_events_system(mut server: ResMut<RenetServer>, mut server_messages: MessageWriter<ServerEvent>) {
         while let Some(event) = server.get_event() {
-            server_messages.write(event);
+            server_messages.write(event.into());
         }
     }
 }
@@ -107,4 +107,31 @@ pub fn client_just_disconnected(mut last_connected: Local<bool>, client: Option<
     let just_disconnected = *last_connected && disconnected;
     *last_connected = !disconnected;
     just_disconnected
+}
+
+#[derive(Resource, Deref, DerefMut, Debug)]
+pub struct RenetClient(pub renet::RenetClient);
+
+impl RenetClient {
+    pub fn new(connection_config: ConnectionConfig) -> Self {
+        Self(renet::RenetClient::new(connection_config))
+    }
+}
+
+#[derive(Resource, Deref, DerefMut, Debug)]
+pub struct RenetServer(pub renet::RenetServer);
+
+impl RenetServer {
+    pub fn new(connection_config: ConnectionConfig) -> Self {
+        Self(renet::RenetServer::new(connection_config))
+    }
+}
+
+#[derive(Message, Deref, DerefMut, Debug, PartialEq, Eq)]
+pub struct ServerEvent(pub renet::ServerEvent);
+
+impl From<renet::ServerEvent> for ServerEvent {
+    fn from(value: renet::ServerEvent) -> Self {
+        Self(value)
+    }
 }
