@@ -8,13 +8,10 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{
-    client_connected,
     renet::{ClientId, RenetClient},
     RenetClientPlugin,
 };
-use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
+use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
 use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 
 #[derive(Component)]
@@ -48,9 +45,9 @@ fn add_netcode_network(app: &mut App) {
 
     app.add_plugins(NetcodeClientPlugin);
 
-    app.configure_sets(Update, Connected.run_if(client_connected));
+    app.configure_sets(Update, Connected.run_if(bevy_renet::client_connected));
 
-    let client = RenetClient::new(connection_config());
+    let client = RenetClient::new(demo_bevy::connection_config());
 
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -93,7 +90,7 @@ fn add_steam_network(app: &mut App) {
     let server_steam_id: u64 = args[1].parse().unwrap();
     let server_steam_id = SteamId::from_raw(server_steam_id);
 
-    let client = RenetClient::new(connection_config());
+    let client = RenetClient::new(demo_bevy::connection_config());
     let transport = SteamClientTransport::new(steam_client.clone(), &server_steam_id).unwrap();
 
     app.add_plugins(SteamClientPlugin);
@@ -102,7 +99,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
     app.insert_non_send_resource(steam_client);
 
-    app.configure_sets(Update, Connected.run_if(client_connected));
+    app.configure_sets(Update, Connected.run_if(bevy_renet::client_connected));
 
     fn steam_callbacks(client: NonSend<steamworks::Client>) {
         client.run_callbacks();
