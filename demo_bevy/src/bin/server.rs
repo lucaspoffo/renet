@@ -5,7 +5,10 @@ use bevy::{
     prelude::*,
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
-use bevy_renet::{renet::ClientId, RenetServer, RenetServerPlugin, ServerEvent};
+use bevy_renet::{
+    renet::{ClientId, ServerEvent},
+    RenetServer, RenetServerEvent, RenetServerPlugin,
+};
 use demo_bevy::{
     setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
     ServerMessages, Velocity,
@@ -99,6 +102,8 @@ fn main() {
     #[cfg(feature = "steam")]
     add_steam_network(&mut app);
 
+    app.add_observer(update_clients);
+
     app.add_systems(
         Update,
         (
@@ -122,9 +127,8 @@ fn main() {
     app.run();
 }
 
-#[allow(clippy::too_many_arguments)]
-fn server_update_system(
-    mut server_events: MessageReader<ServerEvent>,
+fn update_clients(
+    server_event: On<RenetServerEvent>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -133,61 +137,69 @@ fn server_update_system(
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
     players: Query<(Entity, &Player, &Transform)>,
 ) {
-    for event in server_events.read() {
-        match event {
-            ServerEvent::ClientConnected { client_id } => {
-                println!("Player {} connected.", client_id);
-                visualizer.add_client(*client_id);
+    match **server_event {
+        ServerEvent::ClientConnected { client_id } => {
+            println!("Player {} connected.", client_id);
+            visualizer.add_client(client_id);
 
-                // Initialize other players for this new client
-                for (entity, player, transform) in players.iter() {
-                    let translation: [f32; 3] = transform.translation.into();
-                    let message = bincode::serialize(&ServerMessages::PlayerCreate {
-                        id: player.id,
-                        entity,
-                        translation,
-                    })
-                    .unwrap();
-                    server.send_message(*client_id, ServerChannel::ServerMessages, message);
-                }
-
-                // Spawn new player
-                let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
-                let player_entity = commands
-                    .spawn((
-                        Mesh3d(meshes.add(Mesh::from(Capsule3d::default()))),
-                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-                        transform,
-                    ))
-                    .insert(PlayerInput::default())
-                    .insert(Velocity::default())
-                    .insert(Player { id: *client_id })
-                    .id();
-
-                lobby.players.insert(*client_id, player_entity);
-
+            // Initialize other players for this new client
+            for (entity, player, transform) in players.iter() {
                 let translation: [f32; 3] = transform.translation.into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {
-                    id: *client_id,
-                    entity: player_entity,
+                    id: player.id,
+                    entity,
                     translation,
                 })
                 .unwrap();
-                server.broadcast_message(ServerChannel::ServerMessages, message);
+                server.send_message(client_id, ServerChannel::ServerMessages, message);
             }
-            ServerEvent::ClientDisconnected { client_id, reason } => {
-                println!("Player {} disconnected: {}", client_id, reason);
-                visualizer.remove_client(*client_id);
-                if let Some(player_entity) = lobby.players.remove(client_id) {
-                    commands.entity(player_entity).despawn();
-                }
 
-                let message = bincode::serialize(&ServerMessages::PlayerRemove { id: *client_id }).unwrap();
-                server.broadcast_message(ServerChannel::ServerMessages, message);
+            // Spawn new player
+            let transform = Transform::from_xyz((fastrand::f32() - 0.5) * 40., 0.51, (fastrand::f32() - 0.5) * 40.);
+            let player_entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(Mesh::from(Capsule3d::default()))),
+                    MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+                    transform,
+                ))
+                .insert(PlayerInput::default())
+                .insert(Velocity::default())
+                .insert(Player { id: client_id })
+                .id();
+
+            lobby.players.insert(client_id, player_entity);
+
+            let translation: [f32; 3] = transform.translation.into();
+            let message = bincode::serialize(&ServerMessages::PlayerCreate {
+                id: client_id,
+                entity: player_entity,
+                translation,
+            })
+            .unwrap();
+            server.broadcast_message(ServerChannel::ServerMessages, message);
+        }
+        ServerEvent::ClientDisconnected { client_id, reason } => {
+            println!("Player {} disconnected: {}", client_id, reason);
+            visualizer.remove_client(client_id);
+            if let Some(player_entity) = lobby.players.remove(&client_id) {
+                commands.entity(player_entity).despawn();
             }
+
+            let message = bincode::serialize(&ServerMessages::PlayerRemove { id: client_id }).unwrap();
+            server.broadcast_message(ServerChannel::ServerMessages, message);
         }
     }
+}
 
+#[allow(clippy::too_many_arguments)]
+fn server_update_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    lobby: Res<ServerLobby>,
+    mut server: ResMut<RenetServer>,
+    transforms: Query<&Transform>,
+) {
     for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, ClientChannel::Command) {
             let command: PlayerCommand = bincode::deserialize(&message).unwrap();
@@ -196,7 +208,7 @@ fn server_update_system(
                     println!("Received basic attack from client {}: {:?}", client_id, cast_at);
 
                     if let Some(player_entity) = lobby.players.get(&client_id) {
-                        if let Ok((_, _, player_transform)) = players.get(*player_entity) {
+                        if let Ok(player_transform) = transforms.get(*player_entity) {
                             cast_at[1] = player_transform.translation[1];
 
                             let direction = (cast_at - player_transform.translation).normalize_or_zero();

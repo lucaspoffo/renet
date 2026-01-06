@@ -4,7 +4,7 @@ use bevy_app::prelude::*;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_time::prelude::*;
-use renet::{ClientId, ConnectionConfig, DisconnectReason};
+use renet::{ConnectionConfig, ServerEvent};
 
 #[cfg(feature = "netcode")]
 pub mod netcode;
@@ -36,7 +36,6 @@ pub struct RenetClientPlugin;
 
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Messages<ServerEvent>>();
         app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>));
         app.add_systems(
             PreUpdate,
@@ -53,9 +52,9 @@ impl RenetServerPlugin {
         server.update(time.delta());
     }
 
-    pub fn emit_server_events_system(mut server: ResMut<RenetServer>, mut server_messages: MessageWriter<ServerEvent>) {
+    pub fn emit_server_events_system(mut commands: Commands, mut server: ResMut<RenetServer>) {
         while let Some(event) = server.get_event() {
-            server_messages.write(event.into());
+            commands.trigger(RenetServerEvent(event));
         }
     }
 }
@@ -127,17 +126,11 @@ impl RenetServer {
     }
 }
 
-#[derive(Message, Debug, PartialEq, Eq)]
-pub enum ServerEvent {
-    ClientConnected { client_id: ClientId },
-    ClientDisconnected { client_id: ClientId, reason: DisconnectReason },
-}
+#[derive(Event, Debug, Deref, DerefMut, PartialEq, Eq)]
+pub struct RenetServerEvent(pub ServerEvent);
 
-impl From<renet::ServerEvent> for ServerEvent {
-    fn from(value: renet::ServerEvent) -> Self {
-        match value {
-            renet::ServerEvent::ClientConnected { client_id } => Self::ClientConnected { client_id },
-            renet::ServerEvent::ClientDisconnected { client_id, reason } => Self::ClientDisconnected { client_id, reason },
-        }
+impl From<ServerEvent> for RenetServerEvent {
+    fn from(value: ServerEvent) -> Self {
+        Self(value)
     }
 }
