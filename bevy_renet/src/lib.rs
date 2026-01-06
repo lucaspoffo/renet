@@ -4,7 +4,7 @@ use bevy_app::prelude::*;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_time::prelude::*;
-use renet::ConnectionConfig;
+use renet::{ClientId, ConnectionConfig, DisconnectReason};
 
 #[cfg(feature = "netcode")]
 pub mod netcode;
@@ -127,11 +127,17 @@ impl RenetServer {
     }
 }
 
-#[derive(Message, Deref, DerefMut, Debug, PartialEq, Eq)]
-pub struct ServerEvent(pub renet::ServerEvent);
+#[derive(Message, Debug, PartialEq, Eq)]
+pub enum ServerEvent {
+    ClientConnected { client_id: ClientId },
+    ClientDisconnected { client_id: ClientId, reason: DisconnectReason },
+}
 
 impl From<renet::ServerEvent> for ServerEvent {
     fn from(value: renet::ServerEvent) -> Self {
-        Self(value)
+        match value {
+            renet::ServerEvent::ClientConnected { client_id } => Self::ClientConnected { client_id },
+            renet::ServerEvent::ClientDisconnected { client_id, reason } => Self::ClientDisconnected { client_id, reason },
+        }
     }
 }

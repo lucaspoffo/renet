@@ -6,7 +6,7 @@ use bevy_renet::{
         renet_netcode::{ClientAuthentication, ServerAuthentication, ServerConfig},
         NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport, NetcodeTransportError,
     },
-    renet::{self, ClientId, ConnectionConfig, DefaultChannel},
+    renet::{ClientId, ConnectionConfig, DefaultChannel},
     RenetClient, RenetClientPlugin, RenetServer, RenetServerPlugin, ServerEvent,
 };
 
@@ -134,8 +134,8 @@ fn server_update_system(
     mut server: ResMut<RenetServer>,
 ) {
     for event in server_events.read() {
-        match **event {
-            renet::ServerEvent::ClientConnected { client_id } => {
+        match *event {
+            ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
                 // Spawn player cube
                 let player_entity = commands
@@ -160,7 +160,7 @@ fn server_update_system(
                 let message = bincode::serialize(&ServerMessages::PlayerConnected { id: client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
-            renet::ServerEvent::ClientDisconnected { client_id, reason } => {
+            ServerEvent::ClientDisconnected { client_id, reason } => {
                 println!("Player {} disconnected: {}", client_id, reason);
                 if let Some(player_entity) = lobby.players.remove(&client_id) {
                     commands.entity(player_entity).despawn();

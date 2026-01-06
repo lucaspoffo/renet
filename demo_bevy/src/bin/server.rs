@@ -5,10 +5,7 @@ use bevy::{
     prelude::*,
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
-use bevy_renet::{
-    renet::{self, ClientId},
-    RenetServer, RenetServerPlugin, ServerEvent,
-};
+use bevy_renet::{renet::ClientId, RenetServer, RenetServerPlugin, ServerEvent};
 use demo_bevy::{
     setup_level, spawn_fireball, ClientChannel, NetworkedEntities, Player, PlayerCommand, PlayerInput, Projectile, ServerChannel,
     ServerMessages, Velocity,
@@ -137,8 +134,8 @@ fn server_update_system(
     players: Query<(Entity, &Player, &Transform)>,
 ) {
     for event in server_events.read() {
-        match **event {
-            renet::ServerEvent::ClientConnected { client_id } => {
+        match *event {
+            ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
                 visualizer.add_client(client_id);
 
@@ -178,7 +175,7 @@ fn server_update_system(
                 .unwrap();
                 server.broadcast_message(ServerChannel::ServerMessages, message);
             }
-            renet::ServerEvent::ClientDisconnected { client_id, reason } => {
+            ServerEvent::ClientDisconnected { client_id, reason } => {
                 println!("Player {} disconnected: {}", client_id, reason);
                 visualizer.remove_client(client_id);
                 if let Some(player_entity) = lobby.players.remove(&client_id) {
