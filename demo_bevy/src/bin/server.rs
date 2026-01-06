@@ -127,6 +127,7 @@ fn main() {
     app.run();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_clients(
     server_event: On<RenetServerEvent>,
     mut commands: Commands,
