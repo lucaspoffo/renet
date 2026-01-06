@@ -120,7 +120,7 @@ fn main() {
     }
 
     app.add_systems(Startup, setup);
-    app.add_observer(panic_on_error_system);
+    app.add_observer(panic_on_error);
 
     app.run();
 }
@@ -283,6 +283,6 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 
 // If any error is found we just panic
 #[allow(clippy::never_loop)]
-fn panic_on_error_system(error: On<NetcodeErrorEvent>) {
+fn panic_on_error(error: On<NetcodeErrorEvent>) {
     panic!("{}", *error);
 }

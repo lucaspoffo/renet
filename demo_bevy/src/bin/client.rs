@@ -65,11 +65,11 @@ fn add_netcode_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(error: On<NetcodeErrorEvent>) {
+    fn panic_on_error(error: On<NetcodeErrorEvent>) {
         panic!("{}", *error);
     }
 
-    app.add_observer(panic_on_error_system);
+    app.add_observer(panic_on_error);
 }
 
 #[cfg(feature = "steam")]
@@ -104,11 +104,11 @@ fn add_steam_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(error: On<SteamErrorEvent>) {
+    fn panic_on_error(error: On<SteamErrorEvent>) {
         panic!("{}", *error);
     }
 
-    app.add_observer(panic_on_error_system);
+    app.add_observer(panic_on_error);
 }
 
 fn main() {
