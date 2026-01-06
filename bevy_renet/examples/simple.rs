@@ -134,7 +134,7 @@ fn server_update_system(
     mut server: ResMut<RenetServer>,
 ) {
     for event in server_events.read() {
-        match *event {
+        match event {
             ServerEvent::ClientConnected { client_id } => {
                 println!("Player {} connected.", client_id);
                 // Spawn player cube
@@ -145,19 +145,19 @@ fn server_update_system(
                         Transform::from_xyz(0.0, 0.5, 0.0),
                     ))
                     .insert(PlayerInput::default())
-                    .insert(Player { id: client_id })
+                    .insert(Player { id: *client_id })
                     .id();
 
                 // We could send an InitState with all the players id and positions for the client
                 // but this is easier to do.
                 for &player_id in lobby.players.keys() {
                     let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(client_id, DefaultChannel::ReliableOrdered, message);
+                    server.send_message(*client_id, DefaultChannel::ReliableOrdered, message);
                 }
 
-                lobby.players.insert(client_id, player_entity);
+                lobby.players.insert(*client_id, player_entity);
 
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
             ServerEvent::ClientDisconnected { client_id, reason } => {
@@ -166,7 +166,7 @@ fn server_update_system(
                     commands.entity(player_entity).despawn();
                 }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: client_id }).unwrap();
+                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *client_id }).unwrap();
                 server.broadcast_message(DefaultChannel::ReliableOrdered, message);
             }
         }
