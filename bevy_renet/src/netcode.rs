@@ -153,19 +153,31 @@ impl NetcodeServerTransport {
     }
 }
 
-#[derive(Message, Deref, DerefMut, Debug)]
-pub struct NetcodeTransportError(pub renet_netcode::NetcodeTransportError);
+#[derive(Message, Debug)]
+pub enum NetcodeTransportError {
+    Netcode(NetcodeError),
+    Renet(renet::DisconnectReason),
+    IO(std::io::Error),
+}
 
 impl Error for NetcodeTransportError {}
 
 impl Display for NetcodeTransportError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+    fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::Netcode(err) => err.fmt(fmt),
+            Self::Renet(err) => err.fmt(fmt),
+            Self::IO(err) => err.fmt(fmt),
+        }
     }
 }
 
 impl From<renet_netcode::NetcodeTransportError> for NetcodeTransportError {
     fn from(value: renet_netcode::NetcodeTransportError) -> Self {
-        Self(value)
+        match value {
+            renet_netcode::NetcodeTransportError::Netcode(netcode_error) => Self::Netcode(netcode_error),
+            renet_netcode::NetcodeTransportError::Renet(disconnect_reason) => Self::Renet(disconnect_reason),
+            renet_netcode::NetcodeTransportError::IO(error) => Self::IO(error),
+        }
     }
 }
