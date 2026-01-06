@@ -128,7 +128,7 @@ impl SteamServerTransport {
     }
 }
 
-#[derive(Debug, Message)]
+#[derive(Debug, Message, Deref)]
 pub struct SteamTransportError(pub SteamError);
 
 impl Display for SteamTransportError {
