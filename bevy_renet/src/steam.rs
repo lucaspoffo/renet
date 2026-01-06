@@ -36,13 +36,13 @@ impl Plugin for SteamServerPlugin {
 impl SteamServerPlugin {
     pub fn update_system(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
         if let Some(transport) = transport.as_mut() {
-            transport.update(&mut **server);
+            transport.update(&mut server);
         }
     }
 
     pub fn send_packets(mut transport: Option<NonSendMut<SteamServerTransport>>, mut server: ResMut<RenetServer>) {
         if let Some(transport) = transport.as_mut() {
-            transport.send_packets(&mut *server);
+            transport.send_packets(&mut server);
         }
     }
 
