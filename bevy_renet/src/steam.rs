@@ -61,8 +61,6 @@ impl SteamServerPlugin {
 
 impl Plugin for SteamClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<SteamTransportError>();
-
         app.add_systems(
             PreUpdate,
             Self::update_system
@@ -93,13 +91,9 @@ impl SteamClientPlugin {
         transport.update(&mut client);
     }
 
-    pub fn send_packets(
-        mut transport: ResMut<SteamClientTransport>,
-        mut client: ResMut<RenetClient>,
-        mut transport_errors: MessageWriter<SteamTransportError>,
-    ) {
+    pub fn send_packets(mut commands: Commands, mut transport: ResMut<SteamClientTransport>, mut client: ResMut<RenetClient>) {
         if let Err(e) = transport.send_packets(&mut client) {
-            transport_errors.write(SteamTransportError(e));
+            commands.trigger(SteamErrorEvent(e));
         }
     }
 
@@ -128,10 +122,10 @@ impl SteamServerTransport {
     }
 }
 
-#[derive(Debug, Message, Deref)]
-pub struct SteamTransportError(pub SteamError);
+#[derive(Event, Debug, Deref)]
+pub struct SteamErrorEvent(pub SteamError);
 
-impl Display for SteamTransportError {
+impl Display for SteamErrorEvent {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
         write!(fmt, "{}", self.0)
     }

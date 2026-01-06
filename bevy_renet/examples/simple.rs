@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use bevy_renet::{
     client_connected,
     netcode::{
-        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport,
-        NetcodeTransportError, ServerAuthentication, ServerConfig,
+        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeErrorEvent, NetcodeServerPlugin, NetcodeServerTransport,
+        ServerAuthentication, ServerConfig,
     },
     renet::{ClientId, ConnectionConfig, DefaultChannel},
     RenetClient, RenetClientPlugin, RenetServer, RenetServerPlugin, ServerEvent,
@@ -120,7 +120,7 @@ fn main() {
     }
 
     app.add_systems(Startup, setup);
-    app.add_systems(Update, panic_on_error_system);
+    app.add_observer(panic_on_error_system);
 
     app.run();
 }
@@ -283,8 +283,6 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 
 // If any error is found we just panic
 #[allow(clippy::never_loop)]
-fn panic_on_error_system(mut renet_error: MessageReader<NetcodeTransportError>) {
-    for e in renet_error.read() {
-        panic!("{}", e);
-    }
+fn panic_on_error_system(error: On<NetcodeErrorEvent>) {
+    panic!("{}", *error);
 }

@@ -21,8 +21,6 @@ pub struct NetcodeClientPlugin;
 
 impl Plugin for NetcodeServerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<NetcodeTransportError>();
-
         app.add_systems(
             PreUpdate,
             Self::update_system
@@ -52,13 +50,13 @@ impl Plugin for NetcodeServerPlugin {
 
 impl NetcodeServerPlugin {
     pub fn update_system(
+        mut commands: Commands,
         mut transport: ResMut<NetcodeServerTransport>,
         mut server: ResMut<RenetServer>,
         time: Res<Time>,
-        mut transport_errors: MessageWriter<NetcodeTransportError>,
     ) {
         if let Err(e) = transport.update(time.delta(), &mut server) {
-            transport_errors.write(e.into());
+            commands.trigger(NetcodeErrorEvent(e));
         }
     }
 
@@ -79,8 +77,6 @@ impl NetcodeServerPlugin {
 
 impl Plugin for NetcodeClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<NetcodeTransportError>();
-
         app.add_systems(
             PreUpdate,
             Self::update_system
@@ -108,23 +104,19 @@ impl Plugin for NetcodeClientPlugin {
 
 impl NetcodeClientPlugin {
     pub fn update_system(
+        mut commands: Commands,
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
         time: Res<Time>,
-        mut transport_errors: MessageWriter<NetcodeTransportError>,
     ) {
         if let Err(e) = transport.update(time.delta(), &mut client) {
-            transport_errors.write(e.into());
+            commands.trigger(NetcodeErrorEvent(e));
         }
     }
 
-    pub fn send_packets(
-        mut transport: ResMut<NetcodeClientTransport>,
-        mut client: ResMut<RenetClient>,
-        mut transport_errors: MessageWriter<NetcodeTransportError>,
-    ) {
+    pub fn send_packets(mut commands: Commands, mut transport: ResMut<NetcodeClientTransport>, mut client: ResMut<RenetClient>) {
         if let Err(e) = transport.send_packets(&mut client) {
-            transport_errors.write(e.into());
+            commands.trigger(NetcodeErrorEvent(e));
         }
     }
 
@@ -153,31 +145,19 @@ impl NetcodeServerTransport {
     }
 }
 
-#[derive(Message, Debug)]
-pub enum NetcodeTransportError {
-    Netcode(NetcodeError),
-    Renet(renet::DisconnectReason),
-    IO(std::io::Error),
-}
+#[derive(Event, Debug, Deref, DerefMut)]
+pub struct NetcodeErrorEvent(pub NetcodeTransportError);
 
-impl Error for NetcodeTransportError {}
+impl Error for NetcodeErrorEvent {}
 
-impl Display for NetcodeTransportError {
+impl Display for NetcodeErrorEvent {
     fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
-        match self {
-            Self::Netcode(err) => err.fmt(fmt),
-            Self::Renet(err) => err.fmt(fmt),
-            Self::IO(err) => err.fmt(fmt),
-        }
+        self.0.fmt(fmt)
     }
 }
 
-impl From<renet_netcode::NetcodeTransportError> for NetcodeTransportError {
-    fn from(value: renet_netcode::NetcodeTransportError) -> Self {
-        match value {
-            renet_netcode::NetcodeTransportError::Netcode(netcode_error) => Self::Netcode(netcode_error),
-            renet_netcode::NetcodeTransportError::Renet(disconnect_reason) => Self::Renet(disconnect_reason),
-            renet_netcode::NetcodeTransportError::IO(error) => Self::IO(error),
-        }
+impl From<NetcodeTransportError> for NetcodeErrorEvent {
+    fn from(value: NetcodeTransportError) -> Self {
+        Self(value)
     }
 }

@@ -36,7 +36,7 @@ struct Connected;
 
 #[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeTransportError};
+    use bevy_renet::netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeErrorEvent};
     use demo_bevy::PROTOCOL_ID;
     use std::{net::UdpSocket, time::SystemTime};
 
@@ -65,18 +65,16 @@ fn add_netcode_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: MessageReader<NetcodeTransportError>) {
-        for e in renet_error.read() {
-            panic!("{}", e);
-        }
+    fn panic_on_error_system(error: On<NetcodeErrorEvent>) {
+        panic!("{}", *error);
     }
 
-    app.add_systems(Update, panic_on_error_system);
+    app.add_observer(panic_on_error_system);
 }
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamErrorEvent};
     use steamworks::SteamId;
 
     let steam_client = steamworks::Client::init_app(480).unwrap();
@@ -106,13 +104,11 @@ fn add_steam_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: MessageReader<SteamTransportError>) {
-        for e in renet_error.read() {
-            panic!("{}", e);
-        }
+    fn panic_on_error_system(error: On<SteamErrorEvent>) {
+        panic!("{}", *error);
     }
 
-    app.add_systems(Update, panic_on_error_system);
+    app.add_observer(panic_on_error_system);
 }
 
 fn main() {
