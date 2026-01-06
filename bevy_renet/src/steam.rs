@@ -1,14 +1,11 @@
 use std::fmt::{self, Display, Formatter};
 
-pub use renet_steam;
+pub use renet_steam::*;
 
 use bevy_app::{prelude::*, AppExit};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
-use renet_steam::{
-    steamworks::{networking_sockets::InvalidHandle, Client, SteamError, SteamId},
-    SteamServerConfig,
-};
+use steamworks::{networking_sockets::InvalidHandle, Client, SteamError, SteamId};
 
 use crate::{RenetClient, RenetClientPlugin, RenetReceive, RenetSend, RenetServer, RenetServerPlugin};
 
