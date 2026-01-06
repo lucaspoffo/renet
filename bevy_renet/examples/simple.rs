@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use bevy_renet::{
     client_connected,
     netcode::{
-        renet_netcode::{ClientAuthentication, ServerAuthentication, ServerConfig},
-        NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport, NetcodeTransportError,
+        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport,
+        NetcodeTransportError, ServerAuthentication, ServerConfig,
     },
     renet::{ClientId, ConnectionConfig, DefaultChannel},
     RenetClient, RenetClientPlugin, RenetServer, RenetServerPlugin, ServerEvent,
