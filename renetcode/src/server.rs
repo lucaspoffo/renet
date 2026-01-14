@@ -479,9 +479,7 @@ impl NetcodeServer {
                         None => {
                             let packet = Packet::ConnectionDenied;
                             let len = packet.encode(&mut self.out, self.protocol_id, Some((self.global_sequence, &pending.send_key)))?;
-                            pending.state = ConnectionState::Disconnected;
                             self.global_sequence += 1;
-                            pending.last_packet_send_time = self.current_time;
                             return Ok(ServerResult::PacketToSend {
                                 addr,
                                 payload: &mut self.out[..len],
