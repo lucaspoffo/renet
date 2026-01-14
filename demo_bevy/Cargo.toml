@@ -15,7 +15,7 @@ netcode = ["bevy_renet/netcode"]
 steam = ["bevy_renet/steam", "steamworks"]
 
 [dependencies]
-bevy = { version = "0.18.0", default-features = false, features = [
+bevy = { version = "0.18", default-features = false, features = [
     "bevy_core_pipeline",
     "bevy_render",
     "bevy_asset",
