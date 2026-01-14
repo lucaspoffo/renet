@@ -30,6 +30,9 @@ struct Bot {
 #[derive(Debug, Resource)]
 struct BotId(u64);
 
+#[derive(Resource, Deref, DerefMut, Default)]
+struct ServerVisualizer(RenetServerVisualizer<200>);
+
 #[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
     use bevy_renet::netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig};
@@ -94,7 +97,7 @@ fn main() {
     app.insert_resource(ServerLobby::default());
     app.insert_resource(BotId(0));
 
-    app.insert_resource(RenetServerVisualizer::<200>::default());
+    app.init_resource::<ServerVisualizer>();
 
     #[cfg(feature = "netcode")]
     add_netcode_network(&mut app);
@@ -135,7 +138,7 @@ fn update_clients(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut lobby: ResMut<ServerLobby>,
     mut server: ResMut<RenetServer>,
-    mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    mut visualizer: ResMut<ServerVisualizer>,
     players: Query<(Entity, &Player, &Transform)>,
 ) {
     match **server_event {
@@ -248,7 +251,7 @@ fn update_projectiles_system(mut commands: Commands, mut projectiles: Query<(Ent
 
 fn update_visualizer_system(
     mut egui_contexts: EguiContexts,
-    mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    mut visualizer: ResMut<ServerVisualizer>,
     server: Res<RenetServer>,
 ) -> Result<()> {
     visualizer.update(&server);

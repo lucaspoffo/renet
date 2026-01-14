@@ -9,7 +9,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_renet::{renet::ClientId, RenetClient, RenetClientPlugin};
 use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
-use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
+use renet_visualizer::RenetClientVisualizer;
 
 #[derive(Component)]
 struct ControlledPlayer;
@@ -33,6 +33,9 @@ struct CurrentClientId(u64);
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Connected;
+
+#[derive(Resource, Deref, DerefMut, Default)]
+struct ClientVisualizer(RenetClientVisualizer<200>);
 
 #[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
@@ -137,7 +140,7 @@ fn main() {
         (client_send_input, client_send_player_commands, client_sync_players).in_set(Connected),
     );
 
-    app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
+    app.init_resource::<ClientVisualizer>();
 
     app.add_systems(Startup, (setup_level, setup_camera, setup_target));
     app.add_systems(EguiPrimaryContextPass, update_visualizer_system);
@@ -147,7 +150,7 @@ fn main() {
 
 fn update_visualizer_system(
     mut egui_contexts: EguiContexts,
-    mut visualizer: ResMut<RenetClientVisualizer<200>>,
+    mut visualizer: ResMut<ClientVisualizer>,
     client: Res<RenetClient>,
     mut show_visualizer: Local<bool>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
