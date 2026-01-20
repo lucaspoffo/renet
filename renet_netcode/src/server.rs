@@ -12,7 +12,6 @@ use renet::RenetServer;
 use super::NetcodeTransportError;
 
 #[derive(Debug)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct NetcodeServerTransport {
     socket: UdpSocket,
     netcode_server: NetcodeServer,

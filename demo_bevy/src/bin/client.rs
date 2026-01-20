@@ -1,21 +1,15 @@
 use std::collections::HashMap;
 
-use bevy::window::{PrimaryWindow, Window};
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::Vec3,
     prelude::*,
+    window::{PrimaryWindow, Window},
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
-use bevy_renet::{
-    client_connected,
-    renet::{ClientId, RenetClient},
-    RenetClientPlugin,
-};
-use demo_bevy::{
-    connection_config, setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages,
-};
-use renet_visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
+use bevy_renet::{renet::ClientId, RenetClient, RenetClientPlugin};
+use demo_bevy::{setup_level, ClientChannel, NetworkedEntities, PlayerCommand, PlayerInput, ServerChannel, ServerMessages};
+use renet_visualizer::RenetClientVisualizer;
 
 #[derive(Component)]
 struct ControlledPlayer;
@@ -40,17 +34,20 @@ struct CurrentClientId(u64);
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Connected;
 
+#[derive(Resource, Deref, DerefMut, Default)]
+struct ClientVisualizer(RenetClientVisualizer<200>);
+
 #[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
-    use bevy_renet::netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeTransportError};
+    use bevy_renet::netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeErrorEvent};
     use demo_bevy::PROTOCOL_ID;
     use std::{net::UdpSocket, time::SystemTime};
 
     app.add_plugins(NetcodeClientPlugin);
 
-    app.configure_sets(Update, Connected.run_if(client_connected));
+    app.configure_sets(Update, Connected.run_if(bevy_renet::client_connected));
 
-    let client = RenetClient::new(connection_config());
+    let client = RenetClient::new(demo_bevy::connection_config());
 
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -71,18 +68,16 @@ fn add_netcode_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: MessageReader<NetcodeTransportError>) {
-        for e in renet_error.read() {
-            panic!("{}", e);
-        }
+    fn panic_on_error(error: On<NetcodeErrorEvent>) {
+        panic!("{}", *error);
     }
 
-    app.add_systems(Update, panic_on_error_system);
+    app.add_observer(panic_on_error);
 }
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamErrorEvent};
     use steamworks::SteamId;
 
     let steam_client = steamworks::Client::init_app(480).unwrap();
@@ -93,7 +88,7 @@ fn add_steam_network(app: &mut App) {
     let server_steam_id: u64 = args[1].parse().unwrap();
     let server_steam_id = SteamId::from_raw(server_steam_id);
 
-    let client = RenetClient::new(connection_config());
+    let client = RenetClient::new(demo_bevy::connection_config());
     let transport = SteamClientTransport::new(steam_client.clone(), &server_steam_id).unwrap();
 
     app.add_plugins(SteamClientPlugin);
@@ -102,7 +97,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
     app.insert_non_send_resource(steam_client);
 
-    app.configure_sets(Update, Connected.run_if(client_connected));
+    app.configure_sets(Update, Connected.run_if(bevy_renet::client_connected));
 
     fn steam_callbacks(client: NonSend<steamworks::Client>) {
         client.run_callbacks();
@@ -112,13 +107,11 @@ fn add_steam_network(app: &mut App) {
 
     // If any error is found we just panic
     #[allow(clippy::never_loop)]
-    fn panic_on_error_system(mut renet_error: MessageReader<SteamTransportError>) {
-        for e in renet_error.read() {
-            panic!("{}", e);
-        }
+    fn panic_on_error(error: On<SteamErrorEvent>) {
+        panic!("{}", *error);
     }
 
-    app.add_systems(Update, panic_on_error_system);
+    app.add_observer(panic_on_error);
 }
 
 fn main() {
@@ -147,7 +140,7 @@ fn main() {
         (client_send_input, client_send_player_commands, client_sync_players).in_set(Connected),
     );
 
-    app.insert_resource(RenetClientVisualizer::<200>::new(RenetVisualizerStyle::default()));
+    app.init_resource::<ClientVisualizer>();
 
     app.add_systems(Startup, (setup_level, setup_camera, setup_target));
     app.add_systems(EguiPrimaryContextPass, update_visualizer_system);
@@ -157,7 +150,7 @@ fn main() {
 
 fn update_visualizer_system(
     mut egui_contexts: EguiContexts,
-    mut visualizer: ResMut<RenetClientVisualizer<200>>,
+    mut visualizer: ResMut<ClientVisualizer>,
     client: Res<RenetClient>,
     mut show_visualizer: Local<bool>,
     keyboard_input: Res<ButtonInput<KeyCode>>,

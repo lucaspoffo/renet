@@ -9,14 +9,12 @@ use bytes::Bytes;
 
 /// Connection and disconnection events in the server.
 #[derive(Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Message))]
 pub enum ServerEvent {
     ClientConnected { client_id: ClientId },
     ClientDisconnected { client_id: ClientId, reason: DisconnectReason },
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct RenetServer {
     connections: HashMap<ClientId, RenetClient>,
     connection_config: ConnectionConfig,
