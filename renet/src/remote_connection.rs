@@ -92,6 +92,8 @@ pub struct RenetClient {
     stats: ConnectionStats,
     available_bytes_per_tick: u64,
     connection_status: RenetConnectionStatus,
+    received_ack_eliciting_packet: bool,
+    start_ack_delay: Option<Duration>,
     rtt: f64,
 }
 
@@ -188,6 +190,8 @@ impl RenetClient {
             rtt: 0.0,
             available_bytes_per_tick,
             connection_status: RenetConnectionStatus::Connecting,
+            received_ack_eliciting_packet: false,
+            start_ack_delay: None,
         }
     }
 
@@ -398,6 +402,10 @@ impl RenetClient {
 
         self.add_pending_ack(packet.sequence());
 
+        if packet.is_ack_eliciting() {
+            self.received_ack_eliciting_packet = true;
+        }
+
         match packet {
             Packet::SmallReliable { channel_id, messages, .. } => {
                 let Some(channel) = self.receive_reliable_channels.get_mut(&channel_id) else {
@@ -442,7 +450,7 @@ impl RenetClient {
                     self.disconnect_with_reason(DisconnectReason::ReceiveChannelError { channel_id, error });
                 }
             }
-            Packet::Ack { ack_ranges, .. } => {
+            Packet::Ack { ack_ranges, ack_delay, .. } => {
                 // Create list with just new acks
                 // This prevents DoS from huge ack ranges
                 let mut new_acks: Vec<u64> = Vec::new();
@@ -457,11 +465,14 @@ impl RenetClient {
                     self.stats.acked_packet(sent_packet.sent_at, self.current_time);
 
                     // Update rtt
-                    let rtt = (self.current_time - sent_packet.sent_at).as_secs_f64();
-                    if self.rtt < f64::EPSILON {
-                        self.rtt = rtt;
-                    } else {
-                        self.rtt = self.rtt * 0.875 + rtt * 0.125;
+                    let rtt = self.current_time - sent_packet.sent_at;
+                    if let Some(rtt) = rtt.checked_sub(ack_delay) {
+                        let rtt = rtt.as_secs_f64();
+                        if self.rtt < f64::EPSILON {
+                            self.rtt = rtt;
+                        } else {
+                            self.rtt = self.rtt * 0.875 + rtt * 0.125;
+                        }
                     }
 
                     match sent_packet.info {
@@ -514,12 +525,23 @@ impl RenetClient {
         }
 
         if !self.pending_acks.is_empty() {
-            let ack_packet = Packet::Ack {
-                sequence: self.packet_sequence,
-                ack_ranges: self.pending_acks.clone(),
-            };
-            self.packet_sequence += 1;
-            packets.push(ack_packet);
+            let ack_delay =
+                if let Some(start_ack_delay) = self.start_ack_delay { self.current_time - start_ack_delay } else { Duration::ZERO };
+
+            const MAX_ACK_DELAY: Duration = Duration::from_millis(200);
+            if self.received_ack_eliciting_packet || ack_delay >= MAX_ACK_DELAY {
+                let ack_packet = Packet::Ack {
+                    sequence: self.packet_sequence,
+                    ack_ranges: self.pending_acks.clone(),
+                    ack_delay,
+                };
+                self.packet_sequence += 1;
+                packets.push(ack_packet);
+                self.start_ack_delay = None;
+                self.received_ack_eliciting_packet = false;
+            } else if self.start_ack_delay.is_none() {
+                self.start_ack_delay = Some(self.current_time);
+            }
         }
 
         let sent_at = self.current_time;
@@ -576,7 +598,7 @@ impl RenetClient {
                         },
                     );
                 }
-                Packet::Ack { sequence, ack_ranges } => {
+                Packet::Ack { sequence, ack_ranges, .. } => {
                     let last_range = ack_ranges.last().unwrap();
                     let largest_acked_packet = last_range.end - 1;
                     self.sent_packets.insert(
