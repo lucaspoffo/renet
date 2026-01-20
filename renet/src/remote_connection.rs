@@ -211,7 +211,7 @@ impl RenetClient {
         self.stats.bytes_received_per_second(self.current_time)
     }
 
-    /// Returns all network informations for the connection.
+    /// Returns all network information for the connection.
     pub fn network_info(&self) -> NetworkInfo {
         NetworkInfo {
             rtt: self.rtt,

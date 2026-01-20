@@ -213,7 +213,7 @@ impl NetcodeServer {
     }
 
     /// Returns the duration since the connected client last received a packet.
-    /// Usefull to detect users that are timing out.
+    /// Useful to detect users that are timing out.
     pub fn time_since_last_received_packet(&self, client_id: u64) -> Option<Duration> {
         if let Some(client) = find_client_by_id(&self.clients, client_id) {
             let time = self.current_time - client.last_packet_received_time;
