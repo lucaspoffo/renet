@@ -7,7 +7,7 @@ use crate::packet::SerializationError;
 pub enum DisconnectReason {
     /// Connection was terminated by the transport layer
     Transport,
-    /// Connection was terminated by the server
+    /// Connection was terminated by the client
     DisconnectedByClient,
     /// Connection was terminated by the server
     DisconnectedByServer,
@@ -23,7 +23,7 @@ pub enum DisconnectReason {
     ReceiveChannelError { channel_id: u8, error: ChannelError },
 }
 
-/// Possibles errors that can occur in a channel.
+/// Possible errors that can occur in a channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelError {
     /// Reliable channel reached maximum allowed memory
