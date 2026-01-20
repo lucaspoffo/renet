@@ -21,7 +21,7 @@ use chacha20poly1305::aead::Error as CryptoError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectToken {
     // NOTE: On the netcode standard the client id is not available in the public part of the
-    // ConnectToken. But having it acessible here makes it easier to consume the token, and the
+    // ConnectToken. But having it accessible here makes it easier to consume the token, and the
     // server still uses the client_id from the private part.
     pub client_id: u64,
     pub version_info: [u8; 13],
@@ -74,7 +74,7 @@ impl fmt::Display for TokenGenerationError {
         use TokenGenerationError::*;
 
         match *self {
-            MaxHostCount => write!(fmt, "connect token can only have 32 server adresses"),
+            MaxHostCount => write!(fmt, "connect token can only have 32 server addresses"),
             CryptoError => write!(fmt, "error while encoding or decoding the connect token"),
             IoError(ref io_err) => write!(fmt, "{}", io_err),
             NoServerAddressAvailable => write!(fmt, "connect token must have at least one server address"),
@@ -84,7 +84,7 @@ impl fmt::Display for TokenGenerationError {
 
 impl ConnectToken {
     /// Generate a token to be sent to an client. The user data is available to the server after an
-    /// successfull conection. The private key and the protocol id must be the same used in server.
+    /// successful connection. The private key and the protocol id must be the same used in server.
     #[allow(clippy::too_many_arguments)]
     pub fn generate(
         current_time: Duration,

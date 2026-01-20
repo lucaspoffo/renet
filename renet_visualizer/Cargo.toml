@@ -1,6 +1,6 @@
 [package]
 name = "renet_visualizer"
-version = "1.1.0"
+version = "2.0.0"
 keywords = ["gamedev", "networking"]
 description = "Egui metrics visualizer for the renet crate: Server/Client network library for multiplayer games"
 repository = "https://github.com/lucaspoffo/renet"
@@ -9,5 +9,5 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
-renet = { path = "../renet", version = "1.2.0" }
+renet = { path = "../renet", version = "2.0.0" }
 egui = "0.33"

@@ -64,7 +64,7 @@ mod tests {
             replay_protection.advance_sequence(i);
         }
 
-        // Old packes outside the buffer should be considered already received
+        // Old packets outside the buffer should be considered already received
         assert!(replay_protection.already_received(0));
 
         // Packets received a second time should be already received

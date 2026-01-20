@@ -38,7 +38,7 @@ impl NetcodeClientTransport {
     }
 
     /// Returns the duration since the client last received a packet.
-    /// Usefull to detect timeouts.
+    /// Useful to detect timeouts.
     pub fn time_since_last_received_packet(&self) -> Duration {
         self.netcode_client.time_since_last_received_packet()
     }
@@ -85,7 +85,7 @@ impl NetcodeClientTransport {
     /// Advances the transport by the duration, and receive packets from the network.
     pub fn update(&mut self, duration: Duration, client: &mut RenetClient) -> Result<(), NetcodeTransportError> {
         if let Some(reason) = self.netcode_client.disconnect_reason() {
-            // Mark the client as disconnected if an error occured in the transport layer
+            // Mark the client as disconnected if an error occurred in the transport layer
             client.disconnect_due_to_transport();
 
             return Err(NetcodeError::Disconnected(reason).into());

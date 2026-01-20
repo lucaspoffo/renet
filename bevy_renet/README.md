@@ -132,6 +132,7 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 
 |bevy|bevy_renet|
 |---|---|
+|0.18|4.0|
 |0.17|3.0|
 |0.16|2.0|
 |0.15|1.0|

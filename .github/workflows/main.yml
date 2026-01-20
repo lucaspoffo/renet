@@ -75,3 +75,13 @@ jobs:
         run: |
           cargo fmt --all --check
           taplo fmt --check
+
+  typos:
+    name: Typos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v6
+
+      - name: Check typos
+        uses: crate-ci/typos@v1.42.0

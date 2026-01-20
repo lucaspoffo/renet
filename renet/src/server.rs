@@ -113,7 +113,7 @@ impl RenetServer {
         }
     }
 
-    /// Returns all network informations for the client
+    /// Returns all network information for the client
     pub fn network_info(&self, client_id: ClientId) -> Result<NetworkInfo, ClientNotFound> {
         match self.connections.get(&client_id) {
             Some(connection) => Ok(connection.network_info()),

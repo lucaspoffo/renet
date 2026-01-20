@@ -7,7 +7,7 @@ keywords = ["gamedev", "networking"]
 license = "MIT OR Apache-2.0"
 readme = "../README.md"
 repository = "https://github.com/lucaspoffo/renet"
-version = "1.2.0"
+version = "2.0.0"
 
 [dependencies]
 bytes = "1.1"
