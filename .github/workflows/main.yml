@@ -2,17 +2,17 @@ name: Main
 on:
   push:
     branches-ignore:
-      - 'releases/**'
-      - 'dependabot/**'
+      - "releases/**"
+      - "dependabot/**"
     paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - '.github/dependabot.yml'
+      - "**.md"
+      - ".gitignore"
+      - ".github/dependabot.yml"
   pull_request:
     paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - '.github/dependabot.yml'
+      - "**.md"
+      - ".gitignore"
+      - ".github/dependabot.yml"
 env:
   CARGO_TERM_COLOR: always
 jobs:
@@ -65,5 +65,13 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v3
 
+      - name: Cache crates
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Taplo
+        run: cargo install --locked taplo-cli
+
       - name: Format
-        run: cargo fmt --check
+        run: |
+          cargo fmt --all --check
+          taplo fmt --check
