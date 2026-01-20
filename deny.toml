@@ -2,19 +2,19 @@
 yanked = "deny"
 
 [licenses]
-allow = [ 
-    "MIT",
-    "MIT-0",
-    "Apache-2.0",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "Unicode-DFS-2016",
-    "Unicode-3.0",
-    "Zlib",
-    "ISC",
-    "CC0-1.0",
-    "BSL-1.0",
- ]
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "Unicode-DFS-2016",
+  "Unicode-3.0",
+  "Zlib",
+  "ISC",
+  "CC0-1.0",
+  "BSL-1.0",
+]
 
 [[licenses.exceptions]]
 # https://github.com/emilk/egui/issues/2321
