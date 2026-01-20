@@ -37,7 +37,7 @@ impl fmt::Display for ChannelError {
         use ChannelError::*;
 
         match *self {
-            ReliableChannelMaxMemoryReached => write!(fmt, "reliable channel memory usage was exausted"),
+            ReliableChannelMaxMemoryReached => write!(fmt, "reliable channel memory usage was exhausted"),
             InvalidSliceMessage => write!(fmt, "received an invalid slice packet"),
         }
     }

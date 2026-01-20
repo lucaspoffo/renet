@@ -103,7 +103,7 @@ impl SteamClientTransport {
 
     pub fn update(&mut self, client: &mut RenetClient) {
         if self.is_disconnected() {
-            // Mark the client as disconnected if an error occured in the transport layer
+            // Mark the client as disconnected if an error occurred in the transport layer
             client.disconnect_due_to_transport();
 
             if let ConnectionState::Connected { connection } = &self.state {

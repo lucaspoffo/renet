@@ -168,7 +168,7 @@ impl Packet {
                 //   |   | |  |  |
                 //   |   | |  |  +-> 10: size of 20010..20020
                 //   |   | |  +----> 15: gap between ranges 20010..20020 and 20035..20040
-                //   |   | +--------> 1: remaing number of ranges
+                //   |   | +--------> 1: remaining number of ranges
                 //   |   +----------> 5: size of 20035..20040
                 //   +----------> 20040:  end of 20035..20040
                 //
