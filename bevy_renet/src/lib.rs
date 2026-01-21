@@ -48,7 +48,7 @@ impl Plugin for RenetServerPlugin {
 }
 
 impl RenetServerPlugin {
-    pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time>) {
+    pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time<Real>>) {
         server.update(time.delta());
     }
 
@@ -66,7 +66,7 @@ impl Plugin for RenetClientPlugin {
 }
 
 impl RenetClientPlugin {
-    pub fn update_system(mut client: ResMut<RenetClient>, time: Res<Time>) {
+    pub fn update_system(mut client: ResMut<RenetClient>, time: Res<Time<Real>>) {
         client.update(time.delta());
     }
 }
