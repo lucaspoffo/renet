@@ -19,13 +19,16 @@ const PROTOCOL_ID: u64 = 7;
 
 const PLAYER_MOVE_SPEED: f32 = 1.0;
 
-#[derive(Debug, Default, Serialize, Deserialize, Component, Resource)]
+#[derive(Debug, Default, Serialize, Deserialize, Component)]
 struct PlayerInput {
     up: bool,
     down: bool,
     left: bool,
     right: bool,
 }
+
+#[derive(Resource, Debug, Default, Deref, DerefMut)]
+struct CurrentPlayerInput(PlayerInput);
 
 #[derive(Debug, Component)]
 struct Player {
@@ -108,7 +111,7 @@ fn main() {
     } else {
         app.add_plugins(RenetClientPlugin);
         app.add_plugins(NetcodeClientPlugin);
-        app.init_resource::<PlayerInput>();
+        app.init_resource::<CurrentPlayerInput>();
         let (client, transport) = new_renet_client();
         app.insert_resource(client);
         app.insert_resource(transport);
@@ -248,7 +251,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     // light
     commands.spawn((
         PointLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0),
@@ -260,15 +263,15 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     ));
 }
 
-fn player_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut player_input: ResMut<PlayerInput>) {
+fn player_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut player_input: ResMut<CurrentPlayerInput>) {
     player_input.left = keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft);
     player_input.right = keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight);
     player_input.up = keyboard_input.pressed(KeyCode::KeyW) || keyboard_input.pressed(KeyCode::ArrowUp);
     player_input.down = keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown);
 }
 
-fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
-    let input_message = bincode::serialize(&*player_input).unwrap();
+fn client_send_input(player_input: Res<CurrentPlayerInput>, mut client: ResMut<RenetClient>) {
+    let input_message = bincode::serialize(&**player_input).unwrap();
 
     client.send_message(DefaultChannel::ReliableOrdered, input_message);
 }
