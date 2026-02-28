@@ -1,18 +1,17 @@
 name: Dependencies
 on:
   push:
-    branches-ignore:
-      - 'dependabot/**'
-      - 'releases/**'
+    branches:
+      - master
     paths:
-      - 'Cargo.toml'
-      - 'deny.toml'
+      - "**/Cargo.toml"
+      - "deny.toml"
   pull_request:
     paths:
-      - 'Cargo.toml'
-      - 'deny.toml'
+      - "**/Cargo.toml"
+      - "deny.toml"
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: "0 0 * * 0"
 env:
   CARGO_TERM_COLOR: always
 jobs:
@@ -21,7 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check dependencies
         uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --all-features --workspace
+          command-arguments: -D warnings
