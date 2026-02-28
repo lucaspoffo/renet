@@ -53,7 +53,7 @@ impl NetcodeServerPlugin {
         mut commands: Commands,
         mut transport: ResMut<NetcodeServerTransport>,
         mut server: ResMut<RenetServer>,
-        time: Res<Time>,
+        time: Res<Time<Real>>,
     ) {
         if let Err(e) = transport.update(time.delta(), &mut server) {
             commands.trigger(NetcodeErrorEvent(e));
@@ -107,7 +107,7 @@ impl NetcodeClientPlugin {
         mut commands: Commands,
         mut transport: ResMut<NetcodeClientTransport>,
         mut client: ResMut<RenetClient>,
-        time: Res<Time>,
+        time: Res<Time<Real>>,
     ) {
         if let Err(e) = transport.update(time.delta(), &mut client) {
             commands.trigger(NetcodeErrorEvent(e));
