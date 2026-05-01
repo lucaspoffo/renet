@@ -4,7 +4,6 @@ use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
 use log::info;
 use renet::RenetClient;
 use steamworks::{
-    networking_sockets::NetworkingSockets,
     networking_sockets::{InvalidHandle, NetConnection},
     networking_types::NetworkingConfigEntry,
     networking_types::{AppNetConnectionEnd, NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},

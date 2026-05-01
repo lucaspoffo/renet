@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    net::SocketAddr,
+};
 
 pub use renet_steam::*;
 
@@ -108,8 +111,12 @@ impl SteamClientPlugin {
 pub struct SteamClientTransport(pub renet_steam::SteamClientTransport);
 
 impl SteamClientTransport {
-    pub fn new(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
-        renet_steam::SteamClientTransport::new(client, steam_id).map(Self)
+    pub fn new_ip(client: Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamClientTransport::new_ip(client, socket_addr).map(Self)
+    }
+
+    pub fn new_p2p(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamClientTransport::new_p2p(client, steam_id).map(Self)
     }
 }
 
@@ -117,8 +124,8 @@ impl SteamClientTransport {
 pub struct SteamServerTransport(pub renet_steam::SteamServerTransport);
 
 impl SteamServerTransport {
-    pub fn new(client: Client, config: SteamServerConfig) -> Result<Self, InvalidHandle> {
-        renet_steam::SteamServerTransport::new(client, config).map(Self)
+    pub fn new(client: Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamServerTransport::new(client, config, socket_options).map(Self)
     }
 }
 
