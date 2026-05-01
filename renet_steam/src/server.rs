@@ -8,8 +8,7 @@ use renet::{ClientId, RenetServer};
 use steamworks::{
     networking_sockets::{InvalidHandle, ListenSocket, NetConnection},
     networking_types::{AppNetConnectionEnd, ListenSocketEvent, NetConnectionEnd, NetworkingConfigEntry, NetworkingIdentity, SendFlags},
-    networking_utils::NetworkingUtils,
-    Client, FriendFlags, Friends, LobbyId, Matchmaking, Server, SteamId,
+    Client, FriendFlags, LobbyId, Server, SteamId,
 };
 
 use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
@@ -92,10 +91,9 @@ struct ConnectionInformation {
 
 enum ServerType {
     Client(Client),
-    Server { server: Server, client: Client },
+    Server { _server: Server, client: Client },
 }
 
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct SteamServerTransport {
     server_type: ServerType,
     listen_socket: Mutex<Vec<ListenSocket>>,
@@ -147,7 +145,7 @@ impl SteamServerTransport {
 
         Ok(Self {
             listen_socket: Mutex::new(listen_socket),
-            server_type: ServerType::Server { client, server },
+            server_type: ServerType::Server { client, _server: server },
             max_clients: config.max_clients,
             access_permission: config.access_permission,
             connections: HashMap::new(),
@@ -232,7 +230,7 @@ impl SteamServerTransport {
                                     let friend = client.friends().get_friend(steam_id);
                                     friend.has_friend(FriendFlags::IMMEDIATE)
                                 }
-                                ServerType::Server { server: _, client: _ } => true,
+                                ServerType::Server { _server, client: _ } => true,
                             },
                             AccessPermission::InList(list) => list.contains(&steam_id),
                             AccessPermission::InLobby(lobby) => match &self.server_type {
@@ -240,7 +238,7 @@ impl SteamServerTransport {
                                     let users_in_lobby = client.matchmaking().lobby_members(*lobby);
                                     users_in_lobby.contains(&steam_id)
                                 }
-                                ServerType::Server { server: _, client: _ } => true,
+                                ServerType::Server { _server, client: _ } => true,
                             },
                         };
 
@@ -293,7 +291,7 @@ impl SteamServerTransport {
             let messages_to_send = packets.into_iter().map(|data| {
                 let client = match &self.server_type {
                     ServerType::Client(client) => client,
-                    ServerType::Server { server: _, client } => client,
+                    ServerType::Server { _server, client } => client,
                 };
 
                 let mut msg = client.networking_utils().allocate_message(data.len());

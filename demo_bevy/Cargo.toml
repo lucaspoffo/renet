@@ -11,7 +11,6 @@ name = "server"
 path = "src/bin/server.rs"
 
 [features]
-default = ["steam"]
 netcode = ["bevy_renet/netcode"]
 steam = ["bevy_renet/steam", "steamworks"]
 
