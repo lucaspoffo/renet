@@ -22,8 +22,8 @@ Running using the steam transport:
 Client:
 
 - AWSD for movement
-- Mouse to AIM, left buttom to shoot
-- F1 to toogle [renet_visualizer](https://github.com/lucaspoffo/renet/tree/master/renet_visualizer)
+- Mouse to AIM, left button to shoot
+- F1 to toggle [renet_visualizer](https://github.com/lucaspoffo/renet/tree/master/renet_visualizer)
 
 Server:
 

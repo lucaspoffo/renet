@@ -12,7 +12,6 @@ use renet::RenetServer;
 use super::NetcodeTransportError;
 
 #[derive(Debug)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct NetcodeServerTransport {
     socket: UdpSocket,
     netcode_server: NetcodeServer,
@@ -77,7 +76,7 @@ impl NetcodeServerTransport {
     }
 
     /// Returns the duration since the connected client last received a packet.
-    /// Usefull to detect users that are timing out.
+    /// Useful to detect users that are timing out.
     pub fn time_since_last_received_packet(&self, client_id: ClientId) -> Option<Duration> {
         self.netcode_server.time_since_last_received_packet(client_id)
     }

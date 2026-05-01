@@ -1,11 +1,14 @@
 use bevy::mesh::PlaneMeshBuilder;
 use bevy::prelude::*;
-use bevy_renet::netcode::{
-    ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin, NetcodeServerTransport, NetcodeTransportError,
-    ServerAuthentication, ServerConfig,
+use bevy_renet::{
+    client_connected,
+    netcode::{
+        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeErrorEvent, NetcodeServerPlugin, NetcodeServerTransport,
+        ServerAuthentication, ServerConfig,
+    },
+    renet::{ClientId, ConnectionConfig, DefaultChannel, ServerEvent},
+    RenetClient, RenetClientPlugin, RenetServer, RenetServerEvent, RenetServerPlugin,
 };
-use bevy_renet::renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent};
-use bevy_renet::{client_connected, RenetClientPlugin, RenetServerPlugin};
 
 use std::time::SystemTime;
 use std::{collections::HashMap, net::UdpSocket};
@@ -117,58 +120,59 @@ fn main() {
     }
 
     app.add_systems(Startup, setup);
-    app.add_systems(Update, panic_on_error_system);
+    app.add_observer(update_players);
+    app.add_observer(panic_on_error);
 
     app.run();
 }
 
-fn server_update_system(
-    mut server_events: MessageReader<ServerEvent>,
+fn update_players(
+    server_event: On<RenetServerEvent>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut lobby: ResMut<Lobby>,
     mut server: ResMut<RenetServer>,
 ) {
-    for event in server_events.read() {
-        match event {
-            ServerEvent::ClientConnected { client_id } => {
-                println!("Player {} connected.", client_id);
-                // Spawn player cube
-                let player_entity = commands
-                    .spawn((
-                        Mesh3d(meshes.add(Cuboid::from_size(Vec3::splat(1.0)))),
-                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-                        Transform::from_xyz(0.0, 0.5, 0.0),
-                    ))
-                    .insert(PlayerInput::default())
-                    .insert(Player { id: *client_id })
-                    .id();
+    match **server_event {
+        ServerEvent::ClientConnected { client_id } => {
+            println!("Player {} connected.", client_id);
+            // Spawn player cube
+            let player_entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(Cuboid::from_size(Vec3::splat(1.0)))),
+                    MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+                    Transform::from_xyz(0.0, 0.5, 0.0),
+                ))
+                .insert(PlayerInput::default())
+                .insert(Player { id: client_id })
+                .id();
 
-                // We could send an InitState with all the players id and positions for the client
-                // but this is easier to do.
-                for &player_id in lobby.players.keys() {
-                    let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
-                    server.send_message(*client_id, DefaultChannel::ReliableOrdered, message);
-                }
-
-                lobby.players.insert(*client_id, player_entity);
-
-                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: *client_id }).unwrap();
-                server.broadcast_message(DefaultChannel::ReliableOrdered, message);
+            // We could send an InitState with all the players id and positions for the client
+            // but this is easier to do.
+            for &player_id in lobby.players.keys() {
+                let message = bincode::serialize(&ServerMessages::PlayerConnected { id: player_id }).unwrap();
+                server.send_message(client_id, DefaultChannel::ReliableOrdered, message);
             }
-            ServerEvent::ClientDisconnected { client_id, reason } => {
-                println!("Player {} disconnected: {}", client_id, reason);
-                if let Some(player_entity) = lobby.players.remove(client_id) {
-                    commands.entity(player_entity).despawn();
-                }
 
-                let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: *client_id }).unwrap();
-                server.broadcast_message(DefaultChannel::ReliableOrdered, message);
+            lobby.players.insert(client_id, player_entity);
+
+            let message = bincode::serialize(&ServerMessages::PlayerConnected { id: client_id }).unwrap();
+            server.broadcast_message(DefaultChannel::ReliableOrdered, message);
+        }
+        ServerEvent::ClientDisconnected { client_id, reason } => {
+            println!("Player {} disconnected: {}", client_id, reason);
+            if let Some(player_entity) = lobby.players.remove(&client_id) {
+                commands.entity(player_entity).despawn();
             }
+
+            let message = bincode::serialize(&ServerMessages::PlayerDisconnected { id: client_id }).unwrap();
+            server.broadcast_message(DefaultChannel::ReliableOrdered, message);
         }
     }
+}
 
+fn server_update_system(mut commands: Commands, lobby: Res<Lobby>, mut server: ResMut<RenetServer>) {
     for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, DefaultChannel::ReliableOrdered) {
             let player_input: PlayerInput = bincode::deserialize(&message).unwrap();
@@ -280,8 +284,6 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 
 // If any error is found we just panic
 #[allow(clippy::never_loop)]
-fn panic_on_error_system(mut renet_error: MessageReader<NetcodeTransportError>) {
-    for e in renet_error.read() {
-        panic!("{}", e);
-    }
+fn panic_on_error(error: On<NetcodeErrorEvent>) {
+    panic!("{}", *error);
 }

@@ -79,7 +79,6 @@ pub enum RenetConnectionStatus {
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "bevy", derive(bevy_ecs::resource::Resource))]
 pub struct RenetClient {
     packet_sequence: u64,
     current_time: Duration,
@@ -212,7 +211,7 @@ impl RenetClient {
         self.stats.bytes_received_per_second(self.current_time)
     }
 
-    /// Returns all network informations for the connection.
+    /// Returns all network information for the connection.
     pub fn network_info(&self) -> NetworkInfo {
         NetworkInfo {
             rtt: self.rtt,

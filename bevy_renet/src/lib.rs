@@ -1,10 +1,10 @@
 pub use renet;
 
 use bevy_app::prelude::*;
+use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_time::prelude::*;
-
-use renet::{RenetClient, RenetServer, ServerEvent};
+use renet::{ConnectionConfig, ServerEvent};
 
 #[cfg(feature = "netcode")]
 pub mod netcode;
@@ -36,7 +36,6 @@ pub struct RenetClientPlugin;
 
 impl Plugin for RenetServerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Messages<ServerEvent>>();
         app.add_systems(PreUpdate, Self::update_system.run_if(resource_exists::<RenetServer>));
         app.add_systems(
             PreUpdate,
@@ -49,13 +48,13 @@ impl Plugin for RenetServerPlugin {
 }
 
 impl RenetServerPlugin {
-    pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time>) {
+    pub fn update_system(mut server: ResMut<RenetServer>, time: Res<Time<Real>>) {
         server.update(time.delta());
     }
 
-    pub fn emit_server_events_system(mut server: ResMut<RenetServer>, mut server_messages: MessageWriter<ServerEvent>) {
+    pub fn emit_server_events_system(mut commands: Commands, mut server: ResMut<RenetServer>) {
         while let Some(event) = server.get_event() {
-            server_messages.write(event);
+            commands.trigger(RenetServerEvent(event));
         }
     }
 }
@@ -67,7 +66,7 @@ impl Plugin for RenetClientPlugin {
 }
 
 impl RenetClientPlugin {
-    pub fn update_system(mut client: ResMut<RenetClient>, time: Res<Time>) {
+    pub fn update_system(mut client: ResMut<RenetClient>, time: Res<Time<Real>>) {
         client.update(time.delta());
     }
 }
@@ -107,4 +106,31 @@ pub fn client_just_disconnected(mut last_connected: Local<bool>, client: Option<
     let just_disconnected = *last_connected && disconnected;
     *last_connected = !disconnected;
     just_disconnected
+}
+
+#[derive(Resource, Deref, DerefMut, Debug)]
+pub struct RenetClient(pub renet::RenetClient);
+
+impl RenetClient {
+    pub fn new(connection_config: ConnectionConfig) -> Self {
+        Self(renet::RenetClient::new(connection_config))
+    }
+}
+
+#[derive(Resource, Deref, DerefMut, Debug)]
+pub struct RenetServer(pub renet::RenetServer);
+
+impl RenetServer {
+    pub fn new(connection_config: ConnectionConfig) -> Self {
+        Self(renet::RenetServer::new(connection_config))
+    }
+}
+
+#[derive(Event, Debug, Deref, DerefMut, PartialEq, Eq)]
+pub struct RenetServerEvent(pub ServerEvent);
+
+impl From<ServerEvent> for RenetServerEvent {
+    fn from(value: ServerEvent) -> Self {
+        Self(value)
+    }
 }

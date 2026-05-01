@@ -121,8 +121,8 @@ fn receive_message_system(mut client: ResMut<RenetClient>) {
 
 You can run the `simple` example with:
 
-* Server: `cargo run --features="netcode" --example simple -- server`
-* Client: `cargo run --features="netcode" --example simple -- client`
+* Server: `cargo run --example simple -- server`
+* Client: `cargo run --example simple -- client`
 
 If you want a more complex example you can checkout the [demo_bevy](https://github.com/lucaspoffo/renet/tree/master/demo_bevy) sample:
 
@@ -132,6 +132,7 @@ If you want a more complex example you can checkout the [demo_bevy](https://gith
 
 |bevy|bevy_renet|
 |---|---|
+|0.18|4.0|
 |0.17|3.0|
 |0.16|2.0|
 |0.15|1.0|

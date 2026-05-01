@@ -155,7 +155,7 @@ impl NetcodeClient {
     }
 
     /// Returns the duration since the client last received a packet.
-    /// Usefull to detect timeouts.
+    /// Useful to detect timeouts.
     pub fn time_since_last_received_packet(&self) -> Duration {
         self.current_time - self.last_packet_received_time
     }
