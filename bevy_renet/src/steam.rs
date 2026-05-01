@@ -25,7 +25,7 @@ impl Plugin for SteamServerPlugin {
         );
 
         app.add_systems(
-            FixedPostUpdate,
+            PostUpdate,
             Self::send_packets.in_set(RenetSend).run_if(resource_exists::<RenetServer>),
         );
 
@@ -70,7 +70,7 @@ impl Plugin for SteamClientPlugin {
                 .after(RenetClientPlugin::update_system),
         );
         app.add_systems(
-            FixedPostUpdate,
+            PostUpdate,
             Self::send_packets
                 .in_set(RenetSend)
                 .run_if(resource_exists::<SteamClientTransport>)
