@@ -137,6 +137,8 @@ impl SteamClientTransport {
 }
 
 #[derive(Resource, Deref, DerefMut)]
+/// A resource wrapper around [`renet_steam::SteamServerTransport`]. Add this resource to the app
+/// to enable the `ServerPlugin`'s functionality.
 pub struct SteamServerTransport(pub renet_steam::SteamServerTransport);
 
 impl SteamServerTransport {

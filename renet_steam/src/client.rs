@@ -53,14 +53,19 @@ impl SteamClientTransportConfig {
 }
 
 impl SteamClientTransport {
+    /// Connects to a server using its steam id
     pub fn new_p2p(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         Self::new_p2p_with_config(client, steam_id, Default::default())
     }
 
+    /// Connects to a server using its [`SocketAddr`]
     pub fn new_ip(client: Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
         Self::new_ip_with_config(client, socket_addr, Default::default())
     }
 
+    /// Connects to a server using its steam id
+    ///
+    /// Allows for additional connection configuration via the [`SteamClientTransportConfig`]
     pub fn new_p2p_with_config(
         client: steamworks::Client,
         steam_id: &SteamId,
@@ -77,6 +82,9 @@ impl SteamClientTransport {
         })
     }
 
+    /// Connects to a server using its [`SocketAddr`]
+    ///
+    /// Allows for additional connection configuration via the [`SteamClientTransportConfig`]
     pub fn new_ip_with_config(
         client: steamworks::Client,
         socket_addr: SocketAddr,

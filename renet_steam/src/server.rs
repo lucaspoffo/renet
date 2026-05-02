@@ -104,6 +104,10 @@ pub struct SteamServerTransport {
 }
 
 impl SteamServerTransport {
+    /// Creates a new Steam Server that runs off the host's steam id
+    ///
+    /// * socket_options - Additional configuration to add to your steam server. `Default::default`
+    ///   works for most usecases.
     pub fn new(client: Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
         let options = socket_options.configs;
         let networking = client.networking_sockets();
@@ -126,6 +130,11 @@ impl SteamServerTransport {
         })
     }
 
+    /// Creates a new Steam Server that does not use a steam id for connections. You need to
+    /// connect to this server via its IP address.
+    ///
+    /// * socket_options - Additional configuration to add to your steam server. `Default::default`
+    ///   works for most usecases.
     pub fn new_dedicated_server(
         server: Server,
         client: Client,
