@@ -126,7 +126,7 @@ impl SteamServerTransport {
         })
     }
 
-    pub fn new_server(
+    pub fn new_dedicated_server(
         server: Server,
         client: Client,
         config: SteamServerConfig,

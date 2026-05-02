@@ -118,6 +118,22 @@ impl SteamClientTransport {
     pub fn new_p2p(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         renet_steam::SteamClientTransport::new_p2p(client, steam_id).map(Self)
     }
+
+    pub fn new_p2p_with_config(
+        client: steamworks::Client,
+        steam_id: &SteamId,
+        config: SteamClientTransportConfig,
+    ) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamClientTransport::new_p2p_with_config(client, steam_id, config).map(Self)
+    }
+
+    pub fn new_ip_with_config(
+        client: steamworks::Client,
+        socket_addr: SocketAddr,
+        config: SteamClientTransportConfig,
+    ) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamClientTransport::new_ip_with_config(client, socket_addr, config).map(Self)
+    }
 }
 
 #[derive(Resource, Deref, DerefMut)]
@@ -126,6 +142,15 @@ pub struct SteamServerTransport(pub renet_steam::SteamServerTransport);
 impl SteamServerTransport {
     pub fn new(client: Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
         renet_steam::SteamServerTransport::new(client, config, socket_options).map(Self)
+    }
+
+    pub fn new_dedicated_server(
+        server: steamworks::Server,
+        client: Client,
+        config: SteamServerConfig,
+        socket_options: SteamServerSocketOptions,
+    ) -> Result<Self, InvalidHandle> {
+        renet_steam::SteamServerTransport::new_dedicated_server(server, client, config, socket_options).map(Self)
     }
 }
 
