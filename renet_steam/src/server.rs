@@ -45,6 +45,10 @@ impl Default for SteamServerSocketOptions {
 }
 
 impl SteamServerSocketOptions {
+    /// Allows for peer-2-peer connections using the server's steam id
+    ///
+    /// This only works for non-dedicated servers, and will do nothing on a dedicated server (since
+    /// they don't have steam ids).
     pub fn new_p2p() -> Self {
         Self {
             p2p: true,
@@ -54,6 +58,10 @@ impl SteamServerSocketOptions {
         }
     }
 
+    /// Allows for connections using the server's [`SocketAddr`]
+    ///
+    /// This only works for both non-dedicated and dedicated servers. Only connections into this
+    /// [`SocketAddr`] will be allowed.
     pub fn new_address(socket_addr: SocketAddr) -> Self {
         Self {
             p2p: false,
@@ -63,21 +71,31 @@ impl SteamServerSocketOptions {
         }
     }
 
+    /// Allows for peer-2-peer connections using the server's steam id
+    ///
+    /// This only works for non-dedicated servers, and will do nothing on a dedicated server (since
+    /// they don't have steam ids).
     pub fn with_p2p(mut self) -> Self {
         self.p2p = true;
         self
     }
 
+    /// Allows for connections using the server's [`SocketAddr`]
+    ///
+    /// This only works for both non-dedicated and dedicated servers. Only connections into this
+    /// [`SocketAddr`] will be allowed.
     pub fn with_address(mut self, socket_addr: SocketAddr) -> Self {
         self.socket_addr = Some(socket_addr);
         self
     }
 
+    /// Configures this steam server to use this [`NetworkingConfigEntry`]
     pub fn with_config(mut self, config_option: NetworkingConfigEntry) -> Self {
         self.configs.push(config_option);
         self
     }
 
+    /// Configures the maximum batch size for messages being received per update
     pub fn with_max_batch_size(mut self, size: usize) -> Self {
         self.max_batch_size = size;
         self
