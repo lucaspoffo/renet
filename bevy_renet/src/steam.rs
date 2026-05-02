@@ -111,14 +111,19 @@ impl SteamClientPlugin {
 pub struct SteamClientTransport(pub renet_steam::SteamClientTransport);
 
 impl SteamClientTransport {
+    /// Connects to a server using its [`SocketAddr`]
     pub fn new_ip(client: Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
         renet_steam::SteamClientTransport::new_ip(client, socket_addr).map(Self)
     }
 
+    /// Connects to a server using its steam id
     pub fn new_p2p(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
         renet_steam::SteamClientTransport::new_p2p(client, steam_id).map(Self)
     }
 
+    /// Connects to a server using its steam id
+    ///
+    /// Allows for additional connection configuration via the [`SteamClientTransportConfig`]
     pub fn new_p2p_with_config(
         client: steamworks::Client,
         steam_id: &SteamId,
@@ -127,6 +132,9 @@ impl SteamClientTransport {
         renet_steam::SteamClientTransport::new_p2p_with_config(client, steam_id, config).map(Self)
     }
 
+    /// Connects to a server using its [`SocketAddr`]
+    ///
+    /// Allows for additional connection configuration via the [`SteamClientTransportConfig`]
     pub fn new_ip_with_config(
         client: steamworks::Client,
         socket_addr: SocketAddr,
@@ -142,10 +150,19 @@ impl SteamClientTransport {
 pub struct SteamServerTransport(pub renet_steam::SteamServerTransport);
 
 impl SteamServerTransport {
+    /// Creates a new Steam Server that runs off the host's steam id
+    ///
+    /// * socket_options - Additional configuration to add to your steam server. `Default::default`
+    ///   works for most usecases.
     pub fn new(client: Client, config: SteamServerConfig, socket_options: SteamServerSocketOptions) -> Result<Self, InvalidHandle> {
         renet_steam::SteamServerTransport::new(client, config, socket_options).map(Self)
     }
 
+    /// Creates a new Steam Server that does not use a steam id for connections. You need to
+    /// connect to this server via its IP address.
+    ///
+    /// * socket_options - Additional configuration to add to your steam server. `Default::default`
+    ///   works for most usecases.
     pub fn new_dedicated_server(
         server: steamworks::Server,
         client: Client,
