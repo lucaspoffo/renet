@@ -1,4 +1,5 @@
 # Renet Steam
+
 [![Latest version](https://img.shields.io/crates/v/renet_steam.svg)](https://crates.io/crates/renet_steam)
 [![Documentation](https://docs.rs/renet_steam/badge.svg)](https://docs.rs/renet_steam)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
@@ -27,14 +28,19 @@ let steam_transport_config = SteamServerConfig {
     max_clients: 10,
     access_permission,
 };
-let mut steam_transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
+
+// Sets up the server to accept connections via its steam id or through the localhost address. Both methods will
+// require the user to have a valid steam id when connecting. The localhost address is useful when debugging, since steam
+// will reject p2p (steam id) connections of the same steam id going to the same computer.
+let socket_options = SteamServerSocketOptions::new_p2p().with_address("127.0.0.1:5000".parse().unwrap());
+let mut steam_transport = SteamServerTransport::new(&steam_client, steam_transport_config, socket_options).unwrap();
 
 // Your gameplay loop
 loop {
     let delta_time = Duration::from_millis(16);
 
     single.run_callbacks(); // Update steam callbacks
-   
+
     server.update(delta_time);
     steam_transport.update(&mut server);
 
@@ -51,7 +57,7 @@ loop {
     }
 
     // Code for sending/receiving messages can go here
-    // Check the examples/demos 
+    // Check the examples/demos
 
     steam_transport.send_packets(&mut server);
     thread::sleep(delta_time);
@@ -71,7 +77,10 @@ let mut client = RenetClient::new(connection_config);
 
 // Create steam transport
 let server_steam_id = SteamId::from_raw(0); // Here goes the steam id of the host
-let mut steam_transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
+// Connect to the server via its steam id. The server should have been setup with `SteamServerSocketOptions::new_p2p`
+let mut steam_transport = SteamClientTransport::new_p2p(&steam_client, &server_steam_id).unwrap();
+// Alternatively, you can connect to the IP of the server directly, if the server was setup with `SteamServerSocketOptions::new_ip`.
+let mut steam_transport = SteamClientTransport::new_ip(&steam_client, "127.0.0.1:5000".parse().unwrap()).unwrap();
 
 // Your gameplay loop
 loop {
@@ -82,7 +91,7 @@ loop {
     steam_transport.update(&mut client);
 
     // Code for sending/receiving messages can go here
-    // Check the examples/demos 
+    // Check the examples/demos
 
     steam_transport.send_packets(&mut client).unwrap();
     thread::sleep(delta_time);

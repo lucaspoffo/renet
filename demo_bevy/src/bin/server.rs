@@ -61,8 +61,11 @@ fn add_netcode_network(app: &mut App) {
 
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
-    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport};
+    use bevy_renet::steam::{AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerSocketOptions, SteamServerTransport};
     use demo_bevy::connection_config;
+
+    #[derive(Resource)]
+    struct SteamClient(steamworks::Client);
 
     let steam_client = steamworks::Client::init_app(480).unwrap();
 
@@ -72,15 +75,21 @@ fn add_steam_network(app: &mut App) {
         max_clients: 10,
         access_permission: AccessPermission::Public,
     };
-    let transport = SteamServerTransport::new(steam_client.clone(), steam_transport_config).unwrap();
+    let transport = SteamServerTransport::new(
+        steam_client.clone(),
+        steam_transport_config,
+        // Can connect both to the server's steam ID and using its localhost address.
+        SteamServerSocketOptions::new_p2p().with_address("127.0.0.1:5000".parse().unwrap()),
+    )
+    .unwrap();
 
     app.add_plugins(SteamServerPlugin);
     app.insert_resource(server);
-    app.insert_non_send_resource(transport);
-    app.insert_non_send_resource(steam_client);
+    app.insert_resource(transport);
+    app.insert_resource(SteamClient(steam_client));
 
-    fn steam_callbacks(client: NonSend<steamworks::Client>) {
-        client.run_callbacks();
+    fn steam_callbacks(client: Res<SteamClient>) {
+        client.0.run_callbacks();
     }
 
     app.add_systems(PreUpdate, steam_callbacks);

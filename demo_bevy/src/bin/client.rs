@@ -78,35 +78,48 @@ fn add_netcode_network(app: &mut App) {
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
     use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamErrorEvent};
+    use demo_bevy::connection_config;
     use steamworks::SteamId;
 
     let steam_client = steamworks::Client::init_app(480).unwrap();
 
     steam_client.networking_utils().init_relay_network_access();
 
-    let args: Vec<String> = std::env::args().collect();
-    let server_steam_id: u64 = args[1].parse().unwrap();
-    let server_steam_id = SteamId::from_raw(server_steam_id);
+    let client = RenetClient::new(connection_config());
 
-    let client = RenetClient::new(demo_bevy::connection_config());
-    let transport = SteamClientTransport::new(steam_client.clone(), &server_steam_id).unwrap();
+    #[derive(Resource)]
+    struct SteamClient(steamworks::Client);
+
+    let args: Vec<String> = std::env::args().collect();
+
+    let transport = match args.get(1) {
+        Some(steam_id_raw) => {
+            let server_steam_id: u64 = steam_id_raw.parse().unwrap();
+            let server_steam_id = SteamId::from_raw(server_steam_id);
+
+            SteamClientTransport::new_p2p(steam_client.clone(), &server_steam_id).unwrap()
+        }
+        None => {
+            // If no steam id given, assume we are connecting to localhost
+            SteamClientTransport::new_ip(steam_client.clone(), "127.0.0.1:5000".parse().unwrap()).unwrap()
+        }
+    };
 
     app.add_plugins(SteamClientPlugin);
     app.insert_resource(client);
     app.insert_resource(transport);
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
-    app.insert_non_send_resource(steam_client);
+
+    app.insert_resource(SteamClient(steam_client));
 
     app.configure_sets(Update, Connected.run_if(bevy_renet::client_connected));
 
-    fn steam_callbacks(client: NonSend<steamworks::Client>) {
-        client.run_callbacks();
+    fn steam_callbacks(client: Res<SteamClient>) {
+        client.0.run_callbacks();
     }
 
     app.add_systems(PreUpdate, steam_callbacks);
 
-    // If any error is found we just panic
-    #[allow(clippy::never_loop)]
     fn panic_on_error(error: On<SteamErrorEvent>) {
         panic!("{}", *error);
     }
