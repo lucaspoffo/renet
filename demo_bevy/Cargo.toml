@@ -16,17 +16,17 @@ steam = ["bevy_renet/steam", "steamworks"]
 
 [dependencies]
 bevy = { version = "0.18", default-features = false, features = [
-    "bevy_core_pipeline",
-    "bevy_render",
-    "bevy_asset",
-    "bevy_pbr",
-    "x11",
-    "tonemapping_luts",
-    "ktx2",
-    "zstd_rust",
-    "serialize",
-    "bevy_window"
-]}
+  "bevy_core_pipeline",
+  "bevy_render",
+  "bevy_asset",
+  "bevy_pbr",
+  "x11",
+  "tonemapping_luts",
+  "ktx2",
+  "zstd_rust",
+  "serialize",
+  "bevy_window",
+] }
 
 bevy_renet = { path = "../bevy_renet", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
