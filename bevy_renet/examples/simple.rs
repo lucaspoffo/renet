@@ -19,13 +19,16 @@ const PROTOCOL_ID: u64 = 7;
 
 const PLAYER_MOVE_SPEED: f32 = 1.0;
 
-#[derive(Debug, Default, Serialize, Deserialize, Component, Resource)]
+#[derive(Debug, Default, Serialize, Deserialize, Component)]
 struct PlayerInput {
     up: bool,
     down: bool,
     left: bool,
     right: bool,
 }
+
+#[derive(Debug, Default, Deref, DerefMut, Resource)]
+struct CurrentPlayerInput(pub PlayerInput);
 
 #[derive(Debug, Component)]
 struct Player {
@@ -108,7 +111,7 @@ fn main() {
     } else {
         app.add_plugins(RenetClientPlugin);
         app.add_plugins(NetcodeClientPlugin);
-        app.init_resource::<PlayerInput>();
+        app.init_resource::<CurrentPlayerInput>();
         let (client, transport) = new_renet_client();
         app.insert_resource(client);
         app.insert_resource(transport);
@@ -121,7 +124,7 @@ fn main() {
 
     app.add_systems(Startup, setup);
     app.add_observer(update_players);
-    app.add_observer(panic_on_error);
+    app.add_observer(panic_on_netcode_error);
 
     app.run();
 }
@@ -240,36 +243,37 @@ fn client_sync_players(
 
 /// set up a simple 3D scene
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    // plane
+    // Plane
     commands.spawn((
         Mesh3d(meshes.add(Mesh::from(PlaneMeshBuilder::from_size(Vec2::splat(5.0))))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
     ));
-    // light
+
+    // Light
     commands.spawn((
         PointLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
-    // camera
+
+    // Camera
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
 
-fn player_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut player_input: ResMut<PlayerInput>) {
+fn player_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut player_input: ResMut<CurrentPlayerInput>) {
     player_input.left = keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft);
     player_input.right = keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight);
     player_input.up = keyboard_input.pressed(KeyCode::KeyW) || keyboard_input.pressed(KeyCode::ArrowUp);
     player_input.down = keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown);
 }
 
-fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
-    let input_message = bincode::serialize(&*player_input).unwrap();
-
+fn client_send_input(current_player_input: Res<CurrentPlayerInput>, mut client: ResMut<RenetClient>) {
+    let input_message = bincode::serialize(&current_player_input.0).unwrap();
     client.send_message(DefaultChannel::ReliableOrdered, input_message);
 }
 
@@ -284,6 +288,6 @@ fn move_players_system(mut query: Query<(&mut Transform, &PlayerInput)>, time: R
 
 // If any error is found we just panic
 #[allow(clippy::never_loop)]
-fn panic_on_error(error: On<NetcodeErrorEvent>) {
+fn panic_on_netcode_error(error: On<NetcodeErrorEvent>) {
     panic!("{}", *error);
 }

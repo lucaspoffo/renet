@@ -23,6 +23,9 @@ struct PlayerInfo {
     server_entity: Entity,
 }
 
+#[derive(Debug, Default, Deref, DerefMut, Resource)]
+struct CurrentPlayerInput(pub PlayerInput);
+
 #[derive(Debug, Default, Resource)]
 struct ClientLobby {
     players: HashMap<ClientId, PlayerInfo>,
@@ -95,7 +98,7 @@ fn add_steam_network(app: &mut App) {
     app.insert_resource(client);
     app.insert_resource(transport);
     app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
-    app.insert_non_send_resource(steam_client);
+    app.insert_non_send(steam_client);
 
     app.configure_sets(Update, Connected.run_if(bevy_renet::client_connected));
 
@@ -131,7 +134,7 @@ fn main() {
     app.add_message::<PlayerCommand>();
 
     app.insert_resource(ClientLobby::default());
-    app.insert_resource(PlayerInput::default());
+    app.insert_resource(CurrentPlayerInput::default());
     app.insert_resource(NetworkMapping::default());
 
     app.add_systems(Update, (player_input, camera_follow, update_target_system));
@@ -168,7 +171,7 @@ fn update_visualizer_system(
 
 fn player_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut player_input: ResMut<PlayerInput>,
+    mut player_input: ResMut<CurrentPlayerInput>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     target_transform: Single<&Transform, With<Target>>,
     mut player_commands: MessageWriter<PlayerCommand>,
@@ -185,9 +188,8 @@ fn player_input(
     }
 }
 
-fn client_send_input(player_input: Res<PlayerInput>, mut client: ResMut<RenetClient>) {
-    let input_message = bincode::serialize(&*player_input).unwrap();
-
+fn client_send_input(current_player_input: Res<CurrentPlayerInput>, mut client: ResMut<RenetClient>) {
+    let input_message = bincode::serialize(&current_player_input.0).unwrap();
     client.send_message(ClientChannel::Input, input_message);
 }
 

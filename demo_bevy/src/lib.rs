@@ -14,7 +14,7 @@ pub struct Player {
     pub id: ClientId,
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component, Resource)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, Component)]
 pub struct PlayerInput {
     pub up: bool,
     pub down: bool,
@@ -140,7 +140,7 @@ pub fn setup_level(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut
     // light
     commands.spawn((
         DirectionalLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform {
