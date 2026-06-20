@@ -41,10 +41,13 @@ impl Message {
 }
 
 impl App for ChatApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.draw(ctx);
+    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_chat();
-        ctx.request_repaint();
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.draw(ui);
+        ui.request_repaint();
     }
 }
 

@@ -364,6 +364,7 @@ fn show_graph(
 
         let body = Shape::Rect(RectShape {
             rect,
+            angle: 0.0,
             fill: Rgba::TRANSPARENT.into(),
             stroke: style.rectangle_stroke,
             stroke_kind: StrokeKind::Inside,

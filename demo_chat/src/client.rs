@@ -53,19 +53,19 @@ impl Default for ChatApp {
 }
 
 impl ChatApp {
-    pub fn draw(&mut self, ctx: &egui::Context) {
+    pub fn draw(&mut self, ui: &mut egui::Ui) {
         match &mut self.state {
             AppState::MainScreen => {
-                draw_main_screen(&mut self.ui_state, &mut self.state, ctx);
+                draw_main_screen(&mut self.ui_state, &mut self.state, ui);
             }
-            AppState::ClientChat { client, .. } if client.is_connecting() => draw_loader(ctx),
+            AppState::ClientChat { client, .. } if client.is_connecting() => draw_loader(ui),
             AppState::ClientChat { usernames, .. } => {
                 let usernames = usernames.clone();
-                draw_chat(&mut self.ui_state, &mut self.state, usernames, ctx);
+                draw_chat(&mut self.ui_state, &mut self.state, usernames, ui);
             }
             AppState::HostChat { chat_server } => {
                 let usernames = chat_server.usernames.clone();
-                draw_chat(&mut self.ui_state, &mut self.state, usernames, ctx);
+                draw_chat(&mut self.ui_state, &mut self.state, usernames, ui);
             }
         }
     }
