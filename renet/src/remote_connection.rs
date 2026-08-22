@@ -93,7 +93,23 @@ pub struct RenetClient {
     available_bytes_per_tick: u64,
     connection_status: RenetConnectionStatus,
     rtt: f64,
+    /// Earliest `current_time` at which the next standalone `Packet::Ack`
+    /// may be emitted; see [`ACK_ONLY_INTERVAL`]. Starts at zero so the
+    /// first ack on a fresh connection is never delayed.
+    next_ack_only_at: Duration,
 }
+
+/// Minimum spacing between *standalone* ack packets. Acks still go out
+/// alongside any payload packet, so a peer that is sending data is acked
+/// at its own packet rate; this only caps the rate at which an otherwise
+/// idle side keeps acking. Without it, every `get_packets_to_send()` call
+/// while `pending_acks` is non-empty produces an ack packet — and the set
+/// is only cleared once the peer acks that ack, a round trip later — so
+/// two peers ticking at 1 ms sustain ~1000 ack packets/s in each
+/// direction with no payload at all. The cost is up to this much extra
+/// delay before a reliable message is confirmed (and the same bias on the
+/// RTT estimate), which is far below any sane `resend_time`.
+const ACK_ONLY_INTERVAL: Duration = Duration::from_millis(10);
 
 impl Default for ConnectionConfig {
     fn default() -> Self {
@@ -188,6 +204,7 @@ impl RenetClient {
             rtt: 0.0,
             available_bytes_per_tick,
             connection_status: RenetConnectionStatus::Connecting,
+            next_ack_only_at: Duration::ZERO,
         }
     }
 
@@ -513,13 +530,17 @@ impl RenetClient {
             }
         }
 
-        if !self.pending_acks.is_empty() {
+        // Ack whenever payload is going out anyway; otherwise rate-limit
+        // standalone acks to ACK_ONLY_INTERVAL.
+        let ack_only_due = self.current_time >= self.next_ack_only_at;
+        if !self.pending_acks.is_empty() && (!packets.is_empty() || ack_only_due) {
             let ack_packet = Packet::Ack {
                 sequence: self.packet_sequence,
                 ack_ranges: self.pending_acks.clone(),
             };
             self.packet_sequence += 1;
             packets.push(ack_packet);
+            self.next_ack_only_at = self.current_time + ACK_ONLY_INTERVAL;
         }
 
         let sent_at = self.current_time;
@@ -765,5 +786,28 @@ mod tests {
 
         connection.update(Duration::from_secs(4));
         assert_eq!(connection.sent_packets.len(), 0);
+    }
+
+    #[test]
+    fn standalone_acks_are_rate_limited_but_ride_with_payload() {
+        let mut connection = RenetClient::new(ConnectionConfig::default());
+        connection.add_pending_ack(0);
+
+        // First standalone ack goes out immediately.
+        assert_eq!(connection.get_packets_to_send().len(), 1);
+        // Same instant, nothing new to say: no packet.
+        assert_eq!(connection.get_packets_to_send().len(), 0);
+
+        // Payload always carries an ack along, regardless of the timer.
+        connection.send_message(0, Bytes::from_static(b"payload"));
+        assert_eq!(connection.get_packets_to_send().len(), 2);
+
+        // Still inside the interval: no standalone ack.
+        connection.update(ACK_ONLY_INTERVAL / 2);
+        assert_eq!(connection.get_packets_to_send().len(), 0);
+
+        // Interval elapsed: standalone ack resumes.
+        connection.update(ACK_ONLY_INTERVAL);
+        assert_eq!(connection.get_packets_to_send().len(), 1);
     }
 }
