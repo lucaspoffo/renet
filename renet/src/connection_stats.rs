@@ -59,6 +59,10 @@ impl ConnectionStats {
     }
 
     pub fn bytes_sent_per_second(&self, current_time: Duration) -> f64 {
+        if current_time == Duration::ZERO {
+            return 0.0;
+        }
+
         let mut total_bytes: u64 = self.bytes_sent.iter().sum();
 
         if current_time < WINDOW {
@@ -72,6 +76,10 @@ impl ConnectionStats {
     }
 
     pub fn bytes_received_per_second(&self, current_time: Duration) -> f64 {
+        if current_time == Duration::ZERO {
+            return 0.0;
+        }
+
         let mut total_bytes: u64 = self.bytes_received.iter().sum();
 
         if current_time < WINDOW {
