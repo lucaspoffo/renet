@@ -34,4 +34,4 @@ bincode = "1.3"
 bevy_egui = "0.43"
 renet_visualizer = { path = "../renet_visualizer" }
 fastrand = "2.0"
-steamworks = { version = "0.12.2", optional = true }
+steamworks = { version = "0.13.1", optional = true }
