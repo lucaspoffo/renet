@@ -1,7 +1,11 @@
-use super::MAX_MESSAGE_BATCH_SIZE;
+use std::net::SocketAddr;
+
+use super::DEFAULT_MAX_MESSAGE_BATCH_SIZE;
+use log::info;
 use renet::RenetClient;
 use steamworks::{
     networking_sockets::{InvalidHandle, NetConnection},
+    networking_types::NetworkingConfigEntry,
     networking_types::{AppNetConnectionEnd, NetConnectionEnd, NetworkingConnectionState, NetworkingIdentity, SendFlags},
     Client, SteamError, SteamId,
 };
@@ -14,18 +18,85 @@ enum ConnectionState {
 pub struct SteamClientTransport {
     client: Client,
     state: ConnectionState,
+    max_batch_size: usize,
+}
+
+#[derive(Clone)]
+pub struct SteamClientTransportConfig {
+    configs: Vec<NetworkingConfigEntry>,
+    max_batch_size: usize,
+}
+
+impl Default for SteamClientTransportConfig {
+    fn default() -> Self {
+        Self {
+            configs: vec![],
+            max_batch_size: DEFAULT_MAX_MESSAGE_BATCH_SIZE,
+        }
+    }
+}
+
+impl SteamClientTransportConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_config(mut self, config: NetworkingConfigEntry) -> Self {
+        self.configs.push(config);
+        self
+    }
+
+    pub fn with_max_batch_size(mut self, max_batch_size: usize) -> Self {
+        self.max_batch_size = max_batch_size;
+        self
+    }
 }
 
 impl SteamClientTransport {
-    pub fn new(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
-        let options = Vec::new();
-        let connection = client
-            .networking_sockets()
-            .connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, options)?;
+    /// Connects to a server using its steam id
+    pub fn new_p2p(client: Client, steam_id: &SteamId) -> Result<Self, InvalidHandle> {
+        Self::new_p2p_with_config(client, steam_id, Default::default())
+    }
+
+    /// Connects to a server using its [`SocketAddr`]
+    pub fn new_ip(client: Client, socket_addr: SocketAddr) -> Result<Self, InvalidHandle> {
+        Self::new_ip_with_config(client, socket_addr, Default::default())
+    }
+
+    /// Connects to a server using its steam id
+    ///
+    /// Allows for additional connection configuration via the [`SteamClientTransportConfig`]
+    pub fn new_p2p_with_config(
+        client: steamworks::Client,
+        steam_id: &SteamId,
+        config: SteamClientTransportConfig,
+    ) -> Result<Self, InvalidHandle> {
+        let networking_sockets = client.networking_sockets();
+
+        let connection = networking_sockets.connect_p2p(NetworkingIdentity::new_steam_id(*steam_id), 0, config.configs)?;
 
         Ok(Self {
             client,
             state: ConnectionState::Connected { connection },
+            max_batch_size: config.max_batch_size,
+        })
+    }
+
+    /// Connects to a server using its [`SocketAddr`]
+    ///
+    /// Allows for additional connection configuration via the [`SteamClientTransportConfig`]
+    pub fn new_ip_with_config(
+        client: steamworks::Client,
+        socket_addr: SocketAddr,
+        config: SteamClientTransportConfig,
+    ) -> Result<Self, InvalidHandle> {
+        let networking_sockets = client.networking_sockets();
+
+        let connection = networking_sockets.connect_by_ip_address(socket_addr, config.configs)?;
+        Ok(Self {
+            client,
+            state: ConnectionState::Connected { connection },
+            max_batch_size: config.max_batch_size,
         })
     }
 
@@ -89,6 +160,7 @@ impl SteamClientTransport {
     }
 
     pub fn disconnect(&mut self) {
+        info!("Disconnect called!");
         if matches!(self.state, ConnectionState::Disconnected { .. }) {
             return;
         }
@@ -135,10 +207,15 @@ impl SteamClientTransport {
             unreachable!()
         };
 
-        if let Ok(messages) = connection.receive_messages(MAX_MESSAGE_BATCH_SIZE) {
-            messages.iter().for_each(|message| {
-                client.process_packet(message.data());
-            });
+        match connection.receive_messages(self.max_batch_size) {
+            Ok(messages) => {
+                messages.iter().for_each(|message| {
+                    client.process_packet(message.data());
+                });
+            }
+            Err(e) => {
+                log::error!("Client Message Receive Error: {e:?}");
+            }
         }
     }
 
