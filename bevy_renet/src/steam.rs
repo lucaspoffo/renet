@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 pub use renet_steam::*;
 
-use bevy_app::{prelude::*, AppExit};
+use bevy_app::{prelude::*, OnAppExitSystems};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use steamworks::{networking_sockets::InvalidHandle, Client, SteamError, SteamId};
@@ -80,6 +80,8 @@ impl Plugin for SteamClientPlugin {
         app.add_systems(
             Last,
             Self::disconnect_on_exit
+                .in_set(OnAppExitSystems)
+                .run_if(|messages: Res<Messages<AppExit>>| !messages.is_empty())
                 .run_if(resource_exists::<SteamClientTransport>)
                 .run_if(resource_exists::<RenetClient>),
         );
@@ -97,10 +99,8 @@ impl SteamClientPlugin {
         }
     }
 
-    pub fn disconnect_on_exit(exit: MessageReader<AppExit>, mut transport: ResMut<SteamClientTransport>) {
-        if !exit.is_empty() {
-            transport.disconnect();
-        }
+    pub fn disconnect_on_exit(mut transport: ResMut<SteamClientTransport>) {
+        transport.disconnect();
     }
 }
 
