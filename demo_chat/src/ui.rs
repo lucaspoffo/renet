@@ -19,7 +19,7 @@ use crate::{
 use crate::{ClientMessages, Username, PROTOCOL_ID};
 
 pub fn draw_loader(ui: &mut egui::Ui) {
-    egui::CentralPanel::default().show_inside(ui, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         // Taken from egui progress bar widget
         let n_points = 20;
         let time = ui.input(|input| input.time);
@@ -74,7 +74,7 @@ pub fn draw_host_commands(ui: &mut Ui, chat_server: &mut ChatServer) {
 }
 
 pub fn draw_main_screen(ui_state: &mut UiState, state: &mut AppState, ui: &mut egui::Ui) {
-    egui::CentralPanel::default().show_inside(ui, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         egui::Area::new("buttons".into())
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ui.ctx(), |ui| {
@@ -152,7 +152,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
     let exit = egui::Panel::right("right_panel")
         .min_size(200.0)
         .default_size(200.0)
-        .show_inside(ui, |ui| {
+        .show(ui, |ui| {
             ui.checkbox(&mut ui_state.show_network_info, "Show Network Graphs");
 
             if let AppState::HostChat { ref mut chat_server } = state {
@@ -194,7 +194,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
         return;
     }
 
-    egui::Panel::bottom("text_editor").show_inside(ui, |ui| {
+    egui::Panel::bottom("text_editor").show(ui, |ui| {
         let send_message = ui.horizontal(|ui| {
             let response = ui.text_edit_singleline(&mut ui_state.text_input);
 
@@ -227,7 +227,7 @@ pub fn draw_chat(ui_state: &mut UiState, state: &mut AppState, usernames: HashMa
         }
     });
 
-    egui::CentralPanel::default().show_inside(ui, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .id_salt("client_list_scroll")
