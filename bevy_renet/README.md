@@ -37,15 +37,12 @@ fn main() {
     let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
     app.insert_resource(transport);
 
-    app.add_system(send_message_system);
-    app.add_system(receive_message_system);
-    app.add_system(handle_events_system);
+    app.add_systems(Update, (receive_message_system, send_message_system));
+    app.add_observer(handle_events_system);
 }
 
 // Systems
-
 fn send_message_system(mut server: ResMut<RenetServer>) {
-    let channel_id = 0;
     // Send a text message for all clients
     // The enum DefaultChannel describe the channels used by the default configuration
     server.broadcast_message(DefaultChannel::ReliableOrdered, "server message");
@@ -60,15 +57,13 @@ fn receive_message_system(mut server: ResMut<RenetServer>) {
     }
 }
 
-fn handle_events_system(mut server_events: MessageReader<ServerEvent>) {
-    for event in server_events.read() {
-        match event {
-            ServerEvent::ClientConnected { client_id } => {
-                println!("Client {client_id} connected");
-            }
-            ServerEvent::ClientDisconnected { client_id, reason } => {
-                println!("Client {client_id} disconnected: {reason}");
-            }
+fn handle_events_system(mut server_event: On<RenetServerEvent>) {
+    match **event {
+        ServerEvent::ClientConnected { client_id } => {
+            println!("Client {client_id} connected");
+        }
+        ServerEvent::ClientDisconnected { client_id, reason } => {
+            println!("Client {client_id} disconnected: {reason}");
         }
     }
 }
@@ -99,12 +94,10 @@ fn main() {
 
     app.insert_resource(transport);
 
-    app.add_system(send_message_system);
-    app.add_system(receive_message_system);
+    app.add_systems(Update, (receive_message_system, send_message_system));
 }
 
 // Systems
-
 fn send_message_system(mut client: ResMut<RenetClient>) {
     // Send a text message to the server
     client.send_message(DefaultChannel::ReliableOrdered, "server message");
